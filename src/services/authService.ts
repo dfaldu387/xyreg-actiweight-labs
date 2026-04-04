@@ -38,9 +38,10 @@ export class AuthService {
       if (accessData) {
         console.log('Access data:', accessData);
       }
+      const allowedCompanies = ["xyreg", "Actiweight Labs AS", "David Health Solutions Oy"];
       if (email.toLowerCase() !== 'superadmin@gmail.com' &&
-        !(accessData?.some((access: any) => access.companies?.name === "Actiweight Labs AS"))) {
-        toast.error("User not found. Only Actiweight Labs AS users can log in.");
+        !(accessData?.some((access: any) => allowedCompanies.includes(access.companies?.name)))) {
+        toast.error("User not found. Only authorized company users can log in.");
         await supabase.auth.signOut();
         return { user: null, error: null, success: false };
       }
