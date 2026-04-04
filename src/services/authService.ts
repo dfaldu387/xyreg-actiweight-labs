@@ -39,8 +39,8 @@ export class AuthService {
         console.log('Access data:', accessData);
       }
       if (email.toLowerCase() !== 'superadmin@gmail.com' &&
-        !(accessData?.some((access: any) => access.companies?.name === "XyReg"))) {
-        toast.error("User not found. Only XyReg users can log in.");
+        !(accessData?.some((access: any) => access.companies?.name === "Actiweight Labs AS"))) {
+        toast.error("User not found. Only Actiweight Labs AS users can log in.");
         await supabase.auth.signOut();
         return { user: null, error: null, success: false };
       }

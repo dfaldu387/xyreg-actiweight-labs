@@ -51,7 +51,7 @@ export function LoginForm({ onClose, setShowRegister }: LoginFormProps) {
       const result = await signIn(email, password);
       // console.log("result", result);
       if (result.success === false) {
-        setError(result.error || "User not found. Only David Health Solutions Oy users can log in.");
+        setError(result.error || "User not found. Only Actiweight Labs AS users can log in.");
         return;
       }
       if (result.success) {
