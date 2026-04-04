@@ -6,6 +6,7 @@ import { useDashboardContext } from "@/hooks/useDashboardContext";
 import { getCompanyFromUrl } from "@/utils/urlCompanyContext";
 import { hasEditorPrivileges } from "@/utils/roleUtils";
 import { MyActionItems } from "./MyActionItems";
+import { NewReleaseNotification } from "./NewReleaseNotification";
 import { ProjectHealthAlerts } from "./ProjectHealthAlerts";
 import { CommunicationHub } from "./CommunicationHub";
 import { KnowledgeBotWidget } from "./KnowledgeBotWidget";
@@ -159,6 +160,7 @@ export function SingleCompanyDashboard() {
       />
 
       <div className="space-y-6 pb-8 pt-4">
+        <NewReleaseNotification />
         <MyActionItems companyId={currentCompanyId} />
         <SortableWidgetColumn
           widgets={filteredEnabledWidgets}

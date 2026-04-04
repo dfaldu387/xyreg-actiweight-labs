@@ -9,11 +9,20 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 
-interface FamilyMember {
+interface CompanyProduct {
   id: string;
   name: string;
+  is_master_device: boolean;
+  parent_product_id: string | null;
+}
+
+interface ProductFamily {
+  master: CompanyProduct;
+  members: CompanyProduct[];
 }
 
 interface ProductFamilySwitcherProps {
@@ -31,61 +40,75 @@ export function ProductNavigationArrows({
   const location = useLocation();
   const queryClient = useQueryClient();
 
-  // Step 1: Get current product's parent info
-  const { data: productInfo } = useQuery({
-    queryKey: ['product-family-info', productId],
+  // Fetch ALL company products
+  const { data: allProducts } = useQuery<CompanyProduct[]>({
+    queryKey: ['company-products-nav', companyId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('products')
-        .select('id, is_master_device, parent_product_id')
-        .eq('id', productId)
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!productId,
-  });
-
-  // Step 2: Determine the family root ID
-  const rootId = React.useMemo(() => {
-    if (!productInfo) return null;
-    if (productInfo.is_master_device) return productInfo.id;
-    if (productInfo.parent_product_id) return productInfo.parent_product_id;
-    return null;
-  }, [productInfo]);
-
-  // Step 3: Fetch all family members (root + all children)
-  const { data: familyMembers } = useQuery<FamilyMember[]>({
-    queryKey: ['product-family-members', rootId, companyId],
-    queryFn: async () => {
-      if (!rootId) return [];
-      const { data, error } = await supabase
-        .from('products')
-        .select('id, name')
+        .select('id, name, is_master_device, parent_product_id')
         .eq('company_id', companyId)
         .eq('is_archived', false)
-        .or(`id.eq.${rootId},parent_product_id.eq.${rootId}`)
         .order('name', { ascending: true });
       if (error) throw error;
-      return (data || []) as FamilyMember[];
+      return (data || []) as CompanyProduct[];
     },
-    enabled: !!rootId && !!companyId,
+    enabled: !!companyId,
   });
 
-  const sortedMembers = React.useMemo(() => {
-    if (!familyMembers || familyMembers.length === 0) return [];
-    return [...familyMembers].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-  }, [familyMembers]);
+  // Group into families + standalone
+  const { families, standalone, flatList } = React.useMemo(() => {
+    if (!allProducts || allProducts.length === 0) {
+      return { families: [] as ProductFamily[], standalone: [] as CompanyProduct[], flatList: [] as CompanyProduct[] };
+    }
 
-  const currentIndex = sortedMembers.findIndex(p => p.id === productId);
+    const mastersMap = new Map<string, ProductFamily>();
+    const assignedIds = new Set<string>();
 
-  if (sortedMembers.length <= 1) {
+    // First pass: identify masters
+    allProducts.forEach(p => {
+      if (p.is_master_device) {
+        mastersMap.set(p.id, { master: p, members: [p] });
+        assignedIds.add(p.id);
+      }
+    });
+
+    // Second pass: assign children to their master
+    allProducts.forEach(p => {
+      if (!p.is_master_device && p.parent_product_id && mastersMap.has(p.parent_product_id)) {
+        mastersMap.get(p.parent_product_id)!.members.push(p);
+        assignedIds.add(p.id);
+      }
+    });
+
+    // Sort members within each family
+    mastersMap.forEach(family => {
+      family.members.sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    const familiesArr = Array.from(mastersMap.values()).sort((a, b) =>
+      a.master.name.localeCompare(b.master.name)
+    );
+
+    const standaloneArr = allProducts
+      .filter(p => !assignedIds.has(p.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Build flat navigation list: families first (members in order), then standalone
+    const flat: CompanyProduct[] = [];
+    familiesArr.forEach(f => flat.push(...f.members));
+    flat.push(...standaloneArr);
+
+    return { families: familiesArr, standalone: standaloneArr, flatList: flat };
+  }, [allProducts]);
+
+  const currentIndex = flatList.findIndex(p => p.id === productId);
+
+  if (flatList.length <= 1) {
     return null;
   }
 
   const handleNavigate = (newId: string) => {
-    // Remove all cached queries for the target device so fresh data must be fetched
-    // (invalidateQueries only triggers background refetch and still shows stale cache)
     queryClient.removeQueries({
       predicate: (query) => {
         const key = query.queryKey;
@@ -101,7 +124,7 @@ export function ProductNavigationArrows({
   };
 
   const hasPrevious = currentIndex > 0;
-  const hasNext = currentIndex < sortedMembers.length - 1;
+  const hasNext = currentIndex < flatList.length - 1;
 
   return (
     <div className={`flex items-center gap-0.5 ${className}`}>
@@ -110,7 +133,7 @@ export function ProductNavigationArrows({
         size="icon"
         className="h-7 w-7"
         disabled={!hasPrevious}
-        onClick={() => hasPrevious && handleNavigate(sortedMembers[currentIndex - 1].id)}
+        onClick={() => hasPrevious && handleNavigate(flatList[currentIndex - 1].id)}
       >
         <ChevronLeft className="h-4 w-4" />
       </Button>
@@ -119,22 +142,50 @@ export function ProductNavigationArrows({
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="gap-1.5">
             <span className="text-xs text-muted-foreground">
-              {currentIndex + 1} of {sortedMembers.length}
+              {currentIndex + 1} of {flatList.length}
             </span>
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto min-w-[200px]">
-          {sortedMembers.map((member) => (
+        <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto min-w-[220px]">
+          {families.map((family, fi) => (
+            <React.Fragment key={family.master.id}>
+              {fi > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                {family.master.name} family
+              </DropdownMenuLabel>
+              {family.members.map((member) => (
+                <DropdownMenuItem
+                  key={member.id}
+                  onClick={() => handleNavigate(member.id)}
+                  className="flex items-center justify-between gap-2 pl-4"
+                >
+                  <span className={member.id === productId ? 'font-semibold' : ''}>
+                    {member.name}
+                  </span>
+                  {member.id === productId && (
+                    <Check className="h-4 w-4 text-primary shrink-0" />
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </React.Fragment>
+          ))}
+          {standalone.length > 0 && families.length > 0 && <DropdownMenuSeparator />}
+          {standalone.length > 0 && families.length > 0 && (
+            <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+              Individual devices
+            </DropdownMenuLabel>
+          )}
+          {standalone.map((product) => (
             <DropdownMenuItem
-              key={member.id}
-              onClick={() => handleNavigate(member.id)}
+              key={product.id}
+              onClick={() => handleNavigate(product.id)}
               className="flex items-center justify-between gap-2"
             >
-              <span className={member.id === productId ? 'font-semibold' : ''}>
-                {member.name}
+              <span className={product.id === productId ? 'font-semibold' : ''}>
+                {product.name}
               </span>
-              {member.id === productId && (
+              {product.id === productId && (
                 <Check className="h-4 w-4 text-primary shrink-0" />
               )}
             </DropdownMenuItem>
@@ -147,7 +198,7 @@ export function ProductNavigationArrows({
         size="icon"
         className="h-7 w-7"
         disabled={!hasNext}
-        onClick={() => hasNext && handleNavigate(sortedMembers[currentIndex + 1].id)}
+        onClick={() => hasNext && handleNavigate(flatList[currentIndex + 1].id)}
       >
         <ChevronRight className="h-4 w-4" />
       </Button>

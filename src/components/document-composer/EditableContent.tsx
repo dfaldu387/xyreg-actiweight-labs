@@ -428,28 +428,6 @@ export function EditableContent({
 
             <Separator orientation="vertical" className="h-6 mx-1" />
 
-            {/* Block elements */}
-            <Button
-              variant={editor.isActive('blockquote') ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => editor.chain().focus().toggleBlockquote().run()}
-              className="h-8 w-8 p-0"
-              title="Quote"
-            >
-              <Quote className="w-4 h-4" />
-            </Button>
-            <Button
-              variant={editor.isActive('code') ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => editor.chain().focus().toggleCode().run()}
-              className="h-8 w-8 p-0"
-              title="Code"
-            >
-              <Code className="w-4 h-4" />
-            </Button>
-
-            <Separator orientation="vertical" className="h-6 mx-1" />
-
             {/* Image upload */}
             <Button
               variant="outline"

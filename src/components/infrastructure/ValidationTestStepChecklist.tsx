@@ -1,8 +1,9 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle2, XCircle, MinusCircle, ListChecks, ChevronDown, ChevronRight } from 'lucide-react';
+import { CheckCircle2, XCircle, MinusCircle, ListChecks, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 export interface TestStepResult {
@@ -13,7 +14,7 @@ export interface TestStepResult {
 }
 
 interface ValidationTestStepChecklistProps {
-  steps: { step: string; expectedResult: string }[];
+  steps: { step: string; expectedResult: string; navigateTo?: string }[];
   results: TestStepResult[];
   onChange: (results: TestStepResult[]) => void;
   disabled?: boolean;
@@ -25,6 +26,7 @@ export function ValidationTestStepChecklist({
   onChange,
   disabled = false,
 }: ValidationTestStepChecklistProps) {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = React.useState(true);
 
   // Ensure results array matches steps
@@ -67,10 +69,28 @@ export function ValidationTestStepChecklist({
               <div key={idx} className="p-3 space-y-2">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">
-                      <span className="text-muted-foreground mr-1.5">{idx + 1}.</span>
-                      {item.step}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">
+                        <span className="text-muted-foreground mr-1.5">{idx + 1}.</span>
+                        {item.step}
+                      </p>
+                      {steps[idx]?.navigateTo && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(steps[idx].navigateTo!);
+                          }}
+                          title={`Navigate to: ${steps[idx].navigateTo}`}
+                        >
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          Go
+                        </Button>
+                      )}
+                    </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       <span className="font-medium">Expected:</span> {item.expectedResult}
                     </p>
@@ -101,8 +121,8 @@ export function ValidationTestStepChecklist({
                     <Button
                       type="button"
                       size="sm"
-                      variant={item.result === 'na' ? 'secondary' : 'outline'}
-                      className="h-7 w-7 p-0"
+                      variant={item.result === 'na' ? 'default' : 'outline'}
+                      className={`h-7 w-7 p-0 ${item.result === 'na' ? 'bg-gray-800 hover:bg-gray-900 text-white border-gray-800' : ''}`}
                       onClick={() => updateResult(idx, 'result', item.result === 'na' ? '' : 'na')}
                       disabled={disabled}
                       title="N/A"

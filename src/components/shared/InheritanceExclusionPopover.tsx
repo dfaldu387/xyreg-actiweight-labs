@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Monitor, Search, Loader2, AlertTriangle } from "lucide-react";
 import { ItemExclusionScope } from "@/hooks/useInheritanceExclusion";
@@ -58,7 +57,6 @@ export function InheritanceExclusionPopover({
   familyProductIds,
   valueMatchingProductIds,
 }: InheritanceExclusionPopoverProps) {
-  const [categoryFilter, setCategoryFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -81,22 +79,17 @@ export function InheritanceExclusionPopover({
     queryFn: async () => {
       const { data, error } = await supabase
         .from("products")
-        .select("id, name, device_category")
+        .select("id, name, device_category, parent_product_id")
         .eq("company_id", companyId)
         .eq("is_archived", false)
         .order("name");
       if (error) throw error;
-      return data as { id: string; name: string; device_category: string | null }[];
+      return data as { id: string; name: string; device_category: string | null; parent_product_id: string | null }[];
     },
     enabled: !!companyId,
   });
 
-  // When familyProductIds is provided, only show family members
-  const products = useMemo(() => {
-    if (!familyProductIds) return allProducts;
-    const familySet = new Set(familyProductIds);
-    return allProducts.filter(p => familySet.has(p.id));
-  }, [allProducts, familyProductIds]);
+  const products = allProducts;
 
   const { categories, loading: categoriesLoading } = useCompanyDeviceCategories(companyId);
 
@@ -125,7 +118,6 @@ export function InheritanceExclusionPopover({
   const handleOpenChange = (open: boolean) => {
     if (open) {
       setDraftScope(effectiveInitialScope);
-      setCategoryFilter("");
       setSearchQuery("");
     }
     setIsOpen(open);
@@ -169,11 +161,36 @@ export function InheritanceExclusionPopover({
     };
   }, [products]);
 
+  // Compute device family groups: only families (parent + children), no standalone devices
+  const deviceFamilies = useMemo(() => {
+    const entries: { name: string; productIds: string[] }[] = [];
+    const parentIds = new Set(products.filter(p => p.parent_product_id).map(p => p.parent_product_id!));
+
+    for (const parentId of parentIds) {
+      const parent = products.find(p => p.id === parentId);
+      if (!parent) continue;
+      const children = products.filter(p => p.parent_product_id === parentId);
+      entries.push({ name: parent.name, productIds: [parentId, ...children.map(c => c.id)] });
+    }
+
+    return entries.sort((a, b) => a.name.localeCompare(b.name));
+  }, [products]);
+
+  const handleFamilyToggle = (familyProductIds: string[], include: boolean) => {
+    let newExcluded = [...draftExcludedIds];
+    if (include) {
+      newExcluded = newExcluded.filter(id => !familyProductIds.includes(id));
+    } else {
+      familyProductIds.forEach(id => {
+        if (!newExcluded.includes(id)) newExcluded.push(id);
+      });
+    }
+    setDraftScope({ ...draftScope, excludedProductIds: newExcluded });
+  };
+
   // Filter products by category
   const displayProducts = useMemo(() => {
-    let list = categoryFilter
-      ? products.filter(p => p.device_category === categoryFilter)
-      : products;
+    let list = [...products];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(p => p.name.toLowerCase().includes(q));
@@ -183,7 +200,7 @@ export function InheritanceExclusionPopover({
       if (b.id === currentProductId) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [products, categoryFilter, currentProductId, searchQuery]);
+  }, [products, currentProductId, searchQuery]);
 
   const effectiveTotal = parentExcludedProductIds
     ? products.filter(p => !parentExcludedProductIds.includes(p.id)).length
@@ -375,6 +392,28 @@ export function InheritanceExclusionPopover({
           </div>
         </div>
 
+        {/* Device family toggles */}
+        {deviceFamilies.length > 0 && (
+          <div className="space-y-1 border-b pb-2">
+            <Label className="text-xs text-muted-foreground">Select entire device family</Label>
+            {deviceFamilies.map(family => {
+              const isAllIncluded = family.productIds.length > 0 && family.productIds.every(id => !draftExcludedIds.includes(id));
+              return (
+                <label key={family.name} className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-accent/50 cursor-pointer text-xs">
+                  <Checkbox
+                    checked={isAllIncluded}
+                    onCheckedChange={(checked) => handleFamilyToggle(family.productIds, !!checked)}
+                  />
+                  <span>{family.name}</span>
+                  <span className="text-muted-foreground ml-auto">
+                    ({family.productIds.length})
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+
         {/* Category filter */}
         {categoriesLoading ? (
           <div className="flex items-center gap-2 py-2">
@@ -383,25 +422,9 @@ export function InheritanceExclusionPopover({
           </div>
         ) : categories.length > 0 ? (
           <>
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Filter by category</Label>
-              <Select value={categoryFilter || "__all__"} onValueChange={v => setCategoryFilter(v === "__all__" ? "" : v)}>
-                <SelectTrigger className="h-7 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all__">All categories</SelectItem>
-                  {categories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Category-level exclusion toggles */}
-            {!categoryFilter && (
               <div className="space-y-1 border-b pb-2">
-                <Label className="text-xs text-muted-foreground">Exclude entire category</Label>
+                <Label className="text-xs text-muted-foreground">Select entire category</Label>
                 {categories.map(cat => {
                   const catProductIds = getCategoryProductIds(cat.name);
                   const isAllIncluded = catProductIds.length > 0 && catProductIds.every(id => !draftExcludedIds.includes(id));
@@ -419,7 +442,6 @@ export function InheritanceExclusionPopover({
                   );
                 })}
               </div>
-            )}
           </>
         ) : null}
 

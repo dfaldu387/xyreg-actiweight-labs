@@ -513,38 +513,28 @@ export function SendForReviewStep({
         <div className="flex items-center gap-3">
           <Button
             variant="secondary"
+            size="icon"
             onClick={handleSaveDraft}
             disabled={isSending || isGeneratingFile}
-            className="flex items-center gap-2"
+            title="Save Draft"
           >
             {isGeneratingFile ? (
-              <>
-                <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                Generating...
-              </>
+              <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             ) : (
-              <>
-                <FileText className="w-4 h-4" />
-                Save Draft
-              </>
+              <FileText className="w-4 h-4" />
             )}
           </Button>
           
           <Button
+            size="icon"
             onClick={handleSend}
             disabled={isSending || isGeneratingFile || processedRoles.length === 0}
-            className="flex items-center gap-2"
+            title="Send Document"
           >
             {isSending ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Sending...
-              </>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-              <>
-                <Send className="w-4 h-4" />
-                Send Document
-              </>
+              <Send className="w-4 h-4" />
             )}
           </Button>
         </div>

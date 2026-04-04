@@ -3,26 +3,61 @@ import { toast } from 'sonner';
 
 // Dynamic import for pdfmake to handle ESM/CJS compatibility
 let pdfMakeInstance: any = null;
+let pdfMakeFonts: Record<string, any> | null = null;
 
 const initPdfMake = async () => {
-  if (pdfMakeInstance) return pdfMakeInstance;
+  // If cached instance has valid fonts, reuse it
+  if (pdfMakeInstance && pdfMakeInstance.vfs && Object.keys(pdfMakeInstance.vfs).length > 0) {
+    return pdfMakeInstance;
+  }
 
   try {
     const pdfMakeModule = await import('pdfmake/build/pdfmake');
-    const pdfFontsModule = await import('pdfmake/build/vfs_fonts');
-
     const pdfMake = pdfMakeModule.default || pdfMakeModule;
+
+    // vfs_fonts.js uses a global assignment pattern: it sets window.pdfMake.vfs
+    // We MUST set window.pdfMake BEFORE importing vfs_fonts so the side-effect works
+    const _global = typeof window !== 'undefined' ? window : globalThis;
+    (_global as any).pdfMake = pdfMake;
+
+    // Force re-import of vfs_fonts to trigger the global side-effect
+    const pdfFontsModule = await import('pdfmake/build/vfs_fonts');
     const pdfFonts = pdfFontsModule.default || pdfFontsModule;
 
-    // Try different ways to access vfs
-    if (pdfFonts?.pdfMake?.vfs) {
+    // Try multiple ways to access vfs
+    if (pdfMake.vfs && Object.keys(pdfMake.vfs).length > 0) {
+      // Already set via global side-effect
+    } else if ((_global as any).pdfMake?.vfs && Object.keys((_global as any).pdfMake.vfs).length > 0) {
+      pdfMake.vfs = (_global as any).pdfMake.vfs;
+    } else if (pdfFonts?.pdfMake?.vfs) {
       pdfMake.vfs = pdfFonts.pdfMake.vfs;
     } else if (pdfFonts?.vfs) {
       pdfMake.vfs = pdfFonts.vfs;
     } else {
-      console.warn('[pdfMake] Could not find vfs fonts, using empty vfs');
-      pdfMake.vfs = {};
+      // The vfs_fonts module may export font files directly as top-level keys
+      // (e.g. { 'Roboto-Regular.ttf': '...', 'Roboto-Bold.ttf': '...' })
+      const fontKeys = Object.keys(pdfFontsModule).filter(k => k.endsWith('.ttf'));
+      if (fontKeys.length > 0) {
+        const vfs: Record<string, string> = {};
+        fontKeys.forEach(k => { vfs[k] = (pdfFontsModule as any)[k]; });
+        pdfMake.vfs = vfs;
+      } else {
+        console.warn('[pdfMake] Could not find vfs fonts, using empty vfs');
+        pdfMake.vfs = {};
+      }
     }
+
+    // Map Roboto font variants — the vfs may have Medium instead of Bold
+    // Store fonts separately to pass explicitly to createPdf()
+    pdfMakeFonts = {
+      Roboto: {
+        normal: 'Roboto-Regular.ttf',
+        bold: pdfMake.vfs['Roboto-Bold.ttf'] ? 'Roboto-Bold.ttf' : 'Roboto-Medium.ttf',
+        italics: 'Roboto-Italic.ttf',
+        bolditalics: pdfMake.vfs['Roboto-BoldItalic.ttf'] ? 'Roboto-BoldItalic.ttf' : 'Roboto-MediumItalic.ttf',
+      },
+    };
+    pdfMake.fonts = pdfMakeFonts;
 
     pdfMakeInstance = pdfMake;
     return pdfMake;
@@ -39,7 +74,7 @@ export interface ConversionOptions {
 }
 
 // Types for pdfmake content
-type ContentItem = string | ContentObject | ContentItem[];
+export type ContentItem = string | ContentObject | ContentItem[];
 interface ContentObject {
   text?: string | ContentItem[];
   style?: string | string[];
@@ -142,6 +177,10 @@ export class DocToPdfConverterService {
             if (children.length === 0) {
               return { text: ' ', margin: [0, 5, 0, 5] };
             }
+            // When a single child (e.g. a bold object), use it directly and add margin
+            if (children.length === 1 && typeof children[0] === 'object') {
+              return { ...(children[0] as any), margin: [0, 5, 0, 5] };
+            }
             return { text: children, margin: [0, 5, 0, 5] };
           }
 
@@ -161,18 +200,19 @@ export class DocToPdfConverterService {
 
           case 'strong':
           case 'b':
-            return { text: children, bold: true };
+            return { text: children.length === 1 && typeof children[0] === 'string' ? children[0] : children, bold: true };
 
           case 'em':
           case 'i':
-            return { text: children, italics: true };
+            return { text: children.length === 1 && typeof children[0] === 'string' ? children[0] : children, italics: true };
 
           case 'u':
-            return { text: children, decoration: 'underline' };
+            return { text: children.length === 1 && typeof children[0] === 'string' ? children[0] : children, decoration: 'underline' };
 
           case 's':
+          case 'del':
           case 'strike':
-            return { text: children, decoration: 'lineThrough' };
+            return { text: children.length === 1 && typeof children[0] === 'string' ? children[0] : children, decoration: 'lineThrough' };
 
           case 'a': {
             const href = element.getAttribute('href') || '';
@@ -231,6 +271,24 @@ export class DocToPdfConverterService {
           case 'td':
           case 'th':
             return children.length === 1 ? children[0] : { text: children };
+
+          case 'img': {
+            const src = element.getAttribute('src') || '';
+            if (src) {
+              try {
+                // pdfmake supports base64 data URIs directly
+                if (src.startsWith('data:')) {
+                  return { image: src, width: 400, margin: [0, 5, 0, 5] } as any;
+                }
+                // For external URLs, pdfmake can't fetch them directly —
+                // show placeholder text
+                return { text: '[Image]', italics: true, color: '#999999', margin: [0, 5, 0, 5] };
+              } catch {
+                return { text: '[Image]', italics: true, color: '#999999' };
+              }
+            }
+            return null;
+          }
 
           case 'br':
             return '\n';
@@ -313,31 +371,15 @@ export class DocToPdfConverterService {
     options: ConversionOptions = {}
   ): Promise<Blob | null> {
     try {
-      const fileName = file instanceof File ? file.name : 'blob';
-      console.log('🔄 [DOCX TO PDF] Starting conversion...', {
-        fileName,
-        size: file.size
-      });
-
       const arrayBuffer = await file.arrayBuffer();
-
-      // Use mammoth for .docx → HTML conversion
       const result = await mammoth.convertToHtml({ arrayBuffer });
       const htmlContent = result.value;
-      const messages = result.messages;
-
-      if (messages.length > 0) {
-        console.warn('⚠️ [DOCX TO PDF] Conversion warnings:', messages);
-      }
 
       if (!htmlContent || htmlContent.trim().length === 0) {
         throw new Error('No content extracted from DOCX file');
       }
 
-      console.log('✅ [DOCX TO PDF] HTML extracted, length:', htmlContent.length);
       const pdfContent = this.htmlToPdfContent(htmlContent);
-
-      console.log('✅ [DOCX TO PDF] PDF content created, items:', pdfContent.length);
 
       // Initialize pdfMake
       const pdfMake = await initPdfMake();
@@ -346,6 +388,7 @@ export class DocToPdfConverterService {
       const docDefinition = {
         content: pdfContent,
         defaultStyle: {
+          font: 'Roboto',
           fontSize: 11,
           lineHeight: 1.4
         },
@@ -359,28 +402,80 @@ export class DocToPdfConverterService {
         pageMargins: [40, 60, 40, 60] as [number, number, number, number]
       };
 
-      // Generate PDF
+      // Generate PDF — pass fonts and vfs explicitly to createPdf
       return new Promise((resolve, reject) => {
         try {
-          const pdfDocGenerator = pdfMake.createPdf(docDefinition);
+          const pdfDocGenerator = pdfMake.createPdf(docDefinition, null, pdfMakeFonts, pdfMake.vfs);
 
           pdfDocGenerator.getBlob((blob: Blob) => {
             if (blob && blob.size > 0) {
-              console.log('✅ [DOC/DOCX TO PDF] PDF created successfully, size:', blob.size);
               resolve(blob);
             } else {
               reject(new Error('Generated PDF is empty'));
             }
           });
         } catch (error) {
-          console.error('❌ [DOC/DOCX TO PDF] PDF generation error:', error);
           reject(error);
         }
       });
 
     } catch (error) {
-      console.error('❌ [DOC/DOCX TO PDF] Conversion error:', error);
       throw new Error(`Failed to convert DOC/DOCX to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Convert DOCX to PDF with a document control header prepended.
+   * headerContent is an array of pdfmake content items rendered before the document body.
+   */
+  static async convertDocxToPdfWithHeader(
+    file: File | Blob,
+    headerContent: ContentItem[],
+    options: ConversionOptions = {}
+  ): Promise<Blob | null> {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      const htmlContent = result.value;
+
+      if (!htmlContent || htmlContent.trim().length === 0) {
+        throw new Error('No content extracted from DOCX file');
+      }
+
+      const bodyContent = this.htmlToPdfContent(htmlContent);
+
+      const combinedContent: ContentItem[] = [...headerContent, ...bodyContent];
+
+      const pdfMake = await initPdfMake();
+      const docDefinition = {
+        content: combinedContent,
+        defaultStyle: { font: 'Roboto', fontSize: 11, lineHeight: 1.4 },
+        styles: {
+          header1: { fontSize: 22, bold: true },
+          header2: { fontSize: 18, bold: true },
+          header3: { fontSize: 14, bold: true },
+          header4: { fontSize: 12, bold: true },
+        },
+        pageSize: options.format?.toUpperCase() || 'A4',
+        pageMargins: [40, 60, 40, 60] as [number, number, number, number],
+      };
+
+      return new Promise((resolve, reject) => {
+        try {
+          const pdfDocGenerator = pdfMake.createPdf(docDefinition, null, pdfMakeFonts, pdfMake.vfs);
+          pdfDocGenerator.getBlob((blob: Blob) => {
+            if (blob && blob.size > 0) {
+              resolve(blob);
+            } else {
+              reject(new Error('Generated PDF is empty'));
+            }
+          });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    } catch (error) {
+      throw new Error(`Failed to convert DOCX to PDF with header: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -410,8 +505,6 @@ export class DocToPdfConverterService {
         fileName = 'converted.pdf';
       }
 
-      console.log('📄 [DOCX TO PDF] Generated filename:', fileName);
-
       // Create download link
       const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
@@ -423,9 +516,7 @@ export class DocToPdfConverterService {
       URL.revokeObjectURL(url);
 
       toast.success('Document converted to PDF and downloaded');
-      console.log('✅ [DOCX TO PDF] PDF downloaded successfully');
     } catch (error) {
-      console.error('❌ [DOCX TO PDF] Download error:', error);
       toast.error(`Failed to convert and download: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     }
@@ -446,10 +537,8 @@ export class DocToPdfConverterService {
       }
 
       const blobUrl = URL.createObjectURL(pdfBlob);
-      console.log('✅ [DOCX TO PDF] PDF blob URL created');
       return blobUrl;
     } catch (error) {
-      console.error('❌ [DOCX TO PDF] Blob URL creation error:', error);
       return null;
     }
   }
@@ -463,8 +552,6 @@ export class DocToPdfConverterService {
     options: ConversionOptions = {}
   ): Promise<Blob | null> {
     try {
-      console.log('🔄 [DOCX TO PDF] Downloading file from URL:', fileUrl);
-
       const response = await fetch(fileUrl);
       if (!response.ok) {
         throw new Error(`Failed to download file: ${response.statusText}`);
@@ -475,7 +562,6 @@ export class DocToPdfConverterService {
 
       return await this.convertDocxToPdf(file, options);
     } catch (error) {
-      console.error('❌ [DOCX TO PDF] Download and convert error:', error);
       throw error;
     }
   }

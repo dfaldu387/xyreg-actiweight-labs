@@ -53,7 +53,8 @@ const API_KEY_TYPES: { value: ApiKeyType; label: string; icon: React.ReactNode }
   { value: 'openai', label: 'OpenAI', icon: <Bot className="w-4 h-4 text-success" /> },
   { value: 'anthropic', label: 'Anthropic', icon: <Bot className="w-4 h-4 text-warning" /> },
   { value: 'serpapi', label: 'SerpAPI', icon: <Image className="w-4 h-4 text-destructive" /> },
-  { value: 'google_vertex' as ApiKeyType, label: 'Google Vertex AI', icon: <Bot className="w-4 h-4 text-primary" /> }
+  { value: 'google_vertex' as ApiKeyType, label: 'Google Vertex AI', icon: <Bot className="w-4 h-4 text-primary" /> },
+  { value: 'elevenlabs', label: 'ElevenLabs', icon: <Bot className="w-4 h-4 text-pink-500" /> }
 ];
 
 function SuperAdminApiKeyManagement() {
@@ -119,6 +120,37 @@ function SuperAdminApiKeyManagement() {
         hasValidLength
       });
 
+      // Live validation for ElevenLabs keys
+      if (keyType === 'elevenlabs' && hasValidLength) {
+        try {
+          const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+            headers: { 'xi-api-key': decrypted },
+          });
+          if (response.ok) {
+            toast.success(
+              <div>
+                <strong>ElevenLabs key verified!</strong>
+                <br />
+                <span className="text-xs">Successfully connected to ElevenLabs API.</span>
+              </div>,
+              { duration: 5000 }
+            );
+          } else {
+            toast.error(
+              <div>
+                <strong>ElevenLabs key rejected!</strong>
+                <br />
+                <span className="text-xs">API returned status {response.status}. Please check the key.</span>
+              </div>,
+              { duration: 8000 }
+            );
+          }
+        } catch (fetchErr) {
+          toast.error('Could not reach ElevenLabs API to validate key.');
+        }
+        return;
+      }
+
       if (hasValidLength && hasValidPrefix) {
         toast.success(
           <div>
@@ -157,13 +189,10 @@ function SuperAdminApiKeyManagement() {
     loadCompaniesApiKeys();
   }, []);
 
-  const loadCompaniesApiKeys = async () => {
+  const loadCompaniesApiKeys = async (): Promise<CompanyApiKeyInfo[]> => {
     try {
       setIsLoading(true);
 
-      // Load companies with their API keys
-      // Include companies where is_archived is false OR null (not set)
-      // Exclude companies with empty or null names
       const { data: companiesData, error: companiesError } = await supabase
         .from('companies')
         .select('id, name')
@@ -174,7 +203,6 @@ function SuperAdminApiKeyManagement() {
 
       if (companiesError) throw companiesError;
 
-      // Load API keys for all companies
       const { data: apiKeysData, error: apiKeysError } = await supabase
         .from('company_api_keys')
         .select('id, company_id, key_type, created_at, updated_at, encrypted_key, token_usage_data, last_usage_at, usage_last_synced_at')
@@ -182,21 +210,28 @@ function SuperAdminApiKeyManagement() {
 
       if (apiKeysError) throw apiKeysError;
 
-      // Combine the data
-      const companiesWithKeys = companiesData?.map(company => ({
+      const companiesWithKeys = (companiesData?.map(company => ({
         id: company.id,
         name: company.name,
         api_keys: apiKeysData?.filter(key => key.company_id === company.id) || []
-      })) || [];
+      })) || []) as CompanyApiKeyInfo[];
 
-      setCompanies(companiesWithKeys as CompanyApiKeyInfo[]);
+      setCompanies(companiesWithKeys);
+      return companiesWithKeys;
     } catch (error) {
       console.error('Error loading companies API keys:', error);
       toast.error('Failed to load companies API key status');
+      return [];
     } finally {
       setIsLoading(false);
     }
   };
+
+  const refreshModalCompany = (companyList: CompanyApiKeyInfo[], companyId: string) => {
+    const updatedCompany = companyList.find(company => company.id === companyId) || null;
+    setSelectedCompanyForModal(updatedCompany);
+  };
+
   const getApiKeyStatus = (company: CompanyApiKeyInfo, keyType: ApiKeyType) => {
     const hasKey = company.api_keys.some(key => key.key_type === keyType);
     return hasKey ? 'configured' : 'not-configured';
@@ -205,14 +240,11 @@ function SuperAdminApiKeyManagement() {
     const matchesSearch = company.name.toLowerCase().startsWith(searchQuery.toLowerCase());
     const matchesCompany = !selectedCompany || selectedCompany === 'all' || company.id === selectedCompany;
 
-    // Status filter logic
     let matchesStatus = true;
     if (statusFilter !== 'all') {
       if (statusFilter === 'configured') {
-        // Show companies that have at least one API key configured
         matchesStatus = company.api_keys.length > 0;
       } else if (statusFilter === 'not-configured') {
-        // Show companies that have no API keys configured
         matchesStatus = company.api_keys.length === 0;
       }
     }
@@ -224,19 +256,14 @@ function SuperAdminApiKeyManagement() {
     return matchesSearch && matchesCompany && matchesStatus && matchesAi;
   });
 
-  // Pagination calculations
   const totalPages = Math.ceil(filteredCompanies.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedCompanies = filteredCompanies.slice(startIndex, endIndex);
-  // console.log("paginatedCompanies", paginatedCompanies);
-  // Reset to first page when filters change
+
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, selectedCompany, statusFilter, aiFilter]);
-
-
-  // console.log("getApiKeyStatus", getApiKeyStatus);
 
   const getStatusBadge = (status: string) => {
     if (status === 'configured') {
@@ -260,7 +287,8 @@ function SuperAdminApiKeyManagement() {
       openai: companies.filter(c => c.api_keys.some(k => k.key_type === 'openai')).length,
       anthropic: companies.filter(c => c.api_keys.some(k => k.key_type === 'anthropic')).length,
       serpapi: companies.filter(c => c.api_keys.some(k => k.key_type === 'serpapi')).length,
-      google_vertex: companies.filter(c => c.api_keys.some(k => k.key_type === ('google_vertex' as ApiKeyType))).length
+      google_vertex: companies.filter(c => c.api_keys.some(k => k.key_type === 'google_vertex')).length,
+      elevenlabs: companies.filter(c => c.api_keys.some(k => k.key_type === 'elevenlabs')).length
     };
     return counts;
   };
@@ -299,52 +327,32 @@ function SuperAdminApiKeyManagement() {
 
     setIsSaving(true);
     try {
-      // Encrypt the API key before storing
       const encryptedKey = encryptApiKey(newKeyValue.trim());
-
-      // Check if key already exists
       const existingKey = selectedCompanyForModal.api_keys.find(key => key.key_type === editingKeyType);
 
-      if (existingKey) {
-        // Update existing key
-        const { error } = await supabase
-          .from('company_api_keys')
-          .update({
-            encrypted_key: encryptedKey,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existingKey.id);
-
-        if (error) throw error;
-        toast.success(`${API_KEY_TYPES.find(t => t.value === editingKeyType)?.label} API key updated successfully`);
-      } else {
-        // Create new key
-        const { error } = await supabase
-          .from('company_api_keys')
-          .insert({
+      const { error } = await supabase
+        .from('company_api_keys')
+        .upsert(
+          {
+            id: existingKey?.id,
             company_id: selectedCompanyForModal.id,
             key_type: editingKeyType,
-            encrypted_key: encryptedKey
-          });
+            encrypted_key: encryptedKey,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'company_id,key_type' }
+        );
 
-        if (error) throw error;
-        toast.success(`${API_KEY_TYPES.find(t => t.value === editingKeyType)?.label} API key added successfully`);
-      }
+      if (error) throw error;
 
-      // Refresh data
-      await loadCompaniesApiKeys();
+      toast.success(`${API_KEY_TYPES.find(t => t.value === editingKeyType)?.label} API key ${existingKey ? 'updated' : 'saved'} successfully`);
 
-      // Update modal data
-      const updatedCompany = companies.find(c => c.id === selectedCompanyForModal.id);
-      if (updatedCompany) {
-        setSelectedCompanyForModal(updatedCompany);
-      }
+      const refreshedCompanies = await loadCompaniesApiKeys();
+      refreshModalCompany(refreshedCompanies, selectedCompanyForModal.id);
 
-      // Reset form
       setEditingKeyType(null);
       setNewKeyValue('');
       setShowKeyValue(false);
-
     } catch (error) {
       console.error('Error saving API key:', error);
       toast.error('Failed to save API key');

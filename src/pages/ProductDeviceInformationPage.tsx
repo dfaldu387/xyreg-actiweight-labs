@@ -8,12 +8,16 @@ import { toast } from "sonner";
 import { DeviceInformationContainer } from "@/components/product/device/DeviceInformationContainer";
 import { FieldSuggestion } from "@/services/productDefinitionAIService";
 import { InvestorShareFlowWrapper } from "@/components/funnel/InvestorShareFlowWrapper";
+import { DocumentDraftDrawer } from "@/components/product/documents/DocumentDraftDrawer";
+import { DocumentStudioPersistenceService } from "@/services/documentStudioPersistenceService";
 
 export default function ProductDeviceInformationPage() {
   const { productId } = useParams<{ productId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
+  const [isCreatingDoc, setIsCreatingDoc] = useState(false);
 
   const { data: product, isLoading: isLoadingProduct, error: productError, refetch } = useProductDetails(productId);
 
@@ -44,6 +48,69 @@ export default function ProductDeviceInformationPage() {
 
   const handleSuggestionsGenerated = (suggestions: FieldSuggestion[]) => {
     toast.success(`Generated ${suggestions.length} AI field suggestions`);
+  };
+
+  const handleCreateDocument = async () => {
+    if (!product || !productId || isCreatingDoc) return;
+    setIsCreatingDoc(true);
+    try {
+      const templateIdKey = `DEVICE-DEF-${productId}`;
+      const docName = `Device Information — ${product.name || 'Device'}`;
+
+      // Create or update studio template
+      const existing = await DocumentStudioPersistenceService.loadTemplate(
+        product.company_id!, templateIdKey, productId
+      );
+
+      const sections = [
+        {
+          id: 'device-definition-content',
+          title: 'Device Information',
+          content: [{ id: 'device-def-1', type: 'paragraph', content: '' }],
+          order: 0,
+        },
+      ];
+
+      const studioData = {
+        ...(existing.data?.id ? { id: existing.data.id } : {}),
+        company_id: product.company_id!,
+        product_id: productId,
+        template_id: templateIdKey,
+        name: docName,
+        type: 'Technical',
+        sections,
+        metadata: { source: 'device-information-export' },
+      };
+
+      const saveResult = await DocumentStudioPersistenceService.saveTemplate(studioData);
+      if (!saveResult.success || !saveResult.id) {
+        throw new Error(saveResult.error || 'Failed to save studio template');
+      }
+
+      // Sync to Document CI (device scope by default)
+      const syncResult = await DocumentStudioPersistenceService.syncToDocumentCI({
+        companyId: product.company_id!,
+        productId: productId,
+        name: docName,
+        documentReference: templateIdKey,
+        documentScope: 'product_document',
+      });
+      if (!syncResult.success) {
+        throw new Error(syncResult.error || 'Failed to create Document CI record');
+      }
+
+      // Open the drawer immediately
+      setDraftDrawerDoc({
+        id: syncResult.id!,
+        name: docName,
+        type: 'Technical',
+      });
+    } catch (err: any) {
+      console.error('Create document failed:', err);
+      toast.error(`Failed to create document: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsCreatingDoc(false);
+    }
   };
 
   // Show loading state while product is loading
@@ -106,18 +173,26 @@ export default function ProductDeviceInformationPage() {
     );
   }
 
-  // marketStatus is already calculated at the top with all other hooks
-
   return (
     <InvestorShareFlowWrapper productId={productId!}>
       <div>
-        <ProductPageHeader
-          product={product}
-          subsection="Device Information"
-          onSuggestionsGenerated={handleSuggestionsGenerated}
-          marketStatus={marketStatus}
-        />
+         <ProductPageHeader
+            product={product}
+            subsection="Device Information"
+            onSuggestionsGenerated={handleSuggestionsGenerated}
+            marketStatus={marketStatus}
+            onCreateDocument={handleCreateDocument}
+          />
 
+          <DocumentDraftDrawer
+            open={!!draftDrawerDoc}
+            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+            documentId={draftDrawerDoc?.id || ''}
+            documentName={draftDrawerDoc?.name || ''}
+            documentType={draftDrawerDoc?.type || ''}
+            productId={productId}
+            companyId={product.company_id!}
+          />
         <div>
           <div className="w-full py-4">
             <DeviceInformationContainer 

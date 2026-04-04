@@ -411,7 +411,14 @@ export const defaultSidebarConfig: SidebarConfig = {
             { id: 'ip-management', name: 'IP Management', icon: <Lightbulb className="w-4 h-4" />, route: '/app/company/:companyName/ip-portfolio' },
           ]
         },
-        
+        // ── Gold: Advisory Board ──
+        {
+          id: 'advisory-board',
+          name: 'Advisory Board',
+          icon: <Users className="w-5 h-5" />,
+          route: '/app/company/:companyName/advisory-board',
+          domainColor: 'gold'
+        },
       ]
     },
     {

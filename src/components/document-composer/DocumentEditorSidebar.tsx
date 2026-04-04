@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ControlPanel, ControlPanelProps } from './ControlPanel';
 import { CIPropertyPanel } from './CIPropertyPanel';
 import { useCIDocumentMetadata } from '@/hooks/useCIDocumentMetadata';
+import { ReviewDraftsList } from './ReviewDraftsList';
 
 interface DocumentEditorSidebarProps {
   // Sidebar collapse state
@@ -72,6 +73,12 @@ export function DocumentEditorSidebar({
               referenceDocumentIds={ciMetadata.reference_document_ids || []}
               onFieldChange={updateCIField}
               disabled={controlPanelProps.disabled}
+            />
+          )}
+          {ciDocumentId && ciCompanyId && (
+            <ReviewDraftsList
+              companyId={ciCompanyId}
+              documentId={ciDocumentId}
             />
           )}
         </div>

@@ -12,10 +12,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Plus, Rocket, FileText, Pencil, Trash2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, Rocket, FileText, Pencil, Trash2, Send, Building2, CheckCircle2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { XYREG_MODULE_GROUPS } from '@/data/xyregModuleGroups';
+
+interface Company {
+  id: string;
+  name: string;
+}
 
 interface XyregRelease {
   id: string;
@@ -28,14 +34,46 @@ interface XyregRelease {
   impacted_module_groups: string[] | null;
 }
 
+interface CompanyAdoption {
+  id: string;
+  company_id: string;
+  company_name: string;
+  release_id: string;
+  release_version: string;
+  adopted_at: string;
+  status: string;
+}
+
 export default function SuperAdminReleases() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('releases');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRelease, setEditingRelease] = useState<XyregRelease | null>(null);
   const [version, setVersion] = useState('');
   const [releaseDate, setReleaseDate] = useState('');
   const [changelog, setChangelog] = useState('');
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
+  const [notifyDialogOpen, setNotifyDialogOpen] = useState(false);
+  const [notifyingRelease, setNotifyingRelease] = useState<XyregRelease | null>(null);
+  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
+  const [notifySending, setNotifySending] = useState(false);
+  const [notifiedReleases, setNotifiedReleases] = useState<Set<string>>(new Set());
+
+  // Fetch all companies for notification selector
+  const { data: companies = [] } = useQuery({
+    queryKey: ['all-companies-admin'],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from('companies')
+        .select('id, name')
+        .not('name', 'is', null)
+        .neq('name', '')
+        .or('is_archived.is.null,is_archived.eq.false')
+        .order('name');
+      if (error) throw error;
+      return (data || []).filter((c: Company) => c.name && c.name.trim().length > 0) as Company[];
+    },
+  });
 
   const { data: releases = [], isLoading } = useQuery({
     queryKey: ['xyreg-releases-admin'],
@@ -47,6 +85,34 @@ export default function SuperAdminReleases() {
       if (error) throw error;
       return data as XyregRelease[];
     },
+  });
+
+  const { data: adoptions = [], isLoading: isLoadingAdoptions } = useQuery({
+    queryKey: ['company-adoptions-admin'],
+    queryFn: async (): Promise<CompanyAdoption[]> => {
+      // Fetch adoptions (no FK joins available)
+      const { data: rawAdoptions, error } = await (supabase as any)
+        .from('company_release_adoptions')
+        .select('id, company_id, release_id, adopted_at, status')
+        .order('adopted_at', { ascending: false });
+      if (error) throw error;
+      if (!rawAdoptions || rawAdoptions.length === 0) return [];
+
+      // Build lookup maps from already-fetched data
+      const companyMap = new Map(companies.map(c => [c.id, c.name]));
+      const releaseMap = new Map(releases.map(r => [r.id, r.version]));
+
+      return rawAdoptions.map((row: any) => ({
+        id: row.id,
+        company_id: row.company_id,
+        company_name: companyMap.get(row.company_id) ?? 'Unknown',
+        release_id: row.release_id,
+        release_version: releaseMap.get(row.release_id) ?? 'Unknown',
+        adopted_at: row.adopted_at,
+        status: row.status,
+      }));
+    },
+    enabled: companies.length > 0 && releases.length > 0,
   });
 
   const resetForm = () => {
@@ -143,20 +209,98 @@ export default function SuperAdminReleases() {
   });
 
   const publishMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async (release: XyregRelease) => {
       const { error } = await (supabase as any)
         .from('xyreg_releases')
         .update({ status: 'published', published_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', release.id);
       if (error) throw error;
+      return release;
     },
-    onSuccess: () => {
+    onSuccess: (release) => {
       queryClient.invalidateQueries({ queryKey: ['xyreg-releases-admin'] });
       queryClient.invalidateQueries({ queryKey: ['xyreg-latest-release'] });
-      toast.success('Release published');
+      toast.success(`Release v${release.version} published`);
+      // Open notify dialog
+      setNotifyingRelease({ ...release, status: 'published', published_at: new Date().toISOString() });
+      setSelectedCompanies(companies.map(c => c.id)); // Select all by default
+      setNotifyDialogOpen(true);
     },
     onError: (err: any) => toast.error(err.message),
   });
+
+  const handleSendNotifications = async () => {
+    if (!notifyingRelease || selectedCompanies.length === 0) return;
+    setNotifySending(true);
+    try {
+      // Get all users for selected companies
+      const { data: companyUsers, error: usersError } = await (supabase as any)
+        .from('user_company_access')
+        .select('user_id, company_id')
+        .in('company_id', selectedCompanies);
+
+      if (usersError) throw usersError;
+
+      if (!companyUsers || companyUsers.length === 0) {
+        toast.error('No users found in selected companies');
+        setNotifySending(false);
+        return;
+      }
+
+      // Build company name lookup for action_url
+      const companyNameMap = new Map(companies.map(c => [c.id, c.name]));
+
+      // Create notification for each user
+      const notifications = companyUsers.map((uca: any) => {
+        const companyName = companyNameMap.get(uca.company_id) || '';
+        return {
+          user_id: uca.user_id,
+          company_id: uca.company_id,
+          category: 'system',
+          action: 'new_release',
+          title: `New XYREG version v${notifyingRelease.version} available`,
+          message: notifyingRelease.changelog || `Version ${notifyingRelease.version} has been published. Go to Infrastructure to validate.`,
+          priority: 'high',
+          entity_type: 'xyreg_release',
+          entity_id: notifyingRelease.id,
+          action_url: `/app/company/${encodeURIComponent(companyName)}/infrastructure`,
+        };
+      });
+
+      const { error } = await (supabase as any)
+        .from('app_notifications')
+        .insert(notifications);
+
+      if (error) throw error;
+
+      const uniqueUsers = new Set(companyUsers.map((u: any) => u.user_id));
+      setNotifiedReleases(prev => new Set([...prev, notifyingRelease.id]));
+      toast.success(`Notifications sent to ${uniqueUsers.size} user(s) across ${selectedCompanies.length} company(s)`);
+      setNotifyDialogOpen(false);
+      setNotifyingRelease(null);
+      setSelectedCompanies([]);
+    } catch (err: any) {
+      toast.error(`Failed to send notifications: ${err.message}`);
+    } finally {
+      setNotifySending(false);
+    }
+  };
+
+  const toggleCompany = (companyId: string) => {
+    setSelectedCompanies(prev =>
+      prev.includes(companyId)
+        ? prev.filter(c => c !== companyId)
+        : [...prev, companyId]
+    );
+  };
+
+  const toggleAllCompanies = () => {
+    if (selectedCompanies.length === companies.length) {
+      setSelectedCompanies([]);
+    } else {
+      setSelectedCompanies(companies.map(c => c.id));
+    }
+  };
 
   const getReadinessIssues = (release: XyregRelease): string[] => {
     const issues: string[] = [];
@@ -178,14 +322,28 @@ export default function SuperAdminReleases() {
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <div className="space-y-6">
+    <div className="w-full px-4 py-3 space-y-3">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">XYREG Releases</h1>
           <p className="text-muted-foreground">Manage software versions that customers validate against</p>
         </div>
-        <Button onClick={openCreateDialog}><Plus className="h-4 w-4 mr-2" />New Release</Button>
+        {activeTab === 'releases' && (
+          <Button onClick={openCreateDialog}><Plus className="h-4 w-4 mr-2" />New Release</Button>
+        )}
       </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="releases" className="gap-1.5">
+            <FileText className="h-4 w-4" /> Releases
+          </TabsTrigger>
+          <TabsTrigger value="adoptions" className="gap-1.5">
+            <Building2 className="h-4 w-4" /> Company Adoptions
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="releases" className="space-y-3">
 
       {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
@@ -247,6 +405,7 @@ export default function SuperAdminReleases() {
                 <TableRow>
                   <TableHead>Version</TableHead>
                   <TableHead>Release Date</TableHead>
+                  <TableHead>Changelog</TableHead>
                   <TableHead>Impacted Modules</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Published</TableHead>
@@ -263,20 +422,50 @@ export default function SuperAdminReleases() {
                       <TableCell className="font-mono font-semibold">v{r.version}</TableCell>
                       <TableCell>{format(new Date(r.release_date), 'MMM d, yyyy')}</TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-1 max-w-[200px]">
-                          {(r.impacted_module_groups || []).length > 0 ? (
-                            (r.impacted_module_groups || []).map(moduleId => {
-                              const group = XYREG_MODULE_GROUPS.find(g => g.id === moduleId);
-                              return (
-                                <Badge key={moduleId} variant="outline" className="text-[10px] py-0">
-                                  {group?.name || moduleId}
-                                </Badge>
-                              );
-                            })
-                          ) : (
-                            <span className="text-xs text-muted-foreground italic">None</span>
-                          )}
-                        </div>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <p className="text-xs text-muted-foreground max-w-[200px] truncate cursor-default">
+                                {r.changelog || <span className="italic">No changelog</span>}
+                              </p>
+                            </TooltipTrigger>
+                            {r.changelog && (
+                              <TooltipContent className="max-w-[300px] max-h-[250px] overflow-y-auto whitespace-pre-line text-xs">
+                                {r.changelog}
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell>
+                        {(() => {
+                          const modules = r.impacted_module_groups || [];
+                          if (modules.length === 0) return <span className="text-xs text-muted-foreground italic">None</span>;
+                          const firstName = XYREG_MODULE_GROUPS.find(g => g.id === modules[0])?.name || modules[0];
+                          const remaining = modules.length - 1;
+                          const allNames = modules.map(id => XYREG_MODULE_GROUPS.find(g => g.id === id)?.name || id);
+                          return (
+                            <div className="flex items-center gap-1">
+                              <Badge variant="outline" className="text-[10px] py-0 shrink-0">{firstName}</Badge>
+                              {remaining > 0 && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="secondary" className="text-[10px] py-0 cursor-default shrink-0">+{remaining}</Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[250px]">
+                                      <div className="space-y-0.5">
+                                        {allNames.slice(1).map((name, i) => (
+                                          <p key={i} className="text-xs">• {name}</p>
+                                        ))}
+                                      </div>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <Badge variant={r.status === 'published' ? 'default' : 'secondary'}>
@@ -288,7 +477,7 @@ export default function SuperAdminReleases() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {r.status === 'draft' && (
+                          {r.status === 'draft' ? (
                             <>
                               <Button size="sm" variant="ghost" onClick={() => openEditDialog(r)}>
                                 <Pencil className="h-3 w-3" />
@@ -319,7 +508,7 @@ export default function SuperAdminReleases() {
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => publishMutation.mutate(r.id)}
+                                        onClick={() => publishMutation.mutate(r)}
                                         disabled={!canPublish || publishMutation.isPending}
                                       >
                                         <Rocket className="h-3 w-3 mr-1" />Publish
@@ -339,6 +528,20 @@ export default function SuperAdminReleases() {
                                 </Tooltip>
                               </TooltipProvider>
                             </>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => {
+                                setNotifyingRelease(r);
+                                setSelectedCompanies(companies.map(c => c.id));
+                                setNotifyDialogOpen(true);
+                              }}
+                            >
+                              <Send className="h-3 w-3 mr-1" />
+                              {notifiedReleases.has(r.id) ? 'Notify Again' : 'Notify Companies'}
+                            </Button>
                           )}
                         </div>
                       </TableCell>
@@ -347,7 +550,7 @@ export default function SuperAdminReleases() {
                 })}
                 {releases.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       No releases yet. Create your first release.
                     </TableCell>
                   </TableRow>
@@ -357,6 +560,145 @@ export default function SuperAdminReleases() {
           )}
         </CardContent>
       </Card>
+
+      {/* Notify Companies Dialog */}
+      <Dialog open={notifyDialogOpen} onOpenChange={(open) => { setNotifyDialogOpen(open); if (!open) setNotifyingRelease(null); }}>
+        <DialogContent className="max-w-lg w-full">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-4 w-4" />
+              Notify Companies
+            </DialogTitle>
+          </DialogHeader>
+          {notifyingRelease && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-md bg-blue-50 border border-blue-200">
+                <p className="text-sm font-medium text-blue-900">Release v{notifyingRelease.version}</p>
+                <p className="text-xs text-blue-700 mt-0.5 max-h-[80px] overflow-y-auto whitespace-pre-line">
+                  {notifyingRelease.changelog || 'No changelog'}
+                </p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm font-medium">Select Companies ({companies.length})</Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={toggleAllCompanies}
+                  >
+                    {selectedCompanies.length === companies.length ? 'Deselect All' : 'Select All'}
+                  </Button>
+                </div>
+                <Input
+                  placeholder="Search companies..."
+                  className="h-8 text-sm mb-2"
+                  onChange={(e) => {
+                    const search = e.target.value.toLowerCase();
+                    const el = document.getElementById('company-list');
+                    if (el) {
+                      Array.from(el.children).forEach((child: any) => {
+                        const name = child.getAttribute('data-name') || '';
+                        child.style.display = name.includes(search) ? '' : 'none';
+                      });
+                    }
+                  }}
+                />
+                <div id="company-list" className="max-h-[250px] overflow-y-auto border rounded-md p-2 space-y-0.5">
+                  {companies.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-3">No companies found</p>
+                  ) : (
+                    companies.map(company => (
+                      <label
+                        key={company.id}
+                        data-name={company.name.toLowerCase()}
+                        className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1.5"
+                      >
+                        <Checkbox
+                          checked={selectedCompanies.includes(company.id)}
+                          onCheckedChange={() => toggleCompany(company.id)}
+                        />
+                        <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate max-w-[300px]">{company.name}</span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                {selectedCompanies.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    {selectedCompanies.length} of {companies.length} company(s) selected
+                  </p>
+                )}
+              </div>
+
+              <Button
+                onClick={handleSendNotifications}
+                disabled={selectedCompanies.length === 0 || notifySending}
+                className="w-full"
+              >
+                {notifySending ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Sending...</>
+                ) : (
+                  <><Send className="h-4 w-4 mr-2" />Send Notification to {selectedCompanies.length} Company(s)</>
+                )}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+        </TabsContent>
+
+        <TabsContent value="adoptions">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Company Adoptions
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoadingAdoptions ? (
+                <p className="text-muted-foreground">Loading...</p>
+              ) : adoptions.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No companies have adopted a release yet.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Company</TableHead>
+                      <TableHead>Version</TableHead>
+                      <TableHead>Adopted At</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {adoptions.map((a) => (
+                      <TableRow key={a.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="font-medium">{a.company_name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono font-semibold">v{a.release_version}</TableCell>
+                        <TableCell>{format(new Date(a.adopted_at), 'MMM d, yyyy hh:mm a')}</TableCell>
+                        <TableCell>
+                          <Badge variant={a.status === 'active' ? 'default' : 'secondary'}>
+                            {a.status === 'active' ? 'Active' : a.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

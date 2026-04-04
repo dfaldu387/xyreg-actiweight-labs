@@ -61,6 +61,12 @@ export function ApiKeyManagement({ companyId, companyName }: ApiKeyManagementPro
       label: lang('settings.apiKeyManagement.services.serpapi'),
       icon: <Image className="w-4 h-4 text-orange-500" />,
       description: lang('settings.apiKeyManagement.services.serpapiDescription')
+    },
+    {
+      value: 'elevenlabs',
+      label: 'ElevenLabs',
+      icon: <Bot className="w-4 h-4 text-pink-500" />,
+      description: 'Text-to-speech voice synthesis for advisory bot'
     }
   ];
   const [isSaving, setIsSaving] = useState(false);

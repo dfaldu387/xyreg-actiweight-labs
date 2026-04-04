@@ -187,12 +187,46 @@ export function DocumentLibraryPanel({
     });
 
     // Sort
-    if (sortByDate === 'updated_newest') {
-      result.sort((a, b) => new Date(b.lastUpdated || '').getTime() - new Date(a.lastUpdated || '').getTime());
-    } else if (sortByDate === 'updated_oldest') {
-      result.sort((a, b) => new Date(a.lastUpdated || '').getTime() - new Date(b.lastUpdated || '').getTime());
-    } else {
-      result.sort((a, b) => a.name.localeCompare(b.name));
+    switch (sortByDate) {
+      case 'updated_newest':
+        result.sort((a, b) => new Date(b.lastUpdated || '').getTime() - new Date(a.lastUpdated || '').getTime());
+        break;
+      case 'updated_oldest':
+        result.sort((a, b) => new Date(a.lastUpdated || '').getTime() - new Date(b.lastUpdated || '').getTime());
+        break;
+      case 'name_asc':
+        result.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'name_desc':
+        result.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'due_newest':
+        result.sort((a, b) => new Date(b.dueDate || '').getTime() - new Date(a.dueDate || '').getTime());
+        break;
+      case 'due_oldest':
+        result.sort((a, b) => new Date(a.dueDate || '').getTime() - new Date(b.dueDate || '').getTime());
+        break;
+      case 'phase_asc':
+        result.sort((a, b) => (a.phases?.[0] || '').localeCompare(b.phases?.[0] || ''));
+        break;
+      case 'phase_desc':
+        result.sort((a, b) => (b.phases?.[0] || '').localeCompare(a.phases?.[0] || ''));
+        break;
+      case 'section_asc':
+        result.sort((a, b) => ((a as any).sub_section || '').localeCompare((b as any).sub_section || ''));
+        break;
+      case 'section_desc':
+        result.sort((a, b) => ((b as any).sub_section || '').localeCompare((a as any).sub_section || ''));
+        break;
+      case 'doctype_asc':
+        result.sort((a, b) => (a.type || '').localeCompare(b.type || ''));
+        break;
+      case 'doctype_desc':
+        result.sort((a, b) => (b.type || '').localeCompare(a.type || ''));
+        break;
+      default:
+        result.sort((a, b) => a.name.localeCompare(b.name));
+        break;
     }
 
     return result;
@@ -227,6 +261,12 @@ export function DocumentLibraryPanel({
         sortByDate={sortByDate}
         onSortByDateChange={setSortByDate}
         clearAllFilters={handleClearAll}
+        availableSortOptions={[
+          'none', 'name_asc', 'name_desc',
+          'phase_asc', 'phase_desc',
+          'section_asc', 'section_desc',
+          'doctype_asc', 'doctype_desc',
+        ]}
       />
 
       {/* Statistics */}

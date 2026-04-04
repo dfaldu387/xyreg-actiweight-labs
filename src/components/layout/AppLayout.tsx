@@ -9,6 +9,14 @@ import { defaultSidebarConfig, SidebarConfig, configureSidebarWithAuth } from "@
 import { CompanyRoleSwitcher } from "@/components/CompanyRoleSwitcher";
 import { DevCompanySwitcher } from "@/components/dev/DevCompanySwitcher";
 // HelpButton removed — all help now lives in GlobalHelpSidebar
+import { FloatingAdvisoryBot } from "@/components/advisory/FloatingAdvisoryBot";
+import { useHelpMode } from "@/context/HelpModeContext";
+
+function ConditionalAdvisoryBot() {
+  const { isAdvisoryBoardVisible } = useHelpMode();
+  if (!isAdvisoryBoardVisible) return null;
+  return <FloatingAdvisoryBot />;
+}
 import { EnhancedOnboardingTour } from "@/components/help/EnhancedOnboardingTour";
 import { ContextualHelp } from "@/components/help/ContextualHelp";
 import { useOnboarding } from "@/hooks/useOnboarding";
@@ -790,29 +798,31 @@ export default function AppLayout() {
 
   if (isSuperAdminRoute) {
     return (
-      <SidebarProvider>
-        <div className="min-h-screen flex bg-gray-50 w-full">
-          <SuperAdminSidebar />
-          <div className="flex-1 flex flex-col min-h-0">
-            <header className="flex h-12 shrink-0 items-center justify-between gap-2 px-4 py-8 border-b bg-background sticky top-0 z-10">
-              <div className="flex items-center gap-3">
-                <div>
-                  <div className="text-2xl font-semibold text-teal-700">{superAdminLang("appLayout.superAdmin")}</div>
-                  <p className="text-sm text-muted-foreground">{superAdminLang("appLayout.platformConfiguration")}</p>
+      <ThreadSheetProvider>
+        <SidebarProvider>
+          <div className="min-h-screen flex bg-gray-50 w-full">
+            <SuperAdminSidebar />
+            <div className="flex-1 flex flex-col min-h-0">
+              <header className="flex h-12 shrink-0 items-center justify-between gap-2 px-4 py-8 border-b bg-background sticky top-0 z-10">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <div className="text-2xl font-semibold text-teal-700">{superAdminLang("appLayout.superAdmin")}</div>
+                    <p className="text-sm text-muted-foreground">{superAdminLang("appLayout.platformConfiguration")}</p>
+                  </div>
+                  {isDevMode && <DevModeIndicator />}
                 </div>
-                {isDevMode && <DevModeIndicator />}
-              </div>
-              <div className="flex items-center gap-4">
-                {/* <NotificationDropdown /> */}
-                <UserNav includeCompanyLinks={false} />
-              </div>
-            </header>
-            <main className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50">
-              <Outlet />
-            </main>
+                <div className="flex items-center gap-4">
+                  <NotificationBell />
+                  <UserNav includeCompanyLinks={false} />
+                </div>
+              </header>
+              <main className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50">
+                <Outlet />
+              </main>
+            </div>
           </div>
-        </div>
-      </SidebarProvider>
+        </SidebarProvider>
+      </ThreadSheetProvider>
     );
   }
 
@@ -946,6 +956,9 @@ export default function AppLayout() {
 
       {/* Mobile Device Banner - suggests desktop for better experience */}
       <MobileDeviceBanner />
+
+      {/* Floating Advisory Board Bot — controlled by Help toggle */}
+      <ConditionalAdvisoryBot />
     </div>
     </ThreadSheetProvider>
   );

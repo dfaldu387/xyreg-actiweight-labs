@@ -30,8 +30,9 @@ interface ProductPageHeaderProps {
   onRefresh?: () => void;
   isRefreshing?: boolean;
   onSuggestionsGenerated?: (suggestions: FieldSuggestion[]) => void;
-  marketStatus?: any; // Add marketStatus prop to fix TypeScript errors
-  displayNameOverride?: string; // Optional override for display name (e.g., alias for family dashboard)
+  marketStatus?: any;
+  displayNameOverride?: string;
+  onCreateDocument?: () => void;
 }
 export function ProductPageHeader({
   product,
@@ -39,7 +40,8 @@ export function ProductPageHeader({
   onRefresh,
   isRefreshing = false,
   onSuggestionsGenerated,
-  displayNameOverride
+  displayNameOverride,
+  onCreateDocument
 }: ProductPageHeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -158,7 +160,12 @@ export function ProductPageHeader({
   const displayName = displayNameOverride 
     ? cleanName 
     : (udiSuffix ? `${cleanName} (${udiSuffix})` : cleanName);
-  const breadcrumbs = buildProductBreadcrumbs(companyName, displayName, subsection, handleNavigateToClients, handleNavigateToPortfolio, handleNavigateToProduct);
+  
+  // Breadcrumb name: append trade name in parentheses if available
+  const breadcrumbName = product.trade_name 
+    ? `${displayName} | ${product.trade_name}` 
+    : displayName;
+  const breadcrumbs = buildProductBreadcrumbs(companyName, breadcrumbName, subsection, handleNavigateToClients, handleNavigateToPortfolio, handleNavigateToProduct);
 
   // Generate subtitle with trade name when available, fallback to product type
   const tradeName = product.trade_name;
@@ -166,8 +173,8 @@ export function ProductPageHeader({
   const productTypeLabel = getProductTypeLabel(productType);
   const projectType = product.project_types && Array.isArray(product.project_types) && product.project_types.length > 0 ? product.project_types[0] : 'New Device Development (NDD)';
 
-  // Use trade name if available, otherwise use product type. Suppress for family overview (federated peer model).
-  const subtitle = (subsection && subsection !== 'Device Family Overview') ? (tradeName || (productTypeLabel === projectType ? productTypeLabel : `${productTypeLabel} (${projectType})`)) : undefined;
+  // Trade name is shown in breadcrumb, so subtitle only shows product type info (not trade name)
+  const subtitle = (subsection && subsection !== 'Device Family Overview') ? (productTypeLabel === projectType ? productTypeLabel : `${productTypeLabel} (${projectType})`) : undefined;
 
   // Replace "Device" with "Variant" in subsection when viewing a variant
   // Also replace "Device Status" with "Device Family Status" when there are multiple variants
@@ -193,7 +200,6 @@ export function ProductPageHeader({
   // Create title with product name and page type when in subsection
   const title = subsection ? (
     <span className="flex items-center gap-2 flex-wrap whitespace-nowrap">
-      {displayName}
       <span className="text-company-brand">{displaySubsection}</span>
       {productVariants && productVariants.length > 1 && (
         <Badge variant="secondary" className="gap-1.5 px-2 py-0.5 text-[11px] font-semibold bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-700">
@@ -307,7 +313,7 @@ export function ProductPageHeader({
   </>;
   return (
     <>
-      <ConsistentPageHeader breadcrumbs={breadcrumbs} title={title} subtitle={subtitle} actions={headerActions} />
+      <ConsistentPageHeader breadcrumbs={breadcrumbs} title={title} subtitle={subtitle} actions={headerActions} onCreateDocument={onCreateDocument} />
 
       {/* Variant Indicator Banner */}
       {/* {isVariant && mainProductId && (

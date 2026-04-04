@@ -287,34 +287,26 @@ export function BusinessCanvas({ productId, disabled = false, isInGenesisFlow = 
             onClick={populateFromSystem}
             disabled={isPopulating || disabled}
             variant="outline"
+            size="icon"
+            title="Populate from System"
           >
             {isPopulating ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Populating...
-              </>
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Populate from System
-              </>
+              <RefreshCw className="w-4 h-4" />
             )}
           </Button>
           <Button
             onClick={() => setConfirmOpen(true)}
             disabled={isGenerating || disabled}
             variant="default"
+            size="icon"
+            title={lang('commercial.productBusinessCanvas.generateWithAI')}
           >
             {isGenerating ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {lang('commercial.productBusinessCanvas.generating')}
-              </>
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <>
-                <Sparkles className="w-4 h-4 mr-2" />
-                {lang('commercial.productBusinessCanvas.generateWithAI')}
-              </>
+              <Sparkles className="w-4 h-4" />
             )}
           </Button>
           {isEditing && (
@@ -322,17 +314,13 @@ export function BusinessCanvas({ productId, disabled = false, isInGenesisFlow = 
               onClick={saveCanvas}
               disabled={isSaving || disabled}
               variant="outline"
+              size="icon"
+              title={lang('commercial.productBusinessCanvas.saveChanges')}
             >
               {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {lang('commercial.productBusinessCanvas.saving')}
-                </>
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  {lang('commercial.productBusinessCanvas.saveChanges')}
-                </>
+                <Save className="w-4 h-4" />
               )}
             </Button>
           )}

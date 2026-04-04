@@ -916,6 +916,16 @@
       "noResults": "Tuloksia ei löytynyt"
     },
     "relatedTopics": "Liittyvät aiheet",
+    "versionHistory": {
+      "title": "Versiohistoria",
+      "loading": "Ladataan versioita...",
+      "empty": "Ei julkaistuja versioita vielä",
+      "current": "Nykyinen",
+      "currentVersion": "Nykyinen versio",
+      "startValidation": "Aloita validointi",
+      "showMore": "Näytä lisää",
+      "showLess": "Näytä vähemmän"
+    },
     "content": {
       "qms": {
         "description": "A robust Quality Management System is mandatory for medical device manufacturers under ISO 13485 and regulatory requirements.",
@@ -1873,7 +1883,8 @@
       "tabs": {
         "context": "Konteksti",
         "guide": "Opas",
-        "reference": "Viite"
+        "reference": "Viite",
+        "versions": "Versiot"
       },
       "title": "Ohje & Opas",
       "helpHints": {

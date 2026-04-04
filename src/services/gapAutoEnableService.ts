@@ -12,7 +12,7 @@ export async function getCompanyConditions(companyId: string): Promise<Set<strin
 
   const { data: products } = await supabase
     .from('products')
-    .select('id, markets, is_software_project, isActiveDevice')
+    .select('id, markets, is_software_project, isActiveDevice, key_technology_characteristics')
     .eq('company_id', companyId);
 
   if (!products) return conditions;
@@ -32,7 +32,8 @@ export async function getCompanyConditions(companyId: string): Promise<Set<strin
       if (markets.some((m: any) => m.code === 'CH' && m.selected)) conditions.add('market_ch');
       if (markets.some((m: any) => m.code === 'KR' && m.selected)) conditions.add('market_kr');
     }
-    if (p.is_software_project) conditions.add('device_samd');
+    const ktc = p.key_technology_characteristics as Record<string, any> | null;
+    if (p.is_software_project || ktc?.isSoftwareAsaMedicalDevice || ktc?.isSoftwareMobileApp) conditions.add('device_samd');
     if (p.isActiveDevice) conditions.add('device_active');
   }
 

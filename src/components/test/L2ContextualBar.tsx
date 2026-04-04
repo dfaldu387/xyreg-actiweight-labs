@@ -1060,7 +1060,7 @@ export function L2ContextualBar({
       : (isActive && !isActiveChildItem ? 'text-white' : (customStyles?.textColor || 'text-sidebar-foreground'));
 
     const button = (
-      <div className={`relative ${domainColors && level === 0 ? `border-l-2 ${domainColors.border} rounded-none` : ''}`}>
+      <div className={`relative ${domainColors && level === 0 ? `border-l-[4px] ${domainColors.border} rounded-none` : ''}`}>
         <button
           onClick={handleButtonClick}
           disabled={item.disabled}

@@ -36,6 +36,7 @@ export interface DeviceContext {
   deviceCharacteristics?: {
     isImplantable?: boolean;
     isSoftwareMobileApp?: boolean;
+    isSoftwareAsaMedicalDevice?: boolean;
     isInVitroDiagnostic?: boolean;
     containsHumanAnimalMaterial?: boolean;
     incorporatesMedicinalSubstance?: boolean;
@@ -683,7 +684,8 @@ Device Context (use this to make your suggestion specific and relevant):
 - Key Features: ${Array.isArray(deviceContext.keyFeatures) ? deviceContext.keyFeatures.join(', ') : 'Not specified'}
 - Is Active Device: ${deviceContext.isActiveDevice ? 'Yes' : 'No'}
 ${deviceContext.deviceCharacteristics?.isImplantable ? '- This is an implantable device' : ''}
-${deviceContext.deviceCharacteristics?.isSoftwareMobileApp ? '- This is a Software as Medical Device (SaMD)' : ''}
+${deviceContext.deviceCharacteristics?.isSoftwareAsaMedicalDevice ? '- This is a Software as a Medical Device (SaMD)' : ''}
+${deviceContext.deviceCharacteristics?.isSoftwareMobileApp ? '- This is Software in a Medical Device (SiMD) - the software is a component embedded in hardware' : ''}
 ${deviceContext.deviceCharacteristics?.isInVitroDiagnostic ? '- This is an In Vitro Diagnostic (IVD) device' : ''}
 ${deviceContext.deviceCharacteristics?.containsHumanAnimalMaterial ? '- Contains human/animal material' : ''}
 ${deviceContext.deviceCharacteristics?.incorporatesMedicinalSubstance ? '- Incorporates medicinal substance' : ''}

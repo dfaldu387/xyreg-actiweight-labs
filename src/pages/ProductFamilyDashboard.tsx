@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, X, Sparkles, Loader2, FileText } from "lucide-react";
+import { Search, Filter, X, Sparkles, Loader2, FileEdit } from "lucide-react";
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -35,6 +35,7 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { RichTextField } from "@/components/shared/RichTextField";
 import { AIContextSourcesPanel } from "@/components/product/ai-assistant/AIContextSourcesPanel";
 import { SaveDescriptionAsDocCIDialog } from "@/components/product/family/SaveDescriptionAsDocCIDialog";
+import { DocumentDraftDrawer } from "@/components/product/documents/DocumentDraftDrawer";
 
 export default function ProductFamilyDashboard() {
   const { masterProductId } = useParams<{ masterProductId: string }>();
@@ -44,6 +45,7 @@ export default function ProductFamilyDashboard() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [variantOptionFilter, setVariantOptionFilter] = useState<string | null>(null);
+  const [showSaveDocDialogFromHeader, setShowSaveDocDialogFromHeader] = useState(false);
 
   useEffect(() => {
     refreshContext();
@@ -213,6 +215,7 @@ export default function ProductFamilyDashboard() {
             isRefreshing={isFetching}
             marketStatus={marketStatus}
             displayNameOverride={displayName}
+            onCreateDocument={() => setShowSaveDocDialogFromHeader(true)}
           />
         )}
         <div className="flex-1 overflow-y-auto">
@@ -239,6 +242,8 @@ export default function ProductFamilyDashboard() {
               }}
               companyId={companyId || ''}
               companyName={companyName || ''}
+              externalShowSaveDocDialog={showSaveDocDialogFromHeader}
+              onExternalShowSaveDocDialogChange={setShowSaveDocDialogFromHeader}
             />
           </div>
         </div>
@@ -267,7 +272,8 @@ interface FamilyDeviceDashboardProps {
   onSaveDescription: (description: string) => void;
   companyId: string;
   companyName: string;
-  
+  externalShowSaveDocDialog?: boolean;
+  onExternalShowSaveDocDialogChange?: (open: boolean) => void;
 }
 
 function FamilyDeviceDashboard({
@@ -290,6 +296,8 @@ function FamilyDeviceDashboard({
   onSaveDescription,
   companyId,
   companyName,
+  externalShowSaveDocDialog,
+  onExternalShowSaveDocDialogChange,
 }: FamilyDeviceDashboardProps) {
   const navigate = useNavigate();
   const displayName = familyAlias || masterDevice.trade_name || masterDevice.name || 'Unknown';
@@ -301,9 +309,17 @@ function FamilyDeviceDashboard({
   const [showAIDialog, setShowAIDialog] = useState(false);
   const [aiPreviewContent, setAiPreviewContent] = useState('');
   const [showSaveDocDialog, setShowSaveDocDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
   const debouncedDescription = useDebounce(localDescription, 1500);
 
-  // Sync from prop when it loads
+  // Sync external "Create Document" trigger from header
+  useEffect(() => {
+    if (externalShowSaveDocDialog) {
+      setShowSaveDocDialog(true);
+      onExternalShowSaveDocDialogChange?.(false);
+    }
+  }, [externalShowSaveDocDialog, onExternalShowSaveDocDialogChange]);
+
   useEffect(() => {
     if (familyDescription !== null && familyDescription !== localDescription) {
       setLocalDescription(familyDescription);
@@ -433,7 +449,7 @@ Use formal medical device industry language suitable for a Technical File or Des
         </DialogContent>
       </Dialog>
 
-      {/* Save as Document CI Dialog */}
+      {/* Create Document Dialog */}
       <SaveDescriptionAsDocCIDialog
         open={showSaveDocDialog}
         onOpenChange={setShowSaveDocDialog}
@@ -444,6 +460,15 @@ Use formal medical device industry language suitable for a Technical File or Des
         
         masterDeviceId={masterDevice.id}
         devices={allFamilyDevices.map(d => ({ id: d.id, name: d.trade_name || d.name || d.id }))}
+        onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+      />
+      <DocumentDraftDrawer
+        open={!!draftDrawerDoc}
+        onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+        documentId={draftDrawerDoc?.id || ''}
+        documentName={draftDrawerDoc?.name || ''}
+        documentType={draftDrawerDoc?.type || ''}
+        companyId={masterDevice.company_id || companyId}
       />
 
       <Card className="border-0 shadow-none bg-transparent">
@@ -459,21 +484,6 @@ Use formal medical device industry language suitable for a Technical File or Des
                 Family Description
               </label>
               <div className="flex items-center gap-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (!localDescription?.trim()) {
-                      toast.error('No description to save');
-                      return;
-                    }
-                    setShowSaveDocDialog(true);
-                  }}
-                  className="h-7 gap-1.5 text-xs"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  Save as Doc CI
-                </Button>
                 <Button
                   variant="outline"
                   size="sm"

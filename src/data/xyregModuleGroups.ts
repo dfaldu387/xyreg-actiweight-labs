@@ -15,9 +15,9 @@ export interface XyregModuleGroup {
     pq: string;
   };
   testSteps?: {
-    iq: { step: string; expectedResult: string }[];
-    oq: { step: string; expectedResult: string }[];
-    pq: { step: string; expectedResult: string }[];
+    iq: { step: string; expectedResult: string; navigateTo?: string }[];
+    oq: { step: string; expectedResult: string; navigateTo?: string }[];
+    pq: { step: string; expectedResult: string; navigateTo?: string }[];
   };
   infrastructureDependencies?: {
     assetId: string;
@@ -45,12 +45,12 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to Document Studio from the main menu', expectedResult: 'Document Studio loads without errors' },
-        { step: 'Verify Templates section is accessible', expectedResult: 'Template list is displayed with available templates' },
+        { step: 'Navigate to Document Studio from the main menu', expectedResult: 'Document Studio loads without errors', navigateTo: '/app/company/:companyName/document-studio' },
+        { step: 'Verify Templates section is accessible', expectedResult: 'Template list is displayed with available templates', navigateTo: '/app/company/:companyName/document-studio' },
         { step: 'Check that eSignature module is present in document workflows', expectedResult: 'Signature options appear in document actions' },
       ],
       oq: [
-        { step: 'Create a new document from an existing template', expectedResult: 'Document is created with correct metadata and version number' },
+        { step: 'Create a new document from an existing template', expectedResult: 'Document is created with correct metadata and version number', navigateTo: '/app/company/:companyName/document-studio' },
         { step: 'Submit the document for review and approval', expectedResult: 'Review workflow initiates and notifications are sent' },
         { step: 'Apply an eSignature to approve the document', expectedResult: 'Signature is recorded with timestamp and user identity' },
         { step: 'Check the audit trail for the document', expectedResult: 'All actions (create, review, approve) are logged with timestamps' },
@@ -80,8 +80,8 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to V-Model view for a product', expectedResult: 'V-Model diagram loads showing design phases' },
-        { step: 'Open the Traceability Matrix', expectedResult: 'Matrix displays with rows and columns for design artifacts' },
+        { step: 'Navigate to V-Model view for a product', expectedResult: 'V-Model diagram loads showing design phases', navigateTo: '/app/company/:companyName/products' },
+        { step: 'Open the Traceability Matrix', expectedResult: 'Matrix displays with rows and columns for design artifacts', navigateTo: '/app/company/:companyName/products' },
         { step: 'Access the DHF section', expectedResult: 'Design History File structure is visible with document categories' },
       ],
       oq: [
@@ -115,7 +115,7 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to Risk Management module', expectedResult: 'Risk Matrix, Hazard Log, and FMEA views are accessible' },
+        { step: 'Navigate to Risk Management module', expectedResult: 'Risk Matrix, Hazard Log, and FMEA views are accessible', navigateTo: '/app/company/:companyName/products' },
         { step: 'Verify Risk Controls section is present', expectedResult: 'Risk controls list is displayed' },
       ],
       oq: [
@@ -187,8 +187,8 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to CAPA Module', expectedResult: 'CAPA list loads with status filters' },
-        { step: 'Open Complaints section', expectedResult: 'Complaint intake form is accessible' },
+        { step: 'Navigate to CAPA Module', expectedResult: 'CAPA list loads with status filters', navigateTo: '/app/company/:companyName/capa' },
+        { step: 'Open Complaints section', expectedResult: 'Complaint intake form is accessible', navigateTo: '/app/company/:companyName/capa' },
         { step: 'Check Non-Conformances module', expectedResult: 'NC records are listed with disposition status' },
       ],
       oq: [
@@ -221,8 +221,8 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to Training Modules section', expectedResult: 'Training module list is displayed' },
-        { step: 'Open Training Matrix view', expectedResult: 'Matrix shows personnel vs. training requirements' },
+        { step: 'Navigate to Training Modules section', expectedResult: 'Training module list is displayed', navigateTo: '/app/company/:companyName/training' },
+        { step: 'Open Training Matrix view', expectedResult: 'Matrix shows personnel vs. training requirements', navigateTo: '/app/company/:companyName/training' },
         { step: 'Check Competency Radar feature', expectedResult: 'Competency visualization loads for a selected user' },
       ],
       oq: [
@@ -323,9 +323,9 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to Internal Audit module', expectedResult: 'Audit schedule and list are accessible' },
+        { step: 'Navigate to Internal Audit module', expectedResult: 'Audit schedule and list are accessible', navigateTo: '/app/company/:companyName/audit' },
         { step: 'Open Management Review section', expectedResult: 'Management review records are listed' },
-        { step: 'Access Gap Analysis tool', expectedResult: 'Gap analysis questionnaire loads with applicable standards' },
+        { step: 'Access Gap Analysis tool', expectedResult: 'Gap analysis questionnaire loads with applicable standards', navigateTo: '/app/company/:companyName/gap-analysis' },
       ],
       oq: [
         { step: 'Create an internal audit and add findings', expectedResult: 'Audit is created with findings linked to clauses' },
@@ -357,9 +357,9 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to Facilities registry', expectedResult: 'Facility list loads with status indicators' },
-        { step: 'Open Equipment management', expectedResult: 'Equipment list is displayed with calibration status' },
-        { step: 'Access Calibration schedules', expectedResult: 'Calibration calendar and upcoming due dates are shown' },
+        { step: 'Navigate to Facilities registry', expectedResult: 'Facility list loads with status indicators', navigateTo: '/app/company/:companyName/infrastructure' },
+        { step: 'Open Equipment management', expectedResult: 'Equipment list is displayed with calibration status', navigateTo: '/app/company/:companyName/infrastructure' },
+        { step: 'Access Calibration schedules', expectedResult: 'Calibration calendar and upcoming due dates are shown', navigateTo: '/app/company/:companyName/calibration-schedule' },
       ],
       oq: [
         { step: 'Register a new equipment asset', expectedResult: 'Asset is created with serial number, location, and calibration interval' },

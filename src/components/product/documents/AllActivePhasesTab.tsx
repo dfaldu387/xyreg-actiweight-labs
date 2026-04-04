@@ -7,7 +7,10 @@ import { Progress } from "@/components/ui/progress";
 import { useBulkOperationProgress } from "@/hooks/useBulkOperationProgress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FileText, Layers, File, Eye, Trash2, Plus, Copy, RefreshCw, CircleCheckBig, Sparkles, BookOpen, CheckSquare, FileEdit, Link, Send, Pencil, MoreHorizontal, Calendar, Users, FolderOpen, UserPlus, CalendarDays } from "lucide-react";
+import { FileText, Layers, File, Eye, Trash2, Plus, Copy, RefreshCw, CircleCheckBig, Sparkles, BookOpen, CheckSquare, FileEdit, Link, Send, Pencil, MoreHorizontal, Calendar, Users, FolderOpen, UserPlus, CalendarDays, FileDown, Loader2, Settings2 } from "lucide-react";
+import { ColumnVisibilitySettings, type ColumnDefinition } from '@/components/shared/ColumnVisibilitySettings';
+import { useListColumnPreferences } from '@/hooks/useListColumnPreferences';
+import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
@@ -256,6 +259,7 @@ const DocumentCICardComponent = ({
   const [showCreateConfirm, setShowCreateConfirm] = useState(false);
   const [showSendReviewDialog, setShowSendReviewDialog] = useState(false);
   const [showCopyDialog, setShowCopyDialog] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
   const { formatDate } = useCompanyDateFormat(companyId);
   const navigate = useNavigate();
   const { activeCompanyRole } = useCompanyRole();
@@ -302,6 +306,8 @@ const DocumentCICardComponent = ({
       case 'in review':
       case 'under review':
         return 'bg-orange-50 text-orange-700 border-orange-200';
+      case 'changes_requested':
+        return 'bg-amber-50 text-amber-700 border-amber-300';
       case 'rejected':
         return 'bg-red-50 text-red-700 border-red-200';
       case 'n/a':
@@ -311,6 +317,28 @@ const DocumentCICardComponent = ({
         return 'bg-gray-50 text-gray-600 border-gray-200';
     }
   };
+
+  // Get action button styles based on document status
+  const getActionButtonStyles = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'approved':
+      case 'report':
+        return { bg: '!bg-green-50 border-green-300 hover:!bg-green-100', icon: 'text-green-700' };
+      case 'in review':
+      case 'under review':
+        return { bg: '!bg-amber-50 border-amber-300 hover:!bg-amber-100', icon: 'text-amber-700' };
+      case 'changes requested':
+      case 'changes_requested':
+        return { bg: '!bg-orange-50 border-orange-300 hover:!bg-orange-100', icon: 'text-orange-700' };
+      case 'rejected':
+        return { bg: '!bg-red-50 border-red-300 hover:!bg-red-100', icon: 'text-red-700' };
+      default:
+        return { bg: '!bg-white', icon: 'text-primary' };
+    }
+  };
+
+  const isNotStarted = !document.status || document.status.toLowerCase() === 'not started';
+  const actionStyles = getActionButtonStyles(document.status || 'Not Started');
 
   const isDocumentOverdue = (dueDate?: string) => {
     if (!dueDate) return false;
@@ -509,7 +537,7 @@ const DocumentCICardComponent = ({
       </div>
       {!isNotInteractable && (
       <div className="flex items-center gap-3">
-        {/* Studio - only shown for interactable documents */}
+        {/* Studio editor button */}
         <Button
           variant="outline"
           size="sm"
@@ -518,9 +546,9 @@ const DocumentCICardComponent = ({
           className="h-8 px-3 !bg-white"
           title={document.document_reference?.startsWith('DS-') ? "Edit Document" : "Create Document"}
         >
-          <FileEdit className="h-4 w-4 text-primary" />
+          <FileEdit className="h-4 w-4" />
         </Button>
-        {/* View */}
+        {/* View button */}
         {document.file_path && onView && (
           <Button
             variant="outline"
@@ -540,14 +568,14 @@ const DocumentCICardComponent = ({
             size="sm"
             onClick={() => setShowSendReviewDialog(true)}
             disabled={isProcessing || disabled}
-            className="h-8 px-3 !bg-white"
+            className={`h-8 px-3 ${actionStyles.bg}`}
             title="Send for Review"
           >
-            <Send className="h-4 w-4 text-primary" />
+            <Send className={`h-4 w-4 ${actionStyles.icon}`} />
           </Button>
         )}
-        {/* 3-dot menu: Edit, Delete & Copy */}
-        {(onEdit || onDelete || onCopy) && (
+        {/* 3-dot menu: Preview PDF, Edit, Delete & Copy */}
+        {(onEdit || onDelete || onCopy || companyId) && (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" disabled={isProcessing || disabled} className="h-8 px-3 !bg-white">
@@ -555,6 +583,32 @@ const DocumentCICardComponent = ({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {companyId && document.status === 'Approved' && (
+                <DropdownMenuItem
+                  disabled={pdfLoading}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    (async () => {
+                      setPdfLoading(true);
+                      try {
+                        await DocumentPdfPreviewService.generatePreviewPdf(document.id, companyId, productId);
+                      } catch (error) {
+                        console.error('PDF preview error:', error);
+                        toast.error('Failed to generate PDF preview');
+                      } finally {
+                        setPdfLoading(false);
+                      }
+                    })();
+                  }}
+                >
+                  {pdfLoading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <FileDown className="h-4 w-4 mr-2" />
+                  )}
+                  Preview PDF
+                </DropdownMenuItem>
+              )}
               {onEdit && (
                 <DropdownMenuItem onClick={() => onEdit(document)}>
                   <Pencil className="h-4 w-4 mr-2" />
@@ -740,6 +794,30 @@ export function AllActivePhasesTab({
   const [viewingDocument, setViewingDocument] = useState<any>(null);
   const [bulkCopyDialogOpen, setBulkCopyDialogOpen] = useState(false); // kept for BulkStatusUpdate
   const [bulkMode, setBulkMode] = useState(false);
+
+  // Column visibility
+  const DOCUMENT_COLUMNS: ColumnDefinition[] = [
+    { key: 'name', label: 'Name', required: true },
+    { key: 'phase_name', label: 'Phase' },
+    { key: 'sub_section', label: 'Section' },
+    { key: 'authors_ids', label: 'Author' },
+    { key: 'document_type', label: 'Document Type' },
+    { key: 'is_record', label: 'Category' },
+    { key: 'status', label: 'Status' },
+    { key: 'due_date', label: 'Due Date' },
+    { key: 'date', label: 'Date' },
+    { key: 'approval_date', label: 'Approved' },
+    { key: 'scope', label: 'Scope' },
+  ];
+  const { data: columnPrefs } = useListColumnPreferences(companyId, productId, 'device_documents', 'list');
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+
+  // Hydrate from DB
+  useEffect(() => {
+    if (columnPrefs?.hidden_columns) {
+      setHiddenColumns(columnPrefs.hidden_columns);
+    }
+  }, [columnPrefs]);
   const [bulkSelectedDocs, setBulkSelectedDocs] = useState<Set<string>>(new Set());
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [bulkStatusDialogOpen, setBulkStatusDialogOpen] = useState(false);
@@ -1426,13 +1504,46 @@ export function AllActivePhasesTab({
 
     // Sort documents
     filtered.sort((a, b) => {
-      // If sorting by date is enabled, use date as primary sort
       if (sortByDate !== 'none') {
+        // Alphabetical field sorts
+        const alphaSort = (fieldA: string, fieldB: string, isAsc: boolean) => {
+          if (!fieldA && !fieldB) return 0;
+          if (!fieldA) return 1;
+          if (!fieldB) return -1;
+          return isAsc ? fieldA.localeCompare(fieldB) : fieldB.localeCompare(fieldA);
+        };
+
+        if (sortByDate === 'name_asc' || sortByDate === 'name_desc') {
+          return alphaSort(a.name || '', b.name || '', sortByDate === 'name_asc');
+        }
+        if (sortByDate === 'phase_asc' || sortByDate === 'phase_desc') {
+          return alphaSort(a.phase_name || '', b.phase_name || '', sortByDate === 'phase_asc');
+        }
+        if (sortByDate === 'section_asc' || sortByDate === 'section_desc') {
+          return alphaSort(a.sub_section || '', b.sub_section || '', sortByDate === 'section_asc');
+        }
+        if (sortByDate === 'author_asc' || sortByDate === 'author_desc') {
+          const authorA = Array.isArray(a.authors_ids) ? a.authors_ids.join(', ') : '';
+          const authorB = Array.isArray(b.authors_ids) ? b.authors_ids.join(', ') : '';
+          return alphaSort(authorA, authorB, sortByDate === 'author_asc');
+        }
+        if (sortByDate === 'status_asc' || sortByDate === 'status_desc') {
+          return alphaSort(a.status || '', b.status || '', sortByDate === 'status_asc');
+        }
+        if (sortByDate === 'category_asc' || sortByDate === 'category_desc') {
+          return alphaSort(a.document_type || '', b.document_type || '', sortByDate === 'category_asc');
+        }
+        if (sortByDate === 'doctype_asc' || sortByDate === 'doctype_desc') {
+          const dtA = a.is_record ? 'Record' : 'Document';
+          const dtB = b.is_record ? 'Record' : 'Document';
+          return alphaSort(dtA, dtB, sortByDate === 'doctype_asc');
+        }
+
+        // Date-based sorts
         let dateA = '';
         let dateB = '';
         let isNewest = false;
 
-        // Determine which date field to use based on sort option
         if (sortByDate === 'updated_newest' || sortByDate === 'updated_oldest') {
           dateA = a.updated_at || a.created_at || '';
           dateB = b.updated_at || b.created_at || '';
@@ -1445,9 +1556,12 @@ export function AllActivePhasesTab({
           dateA = a.approval_date || '';
           dateB = b.approval_date || '';
           isNewest = sortByDate === 'approval_newest';
+        } else if (sortByDate === 'date_newest' || sortByDate === 'date_oldest') {
+          dateA = a.date || a.created_at || '';
+          dateB = b.date || b.created_at || '';
+          isNewest = sortByDate === 'date_newest';
         }
 
-        // Handle empty dates - push them to the end
         if (!dateA && !dateB) return 0;
         if (!dateA) return 1;
         if (!dateB) return -1;
@@ -1455,23 +1569,17 @@ export function AllActivePhasesTab({
         const timeA = new Date(dateA).getTime();
         const timeB = new Date(dateB).getTime();
 
-        if (isNewest) {
-          return timeB - timeA; // Newest first (descending)
-        } else {
-          return timeA - timeB; // Oldest first (ascending)
-        }
+        return isNewest ? timeB - timeA : timeA - timeB;
       }
 
-      // Default sort: by phase position (0,1,2,3,4...)
+      // Default sort: by phase position, then by name
       const positionA = getPhasePosition(a.phase_name || '');
       const positionB = getPhasePosition(b.phase_name || '');
 
-      // Primary sort: by phase position
       if (positionA !== positionB) {
         return positionA - positionB;
       }
 
-      // Secondary sort: by document name (alphabetical)
       return a.name.localeCompare(b.name);
     });
 
@@ -1821,6 +1929,16 @@ export function AllActivePhasesTab({
             <div className="flex items-center gap-2">
               {allDocuments.length > 0 && (
                 <>
+                  {viewMode === 'list' && (
+                    <ColumnVisibilitySettings
+                      companyId={companyId}
+                      productId={productId}
+                      module="device_documents"
+                      columns={DOCUMENT_COLUMNS}
+                      hiddenColumns={hiddenColumns}
+                      onHiddenColumnsChange={setHiddenColumns}
+                    />
+                  )}
                   <Button
                     onClick={() => setBulkSummaryDialogOpen(true)}
                     size="sm"
@@ -2050,6 +2168,7 @@ export function AllActivePhasesTab({
             isDocExcluded={(docId: string) => isDocExcluded(docId.replace(/^template-/, ''), productId)}
             onToggleDocExclusion={(docId: string) => toggleDocExclusion(docId.replace(/^template-/, ''))}
             productId={productId}
+            hiddenColumns={hiddenColumns}
             getDocExclusionScope={(docId: string) => getDocExclusionScope(docId.replace(/^template-/, ''))}
             onSetDocExclusionScope={handleDocScopeChange}
             familyProductIds={effectiveFamilyProductIds}

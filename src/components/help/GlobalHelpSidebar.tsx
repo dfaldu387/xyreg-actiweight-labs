@@ -11,10 +11,12 @@ import { EudamedHelpContent } from './EudamedHelpContent';
 import { HelpTopicDetailScreen, navigableTopics } from './HelpTopicDetailScreen';
 import { HelpHintsToggle } from './HelpHintsToggle';
 import { ComplianceModeToggle } from './ComplianceModeToggle';
+import { AdvisoryBoardToggle } from './AdvisoryBoardToggle';
 import { PlatformGuideTab } from './PlatformGuideTab';
 import { ReferenceTab } from './ReferenceTab';
+import { VersionHistoryTab } from './VersionHistoryTab';
 import { useTranslation } from '@/hooks/useTranslation';
-import { Compass, GraduationCap, BookOpen } from 'lucide-react';
+import { Compass, GraduationCap, BookOpen, History } from 'lucide-react';
 
 interface GlobalHelpSidebarProps {
   open: boolean;
@@ -92,6 +94,7 @@ export function GlobalHelpSidebar({ open, onOpenChange }: GlobalHelpSidebarProps
           <div className="flex gap-2">
             <div className="flex-1"><HelpHintsToggle /></div>
             <div className="flex-1"><ComplianceModeToggle /></div>
+            <div className="flex-1"><AdvisoryBoardToggle /></div>
           </div>
         </SheetHeader>
 
@@ -106,6 +109,9 @@ export function GlobalHelpSidebar({ open, onOpenChange }: GlobalHelpSidebarProps
               </TabsTrigger>
               <TabsTrigger value="reference" className="flex-1 gap-1.5">
                 <BookOpen className="h-4 w-4" /> {lang('help.sidebar.tabs.reference')}
+              </TabsTrigger>
+              <TabsTrigger value="versions" className="flex-1 gap-1.5">
+                <History className="h-4 w-4" /> {lang('help.sidebar.tabs.versions')}
               </TabsTrigger>
             </TabsList>
           </div>
@@ -147,6 +153,10 @@ export function GlobalHelpSidebar({ open, onOpenChange }: GlobalHelpSidebarProps
 
             <TabsContent value="reference" className="mt-0 p-6">
               <ReferenceTab />
+            </TabsContent>
+
+            <TabsContent value="versions" className="mt-0 p-6">
+              <VersionHistoryTab onClose={() => handleOpenChange(false)} />
             </TabsContent>
           </ScrollArea>
         </Tabs>

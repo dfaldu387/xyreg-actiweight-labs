@@ -1,0 +1,2 @@
+ALTER TABLE public.company_api_keys DROP CONSTRAINT company_api_keys_key_type_check;
+ALTER TABLE public.company_api_keys ADD CONSTRAINT company_api_keys_key_type_check CHECK (key_type IN ('gemini', 'openai', 'anthropic', 'serpapi', 'google_vertex', 'elevenlabs'));

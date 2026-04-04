@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
-export type ApiKeyType = 'gemini' | 'openai' | 'anthropic' | 'serpapi' | 'google_vertex';
+export type ApiKeyType = 'gemini' | 'openai' | 'anthropic' | 'serpapi' | 'google_vertex' | 'elevenlabs';
 
 interface CompanyApiKey {
   id: string;
@@ -171,6 +171,7 @@ export function useApiKeyStatus(companyId: string) {
     openaiAvailable: !!apiKeys.keys.find(key => key.key_type === 'openai'),
     anthropicAvailable: !!apiKeys.keys.find(key => key.key_type === 'anthropic'),
     serpapiAvailable: !!apiKeys.keys.find(key => key.key_type === 'serpapi'),
+    elevenlabsAvailable: !!apiKeys.keys.find(key => key.key_type === 'elevenlabs'),
     getKey: (keyType: ApiKeyType) => apiKeys.keys.find(key => key.key_type === keyType)?.encrypted_key || null
   };
 }

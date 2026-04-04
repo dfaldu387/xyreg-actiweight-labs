@@ -118,9 +118,9 @@ export function EmptySectionPrompt({
             onClick={onOpenAutoFill}
             disabled={isGenerating}
             className="ml-auto text-xs text-muted-foreground"
+            title="AI Auto-Fill All Sections"
           >
-            <Wand2 className="w-3.5 h-3.5 mr-1.5" />
-            AI Auto-Fill All Sections
+            <Wand2 className="w-3.5 h-3.5" />
           </Button>
         )}
       </div>

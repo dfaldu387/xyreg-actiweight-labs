@@ -25,8 +25,9 @@ import { InvestorVisibleBadge } from '@/components/ui/investor-visible-badge';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useProductUDI } from '@/hooks/useProductUDI';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
-import { FileText } from 'lucide-react';
+import { FileEdit } from 'lucide-react';
 import { SaveDeviceDefinitionAsDocCIDialog, DeviceDefinitionExportData } from './SaveDeviceDefinitionAsDocCIDialog';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type OverviewFieldKey =
@@ -120,8 +121,9 @@ export function DeviceOverviewTab({
   deviceDefinitionData,
   companyName,
 }: DeviceOverviewTabProps) {
-  // Dialog state for Save as Doc CI
+  // Dialog state for Create Document
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
   
   // Get product ID from URL params to fetch effective markets
   const { productId } = useParams<{ productId: string }>();
@@ -342,23 +344,6 @@ export function DeviceOverviewTab({
         <span className="text-lg font-semibold">
           {lang('deviceOverview.title')}
         </span>
-        {deviceDefinitionData && companyId && companyName && productId && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setShowDocCIDialog(true)}
-                >
-                  <FileText className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Save as Document CI</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
         <CircularProgress percentage={progress || 0} size={40} />
         <div className="flex-1">
           <CurrentLifecycleCard
@@ -680,15 +665,27 @@ export function DeviceOverviewTab({
       </div>
 
       {deviceDefinitionData && companyId && companyName && productId && (
-        <SaveDeviceDefinitionAsDocCIDialog
-          open={showDocCIDialog}
-          onOpenChange={setShowDocCIDialog}
-          productId={productId}
-          productName={productName}
-          companyId={companyId}
-          companyName={companyName}
-          deviceData={deviceDefinitionData}
-        />
+        <>
+          <SaveDeviceDefinitionAsDocCIDialog
+            open={showDocCIDialog}
+            onOpenChange={setShowDocCIDialog}
+            productId={productId}
+            productName={productName}
+            companyId={companyId}
+            companyName={companyName}
+            deviceData={deviceDefinitionData}
+            onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+          />
+          <DocumentDraftDrawer
+            open={!!draftDrawerDoc}
+            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+            documentId={draftDrawerDoc?.id || ''}
+            documentName={draftDrawerDoc?.name || ''}
+            documentType={draftDrawerDoc?.type || ''}
+            productId={productId}
+            companyId={companyId}
+          />
+        </>
       )}
     </div >
   );

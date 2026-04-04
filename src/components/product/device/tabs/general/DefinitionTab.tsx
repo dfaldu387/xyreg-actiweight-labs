@@ -1,17 +1,15 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Textarea } from "@/components/ui/textarea";
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { RichTextField } from '@/components/shared/RichTextField';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { HelpCircle, Check, Package, Lock, AlertTriangle } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
+import { HelpCircle, Package, Lock, AlertTriangle, Loader2, Sparkles } from "lucide-react";
 import { InheritanceExclusionPopover } from '@/components/shared/InheritanceExclusionPopover';
 import { resolveFieldValue, normalizeScopeValue } from '@/hooks/useAutoSyncScope';
 import { GovernanceBookmark } from '@/components/ui/GovernanceBookmark';
-
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -23,14 +21,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { AISuggestionReviewDialog } from '@/components/product/ai-assistant/AISuggestionReviewDialog';
+import { AIExplainerDialog } from '@/components/product/ai-assistant/AIExplainerDialog';
 import { InvestorVisibleBadge } from '@/components/ui/investor-visible-badge';
 import { useInvestorFlow } from '@/hooks/useInvestorFlow';
-import { cn } from '@/lib/utils';
 import { useTranslation } from '@/hooks/useTranslation';
+import { productDefinitionAIService, DeviceContext, hasMinimumContext } from '@/services/productDefinitionAIService';
+import { toast } from 'sonner';
 import { ProductPlatformSelector } from '../../../ProductPlatformSelector';
 import { DeviceCategorySelector } from '../../../DeviceCategorySelector';
 import { ProductModelSelector } from '../../../ProductModelSelector';
-import { useProductUDI } from '@/hooks/useProductUDI';
 
 interface ProductHazard {
   id: string;
@@ -44,8 +44,34 @@ interface DeviceComponent {
   description: string;
 }
 
+type SuggestionFieldKey = 'product_name' | 'trade_name' | 'description';
+
+const AI_FIELD_CONFIGS: Record<SuggestionFieldKey, { name: string; description: string; fieldLabel: string; fieldDescription: string; requirements: string }> = {
+  product_name: {
+    name: 'Device Name',
+    description: 'AI will suggest a regulatory-compliant device name based on your device context.',
+    fieldLabel: 'Device Name',
+    fieldDescription: 'Suggest a proper regulatory-compliant device name based on the device category and description.',
+    requirements: 'Provide a concise, regulatory-compliant medical device name. Do NOT include trade names or marketing language. 1 line maximum.',
+  },
+  trade_name: {
+    name: 'Trade Name',
+    description: 'AI will suggest a commercial trade name for marketing purposes.',
+    fieldLabel: 'Trade Name',
+    fieldDescription: 'Suggest a commercial or marketing trade name for this medical device.',
+    requirements: 'Provide a catchy, memorable commercial trade name suitable for marketing. 1 line maximum.',
+  },
+  description: {
+    name: 'Device Description',
+    description: 'AI will generate a regulatory-friendly device description based on available context.',
+    fieldLabel: 'Device Description',
+    fieldDescription: 'Generate a concise regulatory-friendly description of the medical device based on its category and naming information.',
+    requirements: 'Provide a concise product description suitable for medical device documentation. Focus on what the device is, its core technology or modality, and its high-level clinical role. Avoid marketing language.',
+  },
+};
+
+
 interface DefinitionTabProps {
-  // Identification fields (merged)
   productName?: string;
   registrationNumber?: string;
   tradeName?: string;
@@ -72,11 +98,9 @@ interface DefinitionTabProps {
   onBaseProductSelect?: (productId: string) => void;
   onPlatformAndBaseSelect?: (platform: string, baseProductId: string) => void;
   eudamedLockedFields?: Record<string, boolean | { locked: true; eudamedValue: boolean | string }>;
-  // Definition fields
   description?: string;
   onDescriptionChange?: (value: string) => void;
   isLoading?: boolean;
-  // Governance & scope
   belongsToFamily?: boolean;
   isMaster?: boolean;
   isVariant?: boolean;
@@ -94,6 +118,7 @@ interface DefinitionTabProps {
   familyProductIds?: string[];
   familyProducts?: any[];
   onScopeChangeWithPropagation?: (fieldKey: string, oldScope: import('@/hooks/useInheritanceExclusion').ItemExclusionScope, newScope: import('@/hooks/useInheritanceExclusion').ItemExclusionScope) => Promise<void>;
+  onAcceptAISuggestion?: (fieldType: string, suggestion: string) => void;
 }
 
 export function DefinitionTab({
@@ -133,6 +158,7 @@ export function DefinitionTab({
   familyProductIds,
   familyProducts,
   onScopeChangeWithPropagation,
+  onAcceptAISuggestion,
 }: DefinitionTabProps) {
   const { lang } = useTranslation();
   const { isInInvestorFlow } = useInvestorFlow();
@@ -142,9 +168,24 @@ export function DefinitionTab({
   const isInGenesisFlow = returnTo === 'genesis' || returnTo === 'venture-blueprint' || returnTo === 'investor-share' || returnTo === 'gap-analysis';
 
   const descriptionRef = useRef<HTMLDivElement>(null);
-  const { displayUdiDi, displayBasicUdiDi, variantCount } = useProductUDI(productId || urlProductId);
+  const [overrideWarningOpen, setOverrideWarningOpen] = useState(false);
+  const [pendingOverride, setPendingOverride] = useState<{ field: string; value: string } | null>(null);
+  const [confirmedOverrides, setConfirmedOverrides] = useState<Set<string>>(new Set());
+  const [aiLoadingStates, setAiLoadingStates] = useState<Set<string>>(new Set());
+  const [pendingSuggestion, setPendingSuggestion] = useState<{
+    fieldKey: SuggestionFieldKey;
+    fieldLabel: string;
+    original: string;
+    suggested: string;
+  } | null>(null);
+  const [explainerDialogField, setExplainerDialogField] = useState<SuggestionFieldKey | null>(null);
 
-  // Auto-scroll to description section when navigated from Genesis step 2
+  const aiDeviceContext: DeviceContext = {
+    productName: productName || '',
+    deviceCategory: deviceCategory || '',
+    deviceDescription: description || '',
+  };
+
   const section = searchParams.get('section');
   useEffect(() => {
     if (section === 'description' && descriptionRef.current) {
@@ -153,11 +194,6 @@ export function DefinitionTab({
       }, 300);
     }
   }, [section]);
-
-  // EUDAMED lock/override helpers
-  const [overrideWarningOpen, setOverrideWarningOpen] = useState(false);
-  const [pendingOverride, setPendingOverride] = useState<{ field: string; value: string } | null>(null);
-  const [confirmedOverrides, setConfirmedOverrides] = useState<Set<string>>(new Set());
 
   const getEudamedValue = useCallback((field: string): string | undefined => {
     if (!eudamedLockedFields) return undefined;
@@ -185,16 +221,18 @@ export function DefinitionTab({
       applyFn(newValue);
       return;
     }
-    // If already confirmed override for this field, apply directly
+
     if (confirmedOverrides.has(field)) {
       applyFn(newValue);
       return;
     }
+
     const eudamedVal = getEudamedValue(field);
     if (newValue === eudamedVal) {
       applyFn(newValue);
       return;
     }
+
     setPendingOverride({ field, value: newValue });
     setOverrideWarningOpen(true);
   }, [isFieldLocked, getEudamedValue, confirmedOverrides]);
@@ -204,11 +242,98 @@ export function DefinitionTab({
     const { field, value } = pendingOverride;
     setConfirmedOverrides(prev => new Set(prev).add(field));
     if (field === 'deviceName') onProductNameChange?.(value);
-    else if (field === 'tradeName') { onTradeNameChange?.(value); }
-    else if (field === 'deviceModel') { onModelReferenceChange?.(value); }
+    else if (field === 'tradeName') onTradeNameChange?.(value);
+    else if (field === 'deviceModel') onModelReferenceChange?.(value);
     setPendingOverride(null);
     setOverrideWarningOpen(false);
   }, [pendingOverride, onProductNameChange, onTradeNameChange, onModelReferenceChange]);
+
+  const setAiLoading = useCallback((fieldKey: SuggestionFieldKey, loading: boolean) => {
+    setAiLoadingStates(prev => {
+      const next = new Set(prev);
+      if (loading) next.add(fieldKey);
+      else next.delete(fieldKey);
+      return next;
+    });
+  }, []);
+
+  const isAiLoading = useCallback((fieldKey: SuggestionFieldKey) => aiLoadingStates.has(fieldKey), [aiLoadingStates]);
+
+  const openAiExplainerDialog = useCallback((fieldKey: SuggestionFieldKey) => {
+    const validation = hasMinimumContext(aiDeviceContext);
+    if (!validation.valid) {
+      toast.error('Please fill in at least a Device Name or Device Category before using AI suggestions.', { duration: 6000 });
+      return;
+    }
+    setExplainerDialogField(fieldKey);
+  }, [aiDeviceContext]);
+
+  const handleAiGenerationConfirm = useCallback(async (additionalInstructions: string = '', outputLanguage: string = 'en') => {
+    if (!explainerDialogField || !company_id) return;
+
+    const fieldKey = explainerDialogField;
+    const config = AI_FIELD_CONFIGS[fieldKey];
+
+    const langSuffix = outputLanguage !== 'en'
+      ? `\nGenerate the response in ${outputLanguage === 'de' ? 'German' : outputLanguage === 'fr' ? 'French' : outputLanguage === 'fi' ? 'Finnish' : 'English'}.`
+      : '';
+    const userRequirements = additionalInstructions ? `${config.requirements}\n${additionalInstructions}${langSuffix}` : `${config.requirements}${langSuffix}`;
+
+    setExplainerDialogField(null);
+    setAiLoading(fieldKey, true);
+
+    const currentValue = fieldKey === 'product_name' ? (productName || '') : fieldKey === 'trade_name' ? (tradeName || '') : (description || '');
+
+    try {
+      const response = await productDefinitionAIService.generateConciseFieldSuggestion(
+        productName || 'Current Medical Device',
+        config.fieldLabel,
+        config.fieldDescription,
+        currentValue,
+        fieldKey,
+        company_id,
+        userRequirements,
+        aiDeviceContext,
+      );
+
+      if (response.success && response.suggestions?.[0]) {
+        setPendingSuggestion({
+          fieldKey,
+          fieldLabel: config.fieldLabel,
+          original: currentValue,
+          suggested: response.suggestions[0].suggestion,
+        });
+      }
+    } catch (error) {
+      console.error('AI suggestion error:', error);
+    } finally {
+      setAiLoading(fieldKey, false);
+    }
+  }, [explainerDialogField, company_id, productName, tradeName, description, aiDeviceContext, setAiLoading]);
+
+  const renderAISparkleButton = useCallback((fieldKey: SuggestionFieldKey) => (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0 hover:bg-transparent"
+            disabled={!company_id || !!isLoading || isAiLoading(fieldKey)}
+            onClick={() => openAiExplainerDialog(fieldKey)}
+          >
+            {isAiLoading(fieldKey) ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 text-amber-500" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{lang('devicePurpose.aiSuggestion')}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ), [company_id, openAiExplainerDialog, isAiLoading, isLoading, lang]);
 
   const renderFieldBadges = (field: string, currentValue: string | undefined) => {
     if (!isFieldLocked(field)) return null;
@@ -246,7 +371,6 @@ export function DefinitionTab({
     return <GovernanceBookmark status={null} />;
   };
 
-  // --- Value-matching helpers for Device Applicability popovers ---
   const getMatchingProductIds = useCallback((fieldKey: string, currentValue: any): string[] | undefined => {
     if (!familyProducts?.length || !productId) return undefined;
     const currentNormalized = JSON.stringify(normalizeScopeValue(fieldKey, currentValue));
@@ -304,12 +428,9 @@ export function DefinitionTab({
 
   const wrapWithOverlay = (_fieldKey: string, children: React.ReactNode) => children;
 
-
   return (
     <div className="space-y-6">
-      {/* === Product Identification Section === */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Registration Number */}
         <div>
           <div className="flex items-center">
             <Label htmlFor="registration-number">Registration Number</Label>
@@ -334,6 +455,7 @@ export function DefinitionTab({
               {lang('deviceBasics.identification.deviceNameLabel')}
               {renderFieldBadges('deviceName', productName)}
             </Label>
+            {renderAISparkleButton('product_name')}
             {renderScopeAndGov('definition_deviceName', true)}
           </div>
           <Input
@@ -346,7 +468,7 @@ export function DefinitionTab({
           />
           <p className="text-xs text-muted-foreground mt-1">{lang('deviceBasics.identification.deviceNameHelper')}</p>
         </div>
-        {/* Device Platform - always visible, moved higher */}
+
         <div>
           <div className="flex items-center">
             <Label className="flex items-center gap-2 text-sm">
@@ -376,6 +498,7 @@ export function DefinitionTab({
               {lang('deviceBasics.identification.tradeNameLabel')}
               {renderFieldBadges('tradeName', tradeName)}
             </Label>
+            {renderAISparkleButton('trade_name')}
             {renderScopeAndGov('definition_tradeName', false, tradeName)}
           </div>
           {wrapWithOverlay('definition_tradeName', (
@@ -392,7 +515,6 @@ export function DefinitionTab({
             </>
           ))}
         </div>
-
 
         <div>
           <div className="flex items-center">
@@ -430,10 +552,10 @@ export function DefinitionTab({
         </div>
       </div>
 
-      {/* === Description === */}
       <div ref={descriptionRef} className={isInGenesisFlow ? `p-3 rounded-lg transition-colors ${description?.trim() ? 'border-2 border-emerald-500 bg-emerald-50/30' : 'border-2 border-amber-400 bg-amber-50/30'}` : ''}>
         <div className="flex items-center gap-2 mb-1">
           <Label htmlFor="description">{lang('deviceBasics.definition.descriptionLabel')}</Label>
+          {renderAISparkleButton('description')}
           {renderScopeAndGov('definition_description', false, description)}
           {isInInvestorFlow && <InvestorVisibleBadge />}
           <Popover>
@@ -464,8 +586,39 @@ export function DefinitionTab({
         ))}
       </div>
 
+      <AIExplainerDialog
+        open={explainerDialogField !== null}
+        onOpenChange={(open) => !open && setExplainerDialogField(null)}
+        onConfirm={handleAiGenerationConfirm}
+        isLoading={explainerDialogField ? isAiLoading(explainerDialogField) : false}
+        fieldName={explainerDialogField ? AI_FIELD_CONFIGS[explainerDialogField].name : ''}
+        fieldDescription={explainerDialogField ? AI_FIELD_CONFIGS[explainerDialogField].description : undefined}
+        productId={productId || ''}
+        companyId={company_id}
+      />
 
-      {/* EUDAMED Override Warning Dialog */}
+      <AISuggestionReviewDialog
+        open={pendingSuggestion !== null}
+        onOpenChange={(open) => !open && setPendingSuggestion(null)}
+        fieldLabel={pendingSuggestion?.fieldLabel || ''}
+        originalContent={pendingSuggestion?.original || ''}
+        suggestedContent={pendingSuggestion?.suggested || ''}
+        onAccept={(content) => {
+          if (pendingSuggestion) {
+            if (pendingSuggestion.fieldKey === 'product_name') {
+              handleLockedFieldChange('deviceName', content, (value) => onProductNameChange?.(value));
+            } else if (pendingSuggestion.fieldKey === 'trade_name') {
+              handleLockedFieldChange('tradeName', content, (value) => onTradeNameChange?.(value));
+            } else {
+              onDescriptionChange?.(content);
+            }
+            onAcceptAISuggestion?.(pendingSuggestion.fieldKey, content);
+          }
+          setPendingSuggestion(null);
+        }}
+        onReject={() => setPendingSuggestion(null)}
+      />
+
       <AlertDialog open={overrideWarningOpen} onOpenChange={setOverrideWarningOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

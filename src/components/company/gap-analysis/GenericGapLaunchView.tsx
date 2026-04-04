@@ -8,6 +8,7 @@ import { ChevronRight, LucideIcon, FileEdit } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { GapAnalysisItem } from '@/types/client';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 
 export interface GenericSectionSubItem {
   letter: string;
@@ -89,6 +90,7 @@ export function GenericGapLaunchView({
   const resolvedBaseUrl = baseUrl || (productId ? `/app/product/${productId}` : `/app/company/${companyName}`);
   const completionMap = getCompletionMap(items);
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
   const resolvedCompanyName = companyName ? decodeURIComponent(companyName) : '';
 
   const totalSteps = sections.reduce((sum, s) => sum + (s.subItems?.length || 1), 0);
@@ -153,7 +155,7 @@ export function GenericGapLaunchView({
                 className="gap-1.5"
               >
                 <FileEdit className="h-4 w-4" />
-                Export to CI
+                Create Document
               </Button>
             )}
             <div className={cn(
@@ -216,20 +218,32 @@ export function GenericGapLaunchView({
 
       {/* Full Gap Analysis Export Dialog */}
       {companyId && resolvedCompanyName && (
-        <SaveContentAsDocCIDialog
-          open={showDocCIDialog}
-          onOpenChange={setShowDocCIDialog}
-          title={`${standardName} Gap Analysis Report`}
-          htmlContent={sections
-            .filter(s => completionMap.get(s.section)?.isComplete)
-            .map(s => `<h2>§${s.section} ${s.title}</h2><p>Status: Compliant</p>`)
-            .join('\n')}
-          templateIdKey={`GAP-${standardTag.replace(/\s+/g, '_')}-FULL-${productId || companyId}`}
-          companyId={companyId}
-          companyName={resolvedCompanyName}
-          productId={productId || undefined}
-          defaultScope={productId ? 'device' : 'enterprise'}
-        />
+        <>
+          <SaveContentAsDocCIDialog
+            open={showDocCIDialog}
+            onOpenChange={setShowDocCIDialog}
+            title={`${standardName} Gap Analysis Report`}
+            htmlContent={sections
+              .filter(s => completionMap.get(s.section)?.isComplete)
+              .map(s => `<h2>§${s.section} ${s.title}</h2><p>Status: Compliant</p>`)
+              .join('\n')}
+            templateIdKey={`GAP-${standardTag.replace(/\s+/g, '_')}-FULL-${productId || companyId}`}
+            companyId={companyId}
+            companyName={resolvedCompanyName}
+            productId={productId || undefined}
+            defaultScope={productId ? 'device' : 'enterprise'}
+            onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+          />
+          <DocumentDraftDrawer
+            open={!!draftDrawerDoc}
+            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+            documentId={draftDrawerDoc?.id || ''}
+            documentName={draftDrawerDoc?.name || ''}
+            documentType={draftDrawerDoc?.type || ''}
+            productId={productId || undefined}
+            companyId={companyId}
+          />
+        </>
       )}
     </div>
   );

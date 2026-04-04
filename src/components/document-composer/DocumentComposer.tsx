@@ -1142,11 +1142,12 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
                       <div className="flex items-center gap-2">
                         <Button
                           variant="outline"
-                          size="sm"
+                          size="icon"
                           onClick={() => setShowNotesModal(true)}
+                          title={lang('draftStudio.notes')}
+                          className="h-8 w-8"
                         >
-                          <MessageSquare className="w-4 h-4 mr-2" />
-                          {lang('draftStudio.notes')}
+                          <MessageSquare className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>

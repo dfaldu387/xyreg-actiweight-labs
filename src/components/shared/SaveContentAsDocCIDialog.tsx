@@ -27,6 +27,7 @@ export interface SaveContentAsDocCIDialogProps {
   companyName: string;
   productId?: string;
   defaultScope?: DocScope;
+  onDocumentCreated?: (docId: string, docName: string, docType: string) => void;
 }
 
 export function SaveContentAsDocCIDialog({
@@ -39,6 +40,7 @@ export function SaveContentAsDocCIDialog({
   companyName,
   productId,
   defaultScope = 'enterprise',
+  onDocumentCreated,
 }: SaveContentAsDocCIDialogProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -122,7 +124,12 @@ export function SaveContentAsDocCIDialog({
       setSavedStudioId(saveResult.id);
       setSavedTemplateId(templateIdKey);
       queryClient.invalidateQueries({ queryKey: ['company-documents', companyId] });
-      toast.success('Document CI created successfully');
+      toast.success('Document created successfully');
+
+      if (onDocumentCreated && syncResult.id) {
+        handleClose();
+        onDocumentCreated(syncResult.id, title, 'Report');
+      }
     } catch (err: any) {
       console.error('Save as Doc CI failed:', err);
       toast.error(`Failed to save: ${err.message || 'Unknown error'}`);
@@ -314,9 +321,9 @@ ${formattedContent}</body></html>`;
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Save as Document CI</DialogTitle>
+          <DialogTitle>Create Document</DialogTitle>
           <DialogDescription>
-            Export "{title}" as a Document CI in Document Studio.
+            Export "{title}" as a document in Document Studio.
           </DialogDescription>
         </DialogHeader>
 
@@ -374,7 +381,7 @@ ${formattedContent}</body></html>`;
               <Button variant="outline" onClick={handleClose}>Cancel</Button>
               <Button onClick={handleSave} disabled={isSaveDisabled}>
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save Document CI
+                Create Document
               </Button>
             </DialogFooter>
           </>

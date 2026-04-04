@@ -42,6 +42,7 @@ interface SaveDescriptionAsDocCIDialogProps {
   
   masterDeviceId: string;
   devices: DeviceOption[];
+  onDocumentCreated?: (docId: string, docName: string, docType: string) => void;
 }
 
 interface PhaseOption {
@@ -59,6 +60,7 @@ export function SaveDescriptionAsDocCIDialog({
   
   masterDeviceId,
   devices,
+  onDocumentCreated,
 }: SaveDescriptionAsDocCIDialogProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -165,15 +167,27 @@ export function SaveDescriptionAsDocCIDialog({
         throw new Error(saveResult.error || 'Failed to save studio template');
       }
 
+      // Sync to Document CI
+      const syncResult = await DocumentStudioPersistenceService.syncToDocumentCI({
+        companyId: resolvedCompanyId,
+        productId,
+        name: docName,
+        documentReference: templateIdKey,
+        documentScope: docScope === 'company' ? 'company_document' : 'product_document',
+      });
+
       setSavedStudioId(saveResult.id);
       setSavedTemplateId(templateIdKey);
-      // Invalidate company-documents cache so the new doc appears immediately on the documents page
       queryClient.invalidateQueries({ queryKey: ['company-documents', resolvedCompanyId] });
-      // Also invalidate with the prop companyId in case it differs
       if (resolvedCompanyId !== companyId) {
         queryClient.invalidateQueries({ queryKey: ['company-documents', companyId] });
       }
-      toast.success('Document saved successfully');
+      toast.success('Document created successfully');
+
+      if (onDocumentCreated && syncResult.success && syncResult.id) {
+        handleClose();
+        onDocumentCreated(syncResult.id, docName, 'Report');
+      }
     } catch (err: any) {
       console.error('Save as Doc CI failed:', err);
       toast.error(`Failed to save: ${err.message || 'Unknown error'}`);
@@ -230,9 +244,9 @@ ${description}</body></html>`;
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Save as Document CI</DialogTitle>
+          <DialogTitle>Create Document</DialogTitle>
           <DialogDescription>
-            Save this family description as a Document Compliance Instance.
+            Save this family description as a document.
           </DialogDescription>
         </DialogHeader>
 
@@ -317,7 +331,7 @@ ${description}</body></html>`;
               </Button>
               <Button onClick={handleSave} disabled={isSaveDisabled}>
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save Document CI
+                Create Document
               </Button>
             </DialogFooter>
           </>

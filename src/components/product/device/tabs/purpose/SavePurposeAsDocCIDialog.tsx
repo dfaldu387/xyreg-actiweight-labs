@@ -50,6 +50,7 @@ interface SavePurposeAsDocCIDialogProps {
   clinicalBenefits?: string[];
   userInstructions?: UserInstructions;
   storageSterilityHandling?: StorageSterilityHandlingData;
+  onDocumentCreated?: (docId: string, docName: string, docType: string) => void;
 }
 
 function buildPurposeHtml(
@@ -179,6 +180,7 @@ export function SavePurposeAsDocCIDialog({
   clinicalBenefits = [],
   userInstructions = {},
   storageSterilityHandling,
+  onDocumentCreated,
 }: SavePurposeAsDocCIDialogProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -274,7 +276,12 @@ export function SavePurposeAsDocCIDialog({
       setSavedStudioId(saveResult.id);
       setSavedTemplateId(templateIdKey);
       queryClient.invalidateQueries({ queryKey: ['company-documents', companyId] });
-      toast.success('Document CI created successfully');
+      toast.success('Document created successfully');
+
+      if (onDocumentCreated && syncResult.id) {
+        handleClose();
+        onDocumentCreated(syncResult.id, docName, 'Report');
+      }
     } catch (err: any) {
       console.error('Save as Doc CI failed:', err);
       toast.error(`Failed to save: ${err.message || 'Unknown error'}`);
@@ -333,9 +340,9 @@ ${htmlContent}</body></html>`;
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Save as Document CI</DialogTitle>
+          <DialogTitle>Create Document</DialogTitle>
           <DialogDescription>
-            Export all Device Purpose & Context data as a Document CI.
+            Export all Device Purpose & Context data as a document.
           </DialogDescription>
         </DialogHeader>
 
@@ -389,7 +396,7 @@ ${htmlContent}</body></html>`;
               <Button variant="outline" onClick={handleClose}>Cancel</Button>
               <Button onClick={handleSave} disabled={isSaveDisabled}>
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Save Document CI
+                Create Document
               </Button>
             </DialogFooter>
           </>

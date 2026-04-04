@@ -14,6 +14,7 @@ import Resizer from './Resizer.jsx';
 import { modeObserver } from '../helpers/modeResizeObserver';
 import storeContext from '../context';
 import { useStore } from '@svar-ui/lib-react';
+import { useSafeStore } from '../helpers/safeUseStore';
 import './Layout.css';
 
 function Layout(props) {
@@ -32,7 +33,7 @@ function Layout(props) {
   const rCellHeight = useStore(api, "cellHeight");
   const rColumns = useStore(api, "columns");
   const scrollTop = useStore(api, "scrollTop");
-  const rScrollTask = useStore(api, "_scrollTask");
+  const rScrollTask = useSafeStore(api, "_scrollTask");
 
   const [compactMode, setCompactMode] = useState(false);
   let [gridWidth, setGridWidth] = useState(0);

@@ -26,6 +26,7 @@ export interface CompanyDocument {
   date?: string | null;
   due_date?: string | null;
   phase_id?: string | null;
+  phase_name?: string | null;
   is_current_effective_version?: boolean;
   brief_summary?: string | null;
   author?: string | null;
@@ -59,12 +60,35 @@ export function useCompanyDocuments(companyId: string) {
         }
 
         // Query phase_assigned_document_template table for company-specific documents
+        // Fetch phase names separately since FK may point to different tables
         const { data: documentsData, error: documentsError } = await supabase
           .from('phase_assigned_document_template')
           .select('*')
           .eq('company_id', companyId)
           .eq('document_scope', 'company_document')
-          .order('name');
+          .order('created_at', { ascending: false });
+
+        // Fetch phase name lookup
+        const phaseIds = [...new Set((documentsData || []).map((d: any) => d.phase_id).filter(Boolean))];
+        let phaseNameMap = new Map<string, string>();
+        if (phaseIds.length > 0) {
+          // Try company_phases first
+          const { data: cpData } = await supabase
+            .from('company_phases')
+            .select('id, name')
+            .in('id', phaseIds);
+          if (cpData) cpData.forEach((p: any) => phaseNameMap.set(p.id, p.name));
+
+          // For any remaining, try phases table
+          const missingIds = phaseIds.filter(id => !phaseNameMap.has(id));
+          if (missingIds.length > 0) {
+            const { data: pData } = await supabase
+              .from('phases')
+              .select('id, name')
+              .in('id', missingIds);
+            if (pData) pData.forEach((p: any) => phaseNameMap.set(p.id, p.name));
+          }
+        }
 
         if (documentsError) throw documentsError;
 
@@ -91,6 +115,7 @@ export function useCompanyDocuments(companyId: string) {
           date: doc.date,
           due_date: doc.due_date,
           phase_id: doc.phase_id || null,
+          phase_name: doc.phase_id ? (phaseNameMap.get(doc.phase_id) || null) : null,
           is_current_effective_version: doc.is_current_effective_version,
           brief_summary: doc.brief_summary,
           author: doc.author,
@@ -111,22 +136,23 @@ export function useCompanyDocuments(companyId: string) {
           .select('*')
           .eq('company_id', companyId)
           .is('product_id', null)
-          .order('name');
+          .order('created_at', { ascending: false });
 
         if (studioError) {
           console.warn('Error fetching document_studio_templates:', studioError);
         }
 
-        // Collect document_reference values from CI docs to deduplicate
-        const ciDocRefs = new Set(
-          mappedDocuments
-            .map(d => d.document_reference)
-            .filter(Boolean)
-        );
+        // Keep all phase_assigned_document_template docs as primary.
+        // Only include studio docs that are NOT a draft of an existing CI doc
+        // (i.e. their template_id doesn't match any CI doc ID).
+        const ciDocIds = new Set(mappedDocuments.map(d => d.id));
+        const studioDocIds = new Set((studioData || []).map((d: any) => d.id));
 
-        // Map studio documents and merge, skipping any already present via DS-{id} reference
+        // Filter out studio docs whose template_id matches either:
+        // 1. A CI doc ID (it's a draft of a CI doc), OR
+        // 2. Another studio doc ID (it's a duplicate/chained draft)
         const studioDocuments: CompanyDocument[] = (studioData || [])
-          .filter((doc: any) => !ciDocRefs.has(`DS-${doc.id}`))
+          .filter((doc: any) => !ciDocIds.has(doc.template_id) && !studioDocIds.has(doc.template_id))
           .map((doc: any) => {
             const meta = doc.metadata as any || {};
             return {

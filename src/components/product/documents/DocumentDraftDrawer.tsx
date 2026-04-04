@@ -375,48 +375,26 @@ export function DocumentDraftDrawer({
             const ext = (fileName || filePath || '').split('.').pop()?.toLowerCase();
             return ext === 'doc' || ext === 'docx';
           })() && (
-            <Box
-              onClick={() => { setShowAdvancedEditor(true); setEditorMounted(true); }}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.5,
-                color: '#1976d2',
-                border: '1px solid #1976d2',
-                borderRadius: '6px',
-                px: 1,
-                py: 0.5,
-                cursor: 'pointer',
-                fontSize: '0.8125rem',
-                fontWeight: 500,
-                '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' }
-              }}
-            >
-              <FileEdit style={{ width: 16, height: 16 }} />
-              Advanced Editor
-            </Box>
+            <Tooltip title="Advanced Editor" arrow>
+              <IconButton
+                onClick={() => { setShowAdvancedEditor(true); setEditorMounted(true); }}
+                size="small"
+                sx={{ color: '#1976d2', border: '1px solid #1976d2', borderRadius: '6px', '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' } }}
+              >
+                <FileEdit style={{ width: 16, height: 16 }} />
+              </IconButton>
+            </Tooltip>
           )}
           {companyId && (
-            <Box
-              onClick={() => setShowSendForReview(true)}
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.5,
-                color: '#1976d2',
-                border: '1px solid #1976d2',
-                borderRadius: '6px',
-                px: 1,
-                py: 0.5,
-                cursor: 'pointer',
-                fontSize: '0.8125rem',
-                fontWeight: 500,
-                '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' }
-              }}
-            >
-              <Send style={{ width: 16, height: 16 }} />
-              Send for Review
-            </Box>
+            <Tooltip title="Send for Review" arrow>
+              <IconButton
+                onClick={() => setShowSendForReview(true)}
+                size="small"
+                sx={{ color: '#1976d2', border: '1px solid #1976d2', borderRadius: '6px', '&:hover': { backgroundColor: 'rgba(25, 118, 210, 0.08)' } }}
+              >
+                <Send style={{ width: 16, height: 16 }} />
+              </IconButton>
+            </Tooltip>
           )}
           <IconButton onClick={() => onOpenChange(false)} size="small">
             <CloseIcon />

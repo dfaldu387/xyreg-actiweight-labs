@@ -10,7 +10,7 @@ interface ActionItem {
   id: string;
   title: string;
   description: string;
-  type: "approval" | "deadline" | "training" | "audit" | "communication";
+  type: "approval" | "deadline" | "training" | "audit" | "communication" | "system";
   priority: "high" | "medium" | "low";
   dueDate?: Date;
   productName?: string;

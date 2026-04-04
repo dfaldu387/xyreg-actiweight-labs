@@ -7868,7 +7868,8 @@ export type Database = {
           due_date: string | null
           id: string
           notes: string | null
-          reviewer_group_id: string
+          reviewer_group_id: string | null
+          reviewer_user_id: string | null
           status: string
           updated_at: string
         }
@@ -7882,7 +7883,8 @@ export type Database = {
           due_date?: string | null
           id?: string
           notes?: string | null
-          reviewer_group_id: string
+          reviewer_group_id?: string | null
+          reviewer_user_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -7896,7 +7898,8 @@ export type Database = {
           due_date?: string | null
           id?: string
           notes?: string | null
-          reviewer_group_id?: string
+          reviewer_group_id?: string | null
+          reviewer_user_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -12405,6 +12408,42 @@ export type Database = {
           },
         ]
       }
+      list_column_preferences: {
+        Row: {
+          column_order: string[] | null
+          company_id: string
+          created_at: string | null
+          hidden_columns: string[] | null
+          id: string
+          module: string
+          product_id: string | null
+          updated_at: string | null
+          view_key: string
+        }
+        Insert: {
+          column_order?: string[] | null
+          company_id: string
+          created_at?: string | null
+          hidden_columns?: string[] | null
+          id?: string
+          module: string
+          product_id?: string | null
+          updated_at?: string | null
+          view_key?: string
+        }
+        Update: {
+          column_order?: string[] | null
+          company_id?: string
+          created_at?: string | null
+          hidden_columns?: string[] | null
+          id?: string
+          module?: string
+          product_id?: string | null
+          updated_at?: string | null
+          view_key?: string
+        }
+        Relationships: []
+      }
       management_review_agenda_items: {
         Row: {
           created_at: string
@@ -13414,6 +13453,134 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "company_dashboard_summary"
             referencedColumns: ["company_id"]
+          },
+        ]
+      }
+      module_group_validations: {
+        Row: {
+          company_id: string
+          conditions: string | null
+          created_at: string | null
+          id: string
+          invalidated_by_core: boolean | null
+          invalidated_service: string | null
+          iq_evidence_doc_ids: string[] | null
+          iq_evidence_notes: string | null
+          iq_reasoning: string | null
+          iq_signatures: Json | null
+          iq_test_environment: Json | null
+          iq_test_step_results: Json | null
+          iq_verdict: string | null
+          module_group_id: string
+          oq_deviations_noted: string | null
+          oq_evidence_doc_ids: string[] | null
+          oq_reasoning: string | null
+          oq_risk_accepted: boolean | null
+          oq_risk_rationale: string | null
+          oq_signatures: Json | null
+          oq_test_environment: Json | null
+          oq_test_step_results: Json | null
+          oq_verdict: string | null
+          overall_rationale: string | null
+          overall_verdict: string | null
+          pq_evidence_doc_ids: string[] | null
+          pq_evidence_notes: string | null
+          pq_reasoning: string | null
+          pq_signatures: Json | null
+          pq_test_environment: Json | null
+          pq_test_step_results: Json | null
+          pq_verdict: string | null
+          release_id: string | null
+          release_version: string | null
+          updated_at: string | null
+          validated_at: string | null
+          validated_by: string | null
+        }
+        Insert: {
+          company_id: string
+          conditions?: string | null
+          created_at?: string | null
+          id?: string
+          invalidated_by_core?: boolean | null
+          invalidated_service?: string | null
+          iq_evidence_doc_ids?: string[] | null
+          iq_evidence_notes?: string | null
+          iq_reasoning?: string | null
+          iq_signatures?: Json | null
+          iq_test_environment?: Json | null
+          iq_test_step_results?: Json | null
+          iq_verdict?: string | null
+          module_group_id: string
+          oq_deviations_noted?: string | null
+          oq_evidence_doc_ids?: string[] | null
+          oq_reasoning?: string | null
+          oq_risk_accepted?: boolean | null
+          oq_risk_rationale?: string | null
+          oq_signatures?: Json | null
+          oq_test_environment?: Json | null
+          oq_test_step_results?: Json | null
+          oq_verdict?: string | null
+          overall_rationale?: string | null
+          overall_verdict?: string | null
+          pq_evidence_doc_ids?: string[] | null
+          pq_evidence_notes?: string | null
+          pq_reasoning?: string | null
+          pq_signatures?: Json | null
+          pq_test_environment?: Json | null
+          pq_test_step_results?: Json | null
+          pq_verdict?: string | null
+          release_id?: string | null
+          release_version?: string | null
+          updated_at?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+        }
+        Update: {
+          company_id?: string
+          conditions?: string | null
+          created_at?: string | null
+          id?: string
+          invalidated_by_core?: boolean | null
+          invalidated_service?: string | null
+          iq_evidence_doc_ids?: string[] | null
+          iq_evidence_notes?: string | null
+          iq_reasoning?: string | null
+          iq_signatures?: Json | null
+          iq_test_environment?: Json | null
+          iq_test_step_results?: Json | null
+          iq_verdict?: string | null
+          module_group_id?: string
+          oq_deviations_noted?: string | null
+          oq_evidence_doc_ids?: string[] | null
+          oq_reasoning?: string | null
+          oq_risk_accepted?: boolean | null
+          oq_risk_rationale?: string | null
+          oq_signatures?: Json | null
+          oq_test_environment?: Json | null
+          oq_test_step_results?: Json | null
+          oq_verdict?: string | null
+          overall_rationale?: string | null
+          overall_verdict?: string | null
+          pq_evidence_doc_ids?: string[] | null
+          pq_evidence_notes?: string | null
+          pq_reasoning?: string | null
+          pq_signatures?: Json | null
+          pq_test_environment?: Json | null
+          pq_test_step_results?: Json | null
+          pq_verdict?: string | null
+          release_id?: string | null
+          release_version?: string | null
+          updated_at?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "module_group_validations_release_id_fkey"
+            columns: ["release_id"]
+            isOneToOne: false
+            referencedRelation: "xyreg_releases"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -14667,6 +14834,9 @@ export type Database = {
           approval_date: string | null
           approval_note: string | null
           approved_by: string | null
+          approver_due_date: string | null
+          approver_group_ids: string[] | null
+          approver_user_ids: string[] | null
           author: string | null
           authors_ids: Json | null
           brief_summary: string | null
@@ -14706,6 +14876,7 @@ export type Database = {
           reference_document_ids: string[] | null
           reviewer_group_id: string | null
           reviewer_group_ids: string[] | null
+          reviewer_user_ids: string[] | null
           reviewers: Json | null
           section_ids: string[] | null
           start_date: string | null
@@ -14722,6 +14893,9 @@ export type Database = {
           approval_date?: string | null
           approval_note?: string | null
           approved_by?: string | null
+          approver_due_date?: string | null
+          approver_group_ids?: string[] | null
+          approver_user_ids?: string[] | null
           author?: string | null
           authors_ids?: Json | null
           brief_summary?: string | null
@@ -14761,6 +14935,7 @@ export type Database = {
           reference_document_ids?: string[] | null
           reviewer_group_id?: string | null
           reviewer_group_ids?: string[] | null
+          reviewer_user_ids?: string[] | null
           reviewers?: Json | null
           section_ids?: string[] | null
           start_date?: string | null
@@ -14777,6 +14952,9 @@ export type Database = {
           approval_date?: string | null
           approval_note?: string | null
           approved_by?: string | null
+          approver_due_date?: string | null
+          approver_group_ids?: string[] | null
+          approver_user_ids?: string[] | null
           author?: string | null
           authors_ids?: Json | null
           brief_summary?: string | null
@@ -14816,6 +14994,7 @@ export type Database = {
           reference_document_ids?: string[] | null
           reviewer_group_id?: string | null
           reviewer_group_ids?: string[] | null
+          reviewer_user_ids?: string[] | null
           reviewers?: Json | null
           section_ids?: string[] | null
           start_date?: string | null

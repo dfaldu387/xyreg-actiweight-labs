@@ -9,6 +9,7 @@ import { useOnboardingTour } from '@/context/OnboardingTourContext';
 import { platformGuideModule } from './moduleContent/platformGuideModule';
 import { ComplianceModeToggle } from './ComplianceModeToggle';
 import { HelpHintsToggle } from './HelpHintsToggle';
+import { AdvisoryBoardToggle } from './AdvisoryBoardToggle';
 
 export function HelpButton() {
   const { lang } = useTranslation();
@@ -80,7 +81,7 @@ export function HelpButton() {
     }
     return isMobile 
       ? "fixed bottom-4 right-4 z-40" 
-      : "fixed bottom-20 right-6 z-40";
+      : "fixed bottom-[9rem] right-6 z-40";
   };
 
   if (isCollapsed) {
@@ -143,6 +144,7 @@ export function HelpButton() {
         <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col gap-1">
           <HelpHintsToggle />
           <ComplianceModeToggle />
+          <AdvisoryBoardToggle />
         </div>
         <Button
           variant="outline"

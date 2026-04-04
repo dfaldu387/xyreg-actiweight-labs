@@ -916,6 +916,16 @@
       "noResults": "Keine Ergebnisse gefunden"
     },
     "relatedTopics": "Verwandte Themen",
+    "versionHistory": {
+      "title": "Versionshistorie",
+      "loading": "Versionen werden geladen...",
+      "empty": "Noch keine veröffentlichten Versionen",
+      "current": "Aktuell",
+      "currentVersion": "Aktuelle Version",
+      "startValidation": "Validierung starten",
+      "showMore": "Mehr anzeigen",
+      "showLess": "Weniger anzeigen"
+    },
     "genesisIntro": {
       "whyInvestors": {
         "title": "Warum Investoren diese Informationen benötigen",
@@ -1873,7 +1883,8 @@
       "tabs": {
         "context": "Kontext",
         "guide": "Anleitung",
-        "reference": "Referenz"
+        "reference": "Referenz",
+        "versions": "Versionen"
       },
       "title": "Hilfe & Anleitung",
       "helpHints": {

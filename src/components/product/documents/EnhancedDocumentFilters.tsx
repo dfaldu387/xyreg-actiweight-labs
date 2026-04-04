@@ -19,6 +19,7 @@ import {
   SortByDateOption,
   VALID_STATUS_OPTIONS,
   SORT_OPTIONS_GROUPED,
+  SORT_OPTION_LABELS,
 } from "@/utils/documentFilterParams";
 
 // Re-export for backwards compatibility
@@ -152,7 +153,7 @@ export function EnhancedDocumentFilters({
     { key: 'section' as FilterCategory, label: 'Section', available: !!onSectionFilterChange && availableSections.length > 0 },
     { key: 'tag' as FilterCategory, label: 'Tag', available: !!onTagFilterChange && availableTags.length > 0 },
     { key: 'refTag' as FilterCategory, label: 'Ref Doc Tag', available: !!onRefTagFilterChange && availableRefTags.length > 0 },
-    { key: 'sort' as FilterCategory, label: 'Sort by date', available: !!onSortByDateChange },
+    { key: 'sort' as FilterCategory, label: 'Sort by', available: !!onSortByDateChange },
   ].filter(cat => cat.available);
 
   const getActiveFilterChips = () => {
@@ -269,19 +270,10 @@ export function EnhancedDocumentFilters({
 
     // Sort filter
     if (sortByDate !== 'none' && onSortByDateChange) {
-      const sortLabels: Record<SortByDateOption, string> = {
-        'none': '',
-        'updated_newest': 'Updated (Newest)',
-        'updated_oldest': 'Updated (Oldest)',
-        'due_newest': 'Due Date (Newest)',
-        'due_oldest': 'Due Date (Oldest)',
-        'approval_newest': 'Approval (Newest)',
-        'approval_oldest': 'Approval (Oldest)',
-      };
       chips.push({
         key: 'sort',
-        label: 'Sort',
-        value: sortLabels[sortByDate],
+        label: 'Sort by',
+        value: SORT_OPTION_LABELS[sortByDate] || sortByDate,
         onRemove: () => onSortByDateChange('none')
       });
     }
@@ -335,9 +327,23 @@ export function EnhancedDocumentFilters({
   );
 
   // Use imported sort options from utility, optionally filtered
-  const sortOptions = availableSortOptions
+  // Transform grouped options into a flat list with group header entries (value=null)
+  const rawSortOptions = availableSortOptions
     ? SORT_OPTIONS_GROUPED.filter(o => o.value === 'none' || availableSortOptions.includes(o.value as SortByDateOption))
     : SORT_OPTIONS_GROUPED;
+
+  const sortOptions = (() => {
+    const result: Array<{ value: string | null; label: string; group?: string }> = [];
+    let lastGroup: string | undefined;
+    rawSortOptions.forEach(option => {
+      if (option.group && option.group !== lastGroup) {
+        result.push({ value: null, label: option.group });
+        lastGroup = option.group;
+      }
+      result.push(option);
+    });
+    return result;
+  })();
 
   const filteredCategories = filterCategories.filter(cat =>
     cat.label.toLowerCase().includes(categorySearch.toLowerCase())

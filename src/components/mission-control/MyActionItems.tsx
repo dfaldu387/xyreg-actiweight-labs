@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Clock, FileCheck, AlertTriangle, Search, GraduationCap, Shield, Calendar, MessageSquare, CheckCircle2 } from "lucide-react";
+import { Clock, FileCheck, AlertTriangle, Search, GraduationCap, Shield, Calendar, MessageSquare, CheckCircle2, ArrowUpCircle } from "lucide-react";
 import { useMissionControlData } from "@/hooks/useMissionControlData";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -50,7 +50,7 @@ export interface ActionItem {
   id: string;
   title: string;
   description: string;
-  type: "approval" | "deadline" | "training" | "audit" | "communication";
+  type: "approval" | "deadline" | "training" | "audit" | "communication" | "system";
   priority: "high" | "medium" | "low";
   dueDate?: Date;
   productName?: string;
@@ -83,22 +83,34 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
     // Start with non-communication action items only (avoid duplicates from useMissionControlData)
     const items = (actionItems || []).filter(i => i.type !== 'communication');
 
-    // Add each communication notification as its own action item (same as NotificationBell)
+    // Add each communication and system notification as its own action item
     const existingIds = new Set(items.map(i => i.id));
     (appNotifications || []).forEach((notif) => {
-      if (notif.category !== 'communication') return;
+      if (notif.category !== 'communication' && notif.category !== 'system') return;
       const itemId = `app-notif-${notif.id}`;
       if (existingIds.has(itemId)) return;
 
-      items.push({
-        id: itemId,
-        title: notif.title,
-        description: notif.message || 'New message',
-        type: 'communication',
-        priority: 'medium',
-        dueDate: notif.created_at ? parseUTCTimestamp(notif.created_at) : undefined,
-        threadId: notif.entity_type === 'communication_thread' ? notif.entity_id : undefined,
-      });
+      if (notif.category === 'communication') {
+        items.push({
+          id: itemId,
+          title: notif.title,
+          description: notif.message || 'New message',
+          type: 'communication',
+          priority: 'medium',
+          dueDate: notif.created_at ? parseUTCTimestamp(notif.created_at) : undefined,
+          threadId: notif.entity_type === 'communication_thread' ? notif.entity_id : undefined,
+        });
+      } else if (notif.category === 'system') {
+        items.push({
+          id: itemId,
+          title: notif.title,
+          description: notif.message || '',
+          type: 'system' as const,
+          priority: 'high',
+          dueDate: notif.created_at ? parseUTCTimestamp(notif.created_at) : undefined,
+          url: notif.action_url || undefined,
+        });
+      }
     });
 
     return items;
@@ -261,6 +273,13 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
       return;
     }
 
+    // System notifications (e.g., new release) → navigate to infrastructure
+    if (item.type === "system" && currentCompanyName) {
+      const url = item.url || `/app/company/${encodeURIComponent(currentCompanyName)}/infrastructure`;
+      navigate(url);
+      return;
+    }
+
     // Review items → navigate to review page with scroll+highlight+autoopen
     if (item.type === "approval" && currentCompanyName) {
       const docId = item.id
@@ -289,6 +308,7 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
       case "training": return <GraduationCap className="h-3.5 w-3.5" />;
       case "audit": return <Shield className="h-3.5 w-3.5" />;
       case "communication": return <MessageSquare className="h-3.5 w-3.5" />;
+      case "system": return <ArrowUpCircle className="h-3.5 w-3.5" />;
       default: return <AlertTriangle className="h-3.5 w-3.5" />;
     }
   };
@@ -397,7 +417,7 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className={`font-medium text-sm ${isDone ? 'line-through text-muted-foreground' : ''}`}>{item.title}</h4>
-                        <p className="text-xs text-muted-foreground mt-0.5">{item.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2 max-w-[600px]">{item.description}</p>
                         <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground/70">
                           {item.dueDate && (
                             <span>{formatTimeAgo(item.dueDate)}</span>

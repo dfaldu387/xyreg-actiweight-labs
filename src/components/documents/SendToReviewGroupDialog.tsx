@@ -20,6 +20,9 @@ import { toast } from 'sonner';
 import { Send, Users, Calendar } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { AppNotificationService } from '@/services/appNotificationService';
+import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
+import { DocumentExportService } from '@/services/documentExportService';
+import type { DocumentTemplate, DocumentSection, ProductContext, DocumentControl, RevisionHistory, AssociatedDocument } from '@/types/documentComposer';
 
 const appNotificationService = new AppNotificationService();
 
@@ -67,6 +70,128 @@ export function SendToReviewGroupDialog({
     try {
       // Strip 'template-' prefix for DB operations (columns are UUID type)
       const cleanDocumentId = documentId.replace(/^template-/, '');
+
+      // 0. Export draft to .docx and upload (if a draft exists)
+      try {
+        // Find draft by company_id + template_id only (not productId),
+        // because documents can be shared across products
+        const { data: draftRow, error: draftError } = await supabase
+          .from('document_studio_templates')
+          .select('*')
+          .eq('company_id', companyId)
+          .eq('template_id', cleanDocumentId)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+
+        const draftData = draftRow && Array.isArray(draftRow.sections) && draftRow.sections.length > 0
+          ? {
+              ...draftRow,
+              sections: draftRow.sections,
+              product_context: draftRow.product_context || undefined,
+              document_control: draftRow.document_control || undefined,
+              revision_history: Array.isArray(draftRow.revision_history) ? draftRow.revision_history : [],
+              associated_documents: Array.isArray(draftRow.associated_documents) ? draftRow.associated_documents : [],
+              metadata: draftRow.metadata || {},
+            }
+          : null;
+
+        if (!draftData) {
+          // No draft — check if there's already a file attached
+          const { data: existingDoc } = await supabase
+            .from('phase_assigned_document_template')
+            .select('file_path')
+            .eq('id', cleanDocumentId)
+            .single();
+
+          if (!existingDoc?.file_path) {
+            toast.error('This document has not been drafted yet. Please create the draft in Document Studio before sending for review.');
+            setIsSending(false);
+            return;
+          }
+        }
+
+        if (draftData) {
+          // Convert to DocumentTemplate
+          const template: DocumentTemplate = {
+            id: draftData.template_id,
+            name: draftData.name,
+            type: draftData.type,
+            sections: draftData.sections as unknown as DocumentSection[],
+            productContext: (draftData.product_context || { productName: '', productType: '' }) as unknown as ProductContext,
+            documentControl: draftData.document_control as unknown as DocumentControl,
+            revisionHistory: (draftData.revision_history || []) as unknown as RevisionHistory[],
+            associatedDocuments: (draftData.associated_documents || []) as unknown as AssociatedDocument[],
+            metadata: (draftData.metadata || {
+              version: '1.0',
+              lastUpdated: new Date(),
+              estimatedCompletionTime: '',
+            }) as unknown as DocumentTemplate['metadata'],
+          };
+
+          // Generate .docx blob
+          const docxBlob = await DocumentExportService.generateDocxBlob(template);
+
+          // Upload to Supabase storage
+          const timestamp = Date.now();
+          const storagePath = `${companyId}/${cleanDocumentId}/review-draft-${timestamp}.docx`;
+          const fileName = `${draftData.name || documentName}.docx`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('document-templates')
+            .upload(storagePath, docxBlob, {
+              contentType:
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error('Failed to upload draft .docx:', uploadError);
+            throw new Error(`Failed to upload draft document: ${uploadError.message}`);
+          }
+
+          // Update file info on the document record
+          const { error: fileUpdateError } = await supabase
+            .from('phase_assigned_document_template')
+            .update({
+              file_path: storagePath,
+              file_name: fileName,
+              file_size: docxBlob.size,
+              file_type:
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            })
+            .eq('id', cleanDocumentId);
+
+          if (fileUpdateError) {
+            console.error('Failed to update document file info:', fileUpdateError);
+            throw new Error(`Failed to update document file info: ${fileUpdateError.message}`);
+          }
+
+          // Invalidate OnlyOffice editor cache by replacing the editor session key.
+          // OnlyOffice caches documents by key — same key = same cached file, even if the URL changed.
+          // Delete old session then insert new one (no unique constraint on document_id, so upsert won't work).
+          const newEditorKey = `collab-${cleanDocumentId}-v${timestamp}`;
+          await supabase
+            .from('document_editor_sessions')
+            .delete()
+            .eq('document_id', cleanDocumentId);
+          await supabase
+            .from('document_editor_sessions')
+            .insert({
+              document_id: cleanDocumentId,
+              editor_key: newEditorKey,
+              version: timestamp,
+            });
+
+          console.log('Draft exported and uploaded:', storagePath);
+        }
+      } catch (exportErr) {
+        console.error('Draft export failed:', exportErr);
+        toast.error('Failed to export draft document. Review was not sent.');
+        setIsSending(false);
+        return;
+      }
 
       // 1. Update reviewer_group_ids on the document
       const allGroupIds = [...new Set([...existingGroupIds, ...selectedGroupIds])];

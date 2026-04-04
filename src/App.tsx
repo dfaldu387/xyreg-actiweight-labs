@@ -25,6 +25,7 @@ import { MissionControlRedirect } from "@/components/mission-control/MissionCont
 
 // Lazy load heavy components
 const MissionControlDashboard = lazy(() => import("@/pages/MissionControlDashboard"));
+const AdvisoryBoard = lazy(() => import("@/pages/AdvisoryBoard"));
 const SingleCompanyDashboard = lazy(() => import("@/components/mission-control/SingleCompanyDashboard").then(m => ({ default: m.SingleCompanyDashboard })));
 const Archives = lazy(() => import("@/pages/Archives"));
 const SupplierDetailPage = lazy(() => import("@/pages/SupplierDetailPage"));
@@ -545,6 +546,17 @@ function App() {
                   <MissionControlRedirect />
                 </ErrorBoundary>
               } />
+              {/* Advisory Board */}
+              <Route path="company/:companyName/advisory-board" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary level="component">
+                    <CompanyRouteGuard>
+                      <AdvisoryBoard />
+                    </CompanyRouteGuard>
+                  </ErrorBoundary>
+                </Suspense>
+              } />
+
               {/* User x Product Matrix */}
               <Route path="company/:companyName/user-product-matrix" element={
                 <Suspense fallback={<PageLoader />}>

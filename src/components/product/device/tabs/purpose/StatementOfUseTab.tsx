@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { InvestorVisibleBadge } from '@/components/ui/investor-visible-badge';
 import { useInvestorFlow } from '@/hooks/useInvestorFlow';
 import { cn } from '@/lib/utils';
+import { AISuggestionReviewDialog } from '@/components/product/ai-assistant/AISuggestionReviewDialog';
 import { useTranslation } from '@/hooks/useTranslation';
 import { ContextWarningToast, getMissingFieldsWithNavigation, getContextSources } from '../../ai-assistant/ContextWarningToast';
 import { InheritanceExclusionPopover } from '@/components/shared/InheritanceExclusionPopover';
@@ -51,10 +52,6 @@ const AI_FIELD_CONFIGS = {
     name: 'Clinical Benefits',
     description: 'List the key clinical benefits or outcomes that the device provides.'
   },
-  essential_performance: {
-    name: 'Essential Performance',
-    description: 'Identify clinical functions that, if lost or degraded beyond limits, would result in unacceptable risk per IEC 60601-1 §1.2.'
-  }
 };
 
 interface IntendedPurposeData {
@@ -63,7 +60,7 @@ interface IntendedPurposeData {
   modeOfAction?: string;
   valueProposition?: string;
   intended_use_category?: string;
-  essentialPerformance?: string[];
+  
 }
 
 interface StatementOfUseTabProps {
@@ -152,9 +149,16 @@ export function StatementOfUseTab({
   const [aiLoadingStates, setAiLoadingStates] = useState<Set<string>>(new Set());
   const [activeAiButton, setActiveAiButton] = useState<string | null>(null);
   const [explainerDialogField, setExplainerDialogField] = useState<keyof typeof AI_FIELD_CONFIGS | null>(null);
-  const [epSuggestions, setEpSuggestions] = useState<string[]>([]);
-  const [selectedEpSuggestions, setSelectedEpSuggestions] = useState<Set<number>>(new Set());
-  const [epSuggestDialogOpen, setEpSuggestDialogOpen] = useState(false);
+  const [cbSuggestions, setCbSuggestions] = useState<string[]>([]);
+  const [selectedCbSuggestions, setSelectedCbSuggestions] = useState<Set<number>>(new Set());
+  const [cbSuggestDialogOpen, setCbSuggestDialogOpen] = useState(false);
+  const [pendingSuggestion, setPendingSuggestion] = useState<{
+    fieldKey: string;
+    localKey: keyof IntendedPurposeData;
+    fieldLabel: string;
+    original: string;
+    suggested: string;
+  } | null>(null);
   const debouncedUpdateRef = useRef<Map<string, ReturnType<typeof debounce>>>(new Map());
   const isInternalUpdateRef = useRef(false);
   
@@ -417,7 +421,12 @@ export function StatementOfUseTab({
   };
 
   // Handler for AI generation after user confirms in the dialog
-  const handleAiGenerationConfirm = async () => {
+  const handleAiGenerationConfirm = async (additionalInstructions: string = '', outputLanguage: string = 'en') => {
+    // Build language suffix if non-English
+    const langSuffix = outputLanguage !== 'en'
+      ? `\nGenerate the response in ${outputLanguage === 'de' ? 'German' : outputLanguage === 'fr' ? 'French' : outputLanguage === 'fi' ? 'Finnish' : 'English'}.`
+      : '';
+    const userRequirements = additionalInstructions ? `${additionalInstructions}${langSuffix}` : (langSuffix || undefined);
     if (!explainerDialogField || !onAcceptAISuggestion || !companyId) return;
 
     const fieldKey = explainerDialogField;
@@ -455,31 +464,7 @@ export function StatementOfUseTab({
           '',
           fieldKey,
           companyId,
-          'Provide 1 specific clinical benefit. Use clear, medical terminology. Focus on patient outcomes With maximum 5-8 words. (don\'t use *, "", :, etc.)',
-          deviceContext
-        );
-
-        if (response.success && response.suggestions?.[0]) {
-          const suggestion = response.suggestions[0].suggestion;
-          const trimmedValue = suggestion
-            .replace(/^[\d\s•*\-\.:]+\s*/, '')
-            .replace(/["']/g, '')
-            .replace(/[^\w\s\-]/g, '')
-            .trim();
-
-          if (trimmedValue) {
-            setNewBenefit(trimmedValue);
-          }
-        }
-    } else if (fieldKey === 'essential_performance') {
-        const response = await productDefinitionAIService.generateConciseFieldSuggestion(
-          productName || 'Current Medical Device',
-          fieldConfig.name,
-          fieldConfig.description,
-          '',
-          fieldKey,
-          companyId,
-          'Provide 3 to 5 specific essential performance features for this medical device per IEC 60601-1, one per line. Use clear, concise medical/engineering terminology, maximum 5-8 words each. Focus on clinical functions whose loss would cause unacceptable risk. Return ONLY the list, one feature per line, no numbering, no bullets, no extra text.',
+          `Provide 3 to 5 specific clinical benefits for this medical device, one per line. Use clear, concise medical terminology, maximum 5-8 words each. Focus on patient outcomes and clinical value. Return ONLY the list, one benefit per line, no numbering, no bullets, no extra text.${userRequirements ? '\n' + userRequirements : ''}`,
           deviceContext
         );
 
@@ -491,14 +476,14 @@ export function StatementOfUseTab({
             .filter(line => line.length > 2);
 
           if (items.length > 0) {
-            const existing = localData.essentialPerformance || [];
-            const filtered = items.filter(item => !existing.some(ep => ep.toLowerCase() === item.toLowerCase()));
+            const existing = clinicalBenefits || [];
+            const filtered = items.filter(item => !existing.some(cb => cb.toLowerCase() === item.toLowerCase()));
             if (filtered.length > 0) {
-              setEpSuggestions(filtered);
-              setSelectedEpSuggestions(new Set(filtered.map((_, i) => i)));
-              setEpSuggestDialogOpen(true);
+              setCbSuggestions(filtered);
+              setSelectedCbSuggestions(new Set(filtered.map((_, i) => i)));
+              setCbSuggestDialogOpen(true);
             } else {
-              toast.info('All suggested features are already in your list.');
+              toast.info('All suggested benefits are already in your list.');
             }
           }
         }
@@ -510,16 +495,22 @@ export function StatementOfUseTab({
           fieldInfo.value,
           fieldKey,
           companyId,
-          undefined,
+          userRequirements,
           deviceContext
         );
 
         if (response.success && response.suggestions?.[0]) {
           const suggestion = response.suggestions[0].suggestion;
           if (fieldInfo.localKey !== 'clinical_benefits') {
-            handleTextFieldChange(fieldInfo.localKey, suggestion);
+            // Show review dialog instead of auto-applying
+            setPendingSuggestion({
+              fieldKey,
+              localKey: fieldInfo.localKey,
+              fieldLabel: fieldConfig.name,
+              original: fieldInfo.value,
+              suggested: suggestion,
+            });
           }
-          onAcceptAISuggestion(fieldKey, suggestion);
         }
       }
     } catch (error) {
@@ -983,22 +974,6 @@ export function StatementOfUseTab({
           </div>
         </div>
         <>
-          <div className="flex flex-wrap gap-2">
-            {clinicalBenefits.map((benefit, index) => (
-              <Badge key={index} variant="secondary" className="flex items-center gap-2 min-h-[2rem] bg-green-100 border-green-300 text-green-900">
-                {benefit}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-4 w-4 hover:bg-green-200"
-                  onClick={() => handleRemoveBenefit(index)}
-                  disabled={isLoading}
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </Badge>
-            ))}
-          </div>
           <div className="flex gap-2">
             <Input
               placeholder={lang('devicePurpose.safety.addBenefit')}
@@ -1020,175 +995,97 @@ export function StatementOfUseTab({
               <Plus className="h-4 w-4" />
             </Button>
           </div>
+          {clinicalBenefits.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">No clinical benefits defined yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {clinicalBenefits.map((benefit, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-5 flex-shrink-0">{index + 1}.</span>
+                  <Input
+                    value={benefit}
+                    placeholder="e.g. Improved diagnostic accuracy"
+                    disabled={disabled || isLoading}
+                    onChange={(e) => {
+                      const updated = [...clinicalBenefits];
+                      updated[index] = e.target.value;
+                      onClinicalBenefitsChange?.(updated);
+                    }}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 flex-shrink-0"
+                    disabled={disabled || isLoading}
+                    onClick={() => handleRemoveBenefit(index)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       </div>
 
-      {/* Essential Performance Features */}
-      <div className="space-y-3 pt-4 border-t">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            <Label className="text-sm font-medium">Essential Performance Features</Label>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="w-80">Clinical functions that, if lost or degraded beyond specified limits, would result in unacceptable risk. Per IEC 60601-1 §1.2.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
-              <InheritanceExclusionPopover
-                companyId={companyId}
-                currentProductId={productId}
-                itemId="essentialPerformance"
-                exclusionScope={fieldExclusion.getExclusionScope('essentialPerformance')}
-                onScopeChange={createValueMatchScopeChange('essentialPerformance', intendedPurposeData?.essentialPerformance)}
-                defaultCurrentDeviceOnly
-                familyProductIds={familyProductIds}
-                summaryText={getMatchSummary('essentialPerformance', intendedPurposeData?.essentialPerformance)}
-                valueMatchingProductIds={getMatchingProductIds('essentialPerformance', intendedPurposeData?.essentialPerformance)}
-              />
-            ) : null}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="hover:bg-transparent"
-                    disabled={isAiLoading('essential_performance') || isAiButtonDisabled('essential_performance') || !companyId}
-                    onClick={() => openAiExplainerDialog('essential_performance')}
-                  >
-                    {isAiLoading('essential_performance') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Suggest Essential Performance features</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={disabled || isLoading}
-            onClick={() => {
-              const current = localData.essentialPerformance || [];
-              const updated = { ...localData, essentialPerformance: [...current, ''] };
-              setLocalData(updated);
-              isInternalUpdateRef.current = true;
-              lastInternalUpdateRef.current = Date.now();
-              onIntendedPurposeDataChange?.(updated);
-            }}
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Add
-          </Button>
-        </div>
-        {(localData.essentialPerformance || []).length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No essential performance features defined yet.</p>
-        ) : (
-          <div className="space-y-2">
-            {(localData.essentialPerformance || []).map((ep, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground w-5 flex-shrink-0">{idx + 1}.</span>
-                <Input
-                  value={ep}
-                  placeholder="e.g. Accuracy of Resistance Measurement"
-                  disabled={disabled || isLoading}
-                  onChange={(e) => {
-                    const updated = [...(localData.essentialPerformance || [])];
-                    updated[idx] = e.target.value;
-                    const newData = { ...localData, essentialPerformance: updated };
-                    setLocalData(newData);
-                    isInternalUpdateRef.current = true;
-                    lastInternalUpdateRef.current = Date.now();
-                    onIntendedPurposeDataChange?.(newData);
-                  }}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 flex-shrink-0"
-                  disabled={disabled || isLoading}
-                  onClick={() => {
-                    const updated = (localData.essentialPerformance || []).filter((_, i) => i !== idx);
-                    const newData = { ...localData, essentialPerformance: updated };
-                    setLocalData(newData);
-                    isInternalUpdateRef.current = true;
-                    lastInternalUpdateRef.current = Date.now();
-                    onIntendedPurposeDataChange?.(newData);
-                  }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      {/* EP Multi-Select Suggestions Dialog */}
-      <Dialog open={epSuggestDialogOpen} onOpenChange={setEpSuggestDialogOpen}>
+      {/* Clinical Benefits Multi-Select Suggestions Dialog */}
+      <Dialog open={cbSuggestDialogOpen} onOpenChange={setCbSuggestDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-amber-500" />
-              AI Suggested EP Features
+              AI Suggested Clinical Benefits
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="flex items-center gap-2 pb-2 border-b">
               <Checkbox
-                id="ep-select-all"
-                checked={selectedEpSuggestions.size === epSuggestions.length && epSuggestions.length > 0}
+                id="cb-select-all"
+                checked={selectedCbSuggestions.size === cbSuggestions.length && cbSuggestions.length > 0}
                 onCheckedChange={(checked) => {
                   if (checked) {
-                    setSelectedEpSuggestions(new Set(epSuggestions.map((_, i) => i)));
+                    setSelectedCbSuggestions(new Set(cbSuggestions.map((_, i) => i)));
                   } else {
-                    setSelectedEpSuggestions(new Set());
+                    setSelectedCbSuggestions(new Set());
                   }
                 }}
               />
-              <Label htmlFor="ep-select-all" className="text-sm font-medium cursor-pointer">
+              <Label htmlFor="cb-select-all" className="text-sm font-medium cursor-pointer">
                 Select All
               </Label>
             </div>
-            {epSuggestions.map((suggestion, index) => (
+            {cbSuggestions.map((suggestion, index) => (
               <div key={index} className="flex items-start gap-2">
                 <Checkbox
-                  id={`ep-suggestion-${index}`}
-                  checked={selectedEpSuggestions.has(index)}
+                  id={`cb-suggestion-${index}`}
+                  checked={selectedCbSuggestions.has(index)}
                   onCheckedChange={(checked) => {
-                    setSelectedEpSuggestions(prev => {
+                    setSelectedCbSuggestions(prev => {
                       const next = new Set(prev);
                       if (checked) { next.add(index); } else { next.delete(index); }
                       return next;
                     });
                   }}
                 />
-                <Label htmlFor={`ep-suggestion-${index}`} className="text-sm cursor-pointer leading-snug">
+                <Label htmlFor={`cb-suggestion-${index}`} className="text-sm cursor-pointer leading-snug">
                   {suggestion}
                 </Label>
               </div>
             ))}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setEpSuggestDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCbSuggestDialogOpen(false)}>Cancel</Button>
             <Button
-              disabled={selectedEpSuggestions.size === 0}
+              disabled={selectedCbSuggestions.size === 0}
               onClick={() => {
-                const selected = epSuggestions.filter((_, i) => selectedEpSuggestions.has(i));
-                const current = localData.essentialPerformance || [];
-                const newData = { ...localData, essentialPerformance: [...current, ...selected] };
-                setLocalData(newData);
-                isInternalUpdateRef.current = true;
-                lastInternalUpdateRef.current = Date.now();
-                onIntendedPurposeDataChange?.(newData);
-                setEpSuggestDialogOpen(false);
-                toast.success(`Added ${selected.length} essential performance feature${selected.length > 1 ? 's' : ''}`);
+                const selected = cbSuggestions.filter((_, i) => selectedCbSuggestions.has(i));
+                const updated = [...clinicalBenefits, ...selected];
+                onClinicalBenefitsChange?.(updated);
+                setCbSuggestDialogOpen(false);
+                toast.success(`Added ${selected.length} clinical benefit${selected.length > 1 ? 's' : ''}`);
               }}
             >
-              Add Selected ({selectedEpSuggestions.size})
+              Add Selected ({selectedCbSuggestions.size})
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1201,15 +1098,25 @@ export function StatementOfUseTab({
         isLoading={explainerDialogField ? isAiLoading(explainerDialogField) : false}
         fieldName={explainerDialogField ? AI_FIELD_CONFIGS[explainerDialogField].name : ''}
         fieldDescription={explainerDialogField ? AI_FIELD_CONFIGS[explainerDialogField].description : undefined}
-        deviceContext={deviceContext}
+        productId={productId || ''}
+        companyId={companyId}
       />
 
-      {/* Governance Edit Warning Dialog */}
-      <GovernanceEditConfirmDialog
-        open={govDialog}
-        onOpenChange={setGovDialog}
-        onConfirm={govConfirm}
-        sectionLabel={govFieldLabel}
+      {/* AI Suggestion Review Dialog */}
+      <AISuggestionReviewDialog
+        open={pendingSuggestion !== null}
+        onOpenChange={(open) => !open && setPendingSuggestion(null)}
+        fieldLabel={pendingSuggestion?.fieldLabel || ''}
+        originalContent={pendingSuggestion?.original || ''}
+        suggestedContent={pendingSuggestion?.suggested || ''}
+        onAccept={(content) => {
+          if (pendingSuggestion) {
+            handleTextFieldChange(pendingSuggestion.localKey, content);
+            onAcceptAISuggestion?.(pendingSuggestion.fieldKey, content);
+          }
+          setPendingSuggestion(null);
+        }}
+        onReject={() => setPendingSuggestion(null)}
       />
 
     </div>

@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
-import { useCompanyRole } from '@/context/CompanyRoleContext';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, FileText, Clock, AlertCircle, Eye, CheckSquare, File } from 'lucide-react';
+import { PdfPreviewButton } from '@/components/documents/PdfPreviewButton';
 import { format } from 'date-fns';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { DocumentViewer } from "@/components/product/DocumentViewer";
+import { OnlyOfficeReviewViewer } from "@/components/review/OnlyOfficeReviewViewer";
 import { DocumentActionModal } from "@/components/review/DocumentActionModal";
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -23,6 +23,7 @@ interface AssignedDocument {
   reviewerGroupName?: string;
   reviewerGroupId?: string;
   role?: 'review' | 'author';
+  deviceName?: string;
   documentFile?: {
     path: string;
     name: string;
@@ -41,7 +42,6 @@ interface AwaitingMyReviewPageProps {
 export function AwaitingMyReviewPage({ companyId, userGroups, companyName, firstName = "Expert" }: AwaitingMyReviewPageProps) {
   const { lang } = useTranslation();
   const { user } = useAuth();
-  const { activeRole } = useCompanyRole();
   const navigate = useNavigate();
   const location = useLocation();
   const [documents, setDocuments] = useState<AssignedDocument[]>([]);
@@ -163,7 +163,9 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
           file_size,
           file_type,
           phase_id,
-          company_id
+          product_id,
+          company_id,
+          document_scope
         `)
         .eq('company_id', companyId)
         .eq('is_excluded', false)
@@ -226,6 +228,47 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         }
       }
 
+      // Fetch product/device names for phase template docs
+      // productNameMap: product_id -> product name (for docs with product_id)
+      // phaseProductMap: phase_id (company_phases.id) -> product name (fallback via lifecycle_phases)
+      let productNameMap = new Map<string, string>();
+      let phaseProductMap = new Map<string, string>();
+
+      // Collect product_ids directly from phase template docs
+      const productIds = new Set<string>();
+      (phaseTemplateResult.data || []).forEach(doc => {
+        if ((doc as any).product_id) productIds.add((doc as any).product_id);
+      });
+
+      // Fetch products directly by product_id
+      if (productIds.size > 0) {
+        const { data: productsData } = await supabase
+          .from('products')
+          .select('id, name')
+          .in('id', Array.from(productIds));
+
+        if (productsData) {
+          productsData.forEach(p => productNameMap.set(p.id, p.name));
+        }
+      }
+
+      // Fallback: for docs without product_id, look up via lifecycle_phases using phase_id
+      if (phaseIds.size > 0) {
+        const { data: lifecycleData } = await supabase
+          .from('lifecycle_phases')
+          .select('id, phase_id, product_id, products(name)')
+          .in('phase_id', Array.from(phaseIds));
+
+        if (lifecycleData) {
+          lifecycleData.forEach((lp: any) => {
+            const productName = lp.products?.name;
+            if (productName && lp.phase_id) {
+              phaseProductMap.set(lp.phase_id, productName);
+            }
+          });
+        }
+      }
+
       // Fetch reviewer group names
       const allGroupIds = new Set<string>();
       [...(documentsResult.data || []), ...(phaseTemplateResult.data || [])].forEach(doc => {
@@ -254,6 +297,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
           reviewerGroupName: doc.reviewer_group_ids?.[0] ? groupNamesMap.get(doc.reviewer_group_ids[0]) : undefined,
           reviewerGroupId: doc.reviewer_group_ids?.[0] || '',
           role: 'review' as const,
+          deviceName: doc.products?.name || undefined,
           documentFile: doc.file_path ? {
             path: doc.file_path,
             name: doc.name,
@@ -263,10 +307,18 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         }));
 
       // Map phase template documents
+      // DEBUG: Log file_path for all phase template docs
+      (phaseTemplateResult.data || []).forEach(doc => {
+        if (doc.id === '0b6b68b2-a7bb-4124-957a-9361203357ea') {
+          console.log('[Review Debug] PADT file_path for target doc:', doc.file_path, '| file_name:', doc.file_name);
+        }
+      });
+
       const mappedPhaseDocuments: AssignedDocument[] = (phaseTemplateResult.data || [])
         .filter(doc => doc.reviewer_group_ids && doc.reviewer_group_ids.length > 0)
         .map(doc => {
           const phaseInfo = doc.phase_id ? phasesMap.get(doc.phase_id) : null;
+          const isCompanyDoc = (doc as any).document_scope === 'company_document';
           return {
             id: `template-${doc.id}`,
             name: doc.name,
@@ -277,6 +329,9 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
             reviewerGroupName: doc.reviewer_group_ids?.[0] ? groupNamesMap.get(doc.reviewer_group_ids[0]) : undefined,
             reviewerGroupId: doc.reviewer_group_ids?.[0] || '',
             role: 'review' as const,
+            deviceName: isCompanyDoc ? undefined : ((doc as any).product_id
+              ? productNameMap.get((doc as any).product_id)
+              : (doc.phase_id ? phaseProductMap.get(doc.phase_id) : undefined)),
             documentFile: doc.file_path ? {
               path: doc.file_path,
               name: doc.file_name || doc.name,
@@ -291,7 +346,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
 
       const { data: authorPhaseDocs } = await supabase
         .from('phase_assigned_document_template')
-        .select('id, name, status, due_date, deadline, created_at, phase_id, company_id, file_path, file_name, file_size, file_type, document_type')
+        .select('id, name, status, due_date, deadline, created_at, phase_id, product_id, company_id, file_path, file_name, file_size, file_type, document_type, document_scope')
         .eq('company_id', companyId)
         .eq('is_excluded', false)
         .in('status', AUTHOR_STATUSES)
@@ -313,6 +368,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         .filter(doc => !existingIds.has(`template-${doc.id}`))
         .map(doc => {
           const phaseInfo = doc.phase_id ? phasesMap.get(doc.phase_id) : null;
+          const isCompanyDoc = (doc as any).document_scope === 'company_document';
           return {
             id: `template-${doc.id}`,
             name: doc.name,
@@ -323,6 +379,9 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
             reviewerGroupName: 'Author',
             reviewerGroupId: '',
             role: 'author' as const,
+            deviceName: isCompanyDoc ? undefined : ((doc as any).product_id
+              ? productNameMap.get((doc as any).product_id)
+              : (doc.phase_id ? phaseProductMap.get(doc.phase_id) : undefined)),
             documentFile: doc.file_path ? {
               path: doc.file_path,
               name: doc.file_name || doc.name,
@@ -344,6 +403,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
           reviewerGroupName: 'Author',
           reviewerGroupId: '',
           role: 'author' as const,
+          deviceName: (doc as any).products?.name || undefined,
           documentFile: doc.file_path ? {
             path: doc.file_path,
             name: doc.name,
@@ -555,7 +615,14 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 text-sm text-muted-foreground">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 text-sm text-muted-foreground">
+                    {doc.deviceName && (
+                      <div>
+                        <p className="font-medium text-foreground mb-1">Device</p>
+                        <p>{doc.deviceName}</p>
+                      </div>
+                    )}
+
                     <div>
                       <p className="font-medium text-foreground mb-1">{lang('reviewDashboard.labels.assignedDate')}</p>
                       <p>{format(new Date(doc.assignedDate), 'MMM dd, yyyy')}</p>
@@ -590,7 +657,15 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
                     <Eye className="h-4 w-4 mr-2" />
                     {lang('reviewDashboard.reviewDocument')}
                   </Button>
-                  {/* <Button 
+                  {doc.status === 'Approved' && (
+                    <PdfPreviewButton
+                      documentId={doc.id}
+                      companyId={companyId}
+                      variant="outline"
+                      size="sm"
+                    />
+                  )}
+                  {/* <Button
                     onClick={() => {
                       setActionDocument(doc);
                       setIsActionModalOpen(true);
@@ -606,28 +681,22 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         </div>
       )}
 
-      {/* DocumentViewer Dialog */}
+      {/* OnlyOffice Review Viewer */}
       {viewingDocument && (
-        <DocumentViewer
+        <OnlyOfficeReviewViewer
           open={isViewerOpen}
           onOpenChange={(open) => {
             setIsViewerOpen(open);
             if (!open) {
               setViewingDocument(null);
-              // Refresh the document list after closing
               fetchAssignedDocuments();
             }
           }}
-          documentId={viewingDocument.id.startsWith('template-') ? viewingDocument.id.replace('template-', '') : viewingDocument.id}
+          documentId={viewingDocument.id}
           documentName={viewingDocument.name}
-          companyId={companyId}
-          companyRole={activeRole}
           documentFile={viewingDocument.documentFile}
-          reviewerGroupId={userGroups[0]}
-          onStatusChanged={() => {
-            // Refresh document list when status is changed in DocumentViewer
-            fetchAssignedDocuments();
-          }}
+          companyId={companyId}
+          reviewerGroupId={viewingDocument.reviewerGroupId || userGroups[0]}
         />
       )}
 

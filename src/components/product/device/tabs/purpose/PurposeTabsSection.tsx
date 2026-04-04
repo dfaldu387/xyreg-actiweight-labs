@@ -15,8 +15,9 @@ import { DeviceCharacteristics } from '@/types/client.d';
 import { useProductDefinition } from '@/hooks/useProductDefinition';
 import { InheritanceIndicator } from '@/components/product/definition/InheritanceIndicator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Info, Users, FileText } from 'lucide-react';
+import { Info, Users, FileEdit } from 'lucide-react';
 import { SavePurposeAsDocCIDialog } from './SavePurposeAsDocCIDialog';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 import { InvestorVisibleIcon } from '@/components/ui/investor-visible-badge';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useFieldScopeState } from '@/hooks/useFieldScopeState';
@@ -118,6 +119,7 @@ export function PurposeTabsSection({
   const [activeAiButton, setActiveAiButton] = useState<string | null>(null);
   const [familyEditorOpen, setFamilyEditorOpen] = useState(false);
   const [showSavePurposeDocDialog, setShowSavePurposeDocDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
 
   // Fetch product definition to check for inheritance
   const { data: definition } = useProductDefinition(productId);
@@ -364,17 +366,6 @@ export function PurposeTabsSection({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {productId && companyId && (
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowSavePurposeDocDialog(true)}
-                    title="Save as Document CI"
-                    className="h-8 w-8"
-                  >
-                    <FileText className="h-4 w-4" />
-                  </Button>
-                )}
                 {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
               </div>
             </div>
@@ -554,20 +545,32 @@ export function PurposeTabsSection({
     )}
 
     {productId && companyId && (
-      <SavePurposeAsDocCIDialog
-        open={showSavePurposeDocDialog}
-        onOpenChange={setShowSavePurposeDocDialog}
-        productId={productId}
-        productName={productName || 'Product'}
-        companyId={companyId}
-        companyName={activeCompanyRole?.companyName || ''}
-        intendedPurposeData={intendedPurposeData}
-        contraindications={contraindications}
-        intendedUsers={intendedUsers}
-        clinicalBenefits={clinicalBenefits}
-        userInstructions={userInstructions}
-        storageSterilityHandling={storageSterilityHandling}
-      />
+      <>
+        <SavePurposeAsDocCIDialog
+          open={showSavePurposeDocDialog}
+          onOpenChange={setShowSavePurposeDocDialog}
+          productId={productId}
+          productName={productName || 'Product'}
+          companyId={companyId}
+          companyName={activeCompanyRole?.companyName || ''}
+          intendedPurposeData={intendedPurposeData}
+          contraindications={contraindications}
+          intendedUsers={intendedUsers}
+          clinicalBenefits={clinicalBenefits}
+          userInstructions={userInstructions}
+          storageSterilityHandling={storageSterilityHandling}
+          onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+        />
+        <DocumentDraftDrawer
+          open={!!draftDrawerDoc}
+          onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+          documentId={draftDrawerDoc?.id || ''}
+          documentName={draftDrawerDoc?.name || ''}
+          documentType={draftDrawerDoc?.type || ''}
+          productId={productId}
+          companyId={companyId}
+        />
+      </>
     )}
     </>
   );

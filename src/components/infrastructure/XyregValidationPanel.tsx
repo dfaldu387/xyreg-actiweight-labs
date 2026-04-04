@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CheckCircle2, Clock, AlertTriangle, Download, ArrowRight, Shield, Layers, ChevronRight, Building, ArrowUpCircle, PackageOpen, FileText } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, Download, ArrowRight, Shield, Layers, ChevronRight, Building, ArrowUpCircle, PackageOpen, FileText, ArrowLeft } from 'lucide-react';
 import { XYREG_MODULE_GROUPS, type XyregModuleGroup } from '@/data/xyregModuleGroups';
 import { CORE_SERVICES } from '@/data/coreModuleDependencies';
 import { ModuleGroupChecklist } from './ModuleGroupChecklist';
@@ -17,6 +16,7 @@ import { useCompanyId } from '@/hooks/useCompanyId';
 import { useCompanyAdoptedRelease, useAdoptRelease } from '@/hooks/useCompanyAdoptedRelease';
 import { useAvailableXyregReleases } from '@/hooks/useAvailableXyregReleases';
 import { useCumulativeChangelog } from '@/hooks/useCumulativeChangelog';
+import { useAllModuleGroupValidations } from '@/hooks/useModuleGroupValidation';
 
 interface XyregValidationPanelProps {
   open: boolean;
@@ -25,12 +25,6 @@ interface XyregValidationPanelProps {
 }
 
 type ValidationStatus = 'validated' | 'pending' | 'invalidated' | 'not_started';
-
-function getModuleStatus(_groupId: string): ValidationStatus {
-  const statuses: ValidationStatus[] = ['validated', 'pending', 'not_started', 'invalidated'];
-  const hash = _groupId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  return statuses[hash % statuses.length];
-}
 
 function StatusBadge({ status, lang }: { status: ValidationStatus; lang: (key: string, variables?: Record<string, string | number>) => string }) {
   switch (status) {
@@ -59,7 +53,6 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
   const hookCompanyId = useCompanyId();
   const resolvedCompanyId = propCompanyId || hookCompanyId || '';
   const [selectedGroup, setSelectedGroup] = useState<XyregModuleGroup | null>(null);
-  const [selectedReleaseId, setSelectedReleaseId] = useState<string>('');
 
   // Fetch adopted release for this company
   const { data: adoptedRelease, isLoading: isLoadingAdoption } = useCompanyAdoptedRelease(resolvedCompanyId);
@@ -85,6 +78,19 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
 
   const currentVersion = adoptedRelease?.version ? `v${adoptedRelease.version}` : null;
   const currentReleaseDate = adoptedRelease?.release_date ?? null;
+
+  // Fetch real validation statuses from DB
+  const { data: dbValidations = [] } = useAllModuleGroupValidations(resolvedCompanyId, adoptedRelease?.release_id ?? null);
+
+  function getModuleStatus(groupId: string): ValidationStatus {
+    const record = dbValidations.find(v => v.module_group_id === groupId);
+    if (!record) return 'not_started';
+    if (record.overall_verdict === 'validated' || record.overall_verdict === 'validated_with_conditions') return 'validated';
+    if (record.overall_verdict === 'not_validated') return 'invalidated';
+    if (record.iq_verdict || record.oq_verdict || record.pq_verdict) return 'pending';
+    return 'not_started';
+  }
+
   const validatedCount = XYREG_MODULE_GROUPS.filter(g => getModuleStatus(g.id) === 'validated').length;
 
   const handleAdoptRelease = (releaseId: string) => {
@@ -92,7 +98,6 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
       onSuccess: () => {
         const release = availableReleases.find(r => r.id === releaseId);
         toast.success(`Adopted XYREG v${release?.version ?? ''}. Validation cycle started.`);
-        setSelectedReleaseId('');
       },
       onError: () => {
         toast.error('Failed to adopt release. Please try again.');
@@ -113,8 +118,9 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
         <SheetContent side="right" className="w-full sm:max-w-2xl p-0">
           <SheetHeader className="px-6 pt-6 pb-2">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setSelectedGroup(null)} className="h-7 px-2 text-xs">
-                {`\u2190 ${lang('infrastructure.validationPanel.back')}`}
+              <Button variant="outline" size="sm" onClick={() => setSelectedGroup(null)} className="h-7 px-2 text-xs flex justify-center items-center">
+                <ArrowLeft className="mr-1 h-3 w-3" />
+                {`${lang('infrastructure.validationPanel.back')}`}
               </Button>
               <SheetTitle className="text-base">{lang('infrastructure.validationPanel.validate', { name: selectedGroup.name })}</SheetTitle>
             </div>
@@ -123,6 +129,7 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
             <ModuleGroupChecklist
               moduleGroup={selectedGroup}
               companyId={resolvedCompanyId}
+              adoptedReleaseId={adoptedRelease?.release_id ?? null}
               releaseVersion={adoptedRelease?.version}
               releaseDate={adoptedRelease?.release_date}
               onSave={handleSaveValidation}
@@ -146,46 +153,38 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
         <ScrollArea className="h-[calc(100vh-80px)] px-6 pb-6">
           <div className="space-y-6">
             {/* Validation Coverage Dashboard */}
-            <ValidationCoverageDashboard />
+            <ValidationCoverageDashboard adoptedReleaseId={adoptedRelease?.release_id ?? null} />
 
             {/* Release Adoption Section */}
             {!adoptedRelease && !isLoadingAdoption ? (
-              /* No adopted release — show picker */
+              /* No adopted release — show latest version only */
               <Card className="border-primary/30 bg-primary/5">
                 <CardContent className="pt-4 pb-4">
                   <div className="flex items-start gap-3">
                     <PackageOpen className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                     <div className="flex-1 space-y-3">
-                      <div>
-                        <p className="text-sm font-semibold">Select XYREG Version to Validate</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Choose which software release your organization will validate against. You can skip versions.
-                        </p>
-                      </div>
-                      {availableReleases.length > 0 ? (
-                        <div className="flex items-center gap-2">
-                          <Select value={selectedReleaseId} onValueChange={setSelectedReleaseId}>
-                            <SelectTrigger className="w-[200px] h-8 text-sm">
-                              <SelectValue placeholder="Select version..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableReleases.map(r => (
-                                <SelectItem key={r.id} value={r.id}>
-                                  v{r.version} — {new Date(r.release_date).toLocaleDateString()}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                      {latestAvailable ? (
+                        <>
+                          <div>
+                            <p className="text-sm font-semibold">XYREG v{latestAvailable.version} Available</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Released {new Date(latestAvailable.release_date).toLocaleDateString()} — Start validation to begin your IQ/OQ/PQ cycle.
+                            </p>
+                          </div>
                           <Button
                             size="sm"
-                            disabled={!selectedReleaseId || adoptRelease.isPending}
-                            onClick={() => handleAdoptRelease(selectedReleaseId)}
+                            disabled={adoptRelease.isPending}
+                            onClick={() => handleAdoptRelease(latestAvailable.id)}
                           >
-                            {adoptRelease.isPending ? 'Adopting...' : 'Start Validation'}
+                            <ArrowUpCircle className="h-3.5 w-3.5 mr-1.5" />
+                            {adoptRelease.isPending ? 'Adopting...' : `Start Validation for v${latestAvailable.version}`}
                           </Button>
-                        </div>
+                        </>
                       ) : (
-                        <p className="text-xs text-muted-foreground italic">No published releases available yet.</p>
+                        <div>
+                          <p className="text-sm font-semibold">No Version Available</p>
+                          <p className="text-xs text-muted-foreground italic mt-0.5">No published releases available yet.</p>
+                        </div>
                       )}
                     </div>
                   </div>

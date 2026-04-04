@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { GapAnalysisItem } from '@/types/client';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 
 interface GapISO13485LaunchViewProps {
   items: GapAnalysisItem[];
@@ -35,6 +36,7 @@ function getCompletionMap(items: GapAnalysisItem[]): Map<string, { isComplete: b
 export function GapISO13485LaunchView({ items, disabled = false, companyId, companyName }: GapISO13485LaunchViewProps) {
   const completionMap = getCompletionMap(items);
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
 
   const totalSteps = ISO_13485_SECTIONS.reduce((sum, s) => sum + (s.subItems?.length || 1), 0);
   const completedCount = ISO_13485_SECTIONS.reduce((sum, s) => {
@@ -99,7 +101,7 @@ export function GapISO13485LaunchView({ items, disabled = false, companyId, comp
                 className="gap-1.5"
               >
                 <FileEdit className="h-4 w-4" />
-                Export to CI
+                Create Document
               </Button>
             )}
             <div className={cn(
@@ -153,19 +155,30 @@ export function GapISO13485LaunchView({ items, disabled = false, companyId, comp
 
       {/* Full Gap Analysis Export Dialog */}
       {companyId && companyName && (
-        <SaveContentAsDocCIDialog
-          open={showDocCIDialog}
-          onOpenChange={setShowDocCIDialog}
-          title="ISO 13485 Gap Analysis Report"
-          htmlContent={ISO_13485_SECTIONS
-            .filter(s => completionMap.get(s.section)?.isComplete)
-            .map(s => `<h2>§${s.section} ${s.title}</h2><p>Status: Compliant</p>`)
-            .join('\n')}
-          templateIdKey={`GAP-ISO13485-FULL-${companyId}`}
-          companyId={companyId}
-          companyName={companyName}
-          defaultScope="enterprise"
-        />
+        <>
+          <SaveContentAsDocCIDialog
+            open={showDocCIDialog}
+            onOpenChange={setShowDocCIDialog}
+            title="ISO 13485 Gap Analysis Report"
+            htmlContent={ISO_13485_SECTIONS
+              .filter(s => completionMap.get(s.section)?.isComplete)
+              .map(s => `<h2>§${s.section} ${s.title}</h2><p>Status: Compliant</p>`)
+              .join('\n')}
+            templateIdKey={`GAP-ISO13485-FULL-${companyId}`}
+            companyId={companyId}
+            companyName={companyName}
+            defaultScope="enterprise"
+            onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+          />
+          <DocumentDraftDrawer
+            open={!!draftDrawerDoc}
+            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+            documentId={draftDrawerDoc?.id || ''}
+            documentName={draftDrawerDoc?.name || ''}
+            documentType={draftDrawerDoc?.type || ''}
+            companyId={companyId}
+          />
+        </>
       )}
     </div>
   );

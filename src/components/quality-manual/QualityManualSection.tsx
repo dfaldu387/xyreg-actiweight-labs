@@ -18,6 +18,7 @@ import {
 import { Sparkles, Loader2, Clock, ShieldCheck, Package, Users, Building2, MapPin, FileText, Globe, FileEdit } from 'lucide-react';
 import type { QualityManualSection as QMSection, QualityManualData } from '@/hooks/useQualityManual';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { QMSubStep } from './QualityManualSidebar';
 import { ISO_13485_SECTIONS } from '@/config/gapISO13485Sections';
@@ -163,6 +164,7 @@ export function QualityManualSectionView({
   const [selectedSourceKeys, setSelectedSourceKeys] = useState<Set<string>>(new Set());
   const [sourcesInitialized, setSourcesInitialized] = useState(false);
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
 
   const sourceItems = buildSourceItems(section, companyData);
   const hasMissingData = !companyData.company;
@@ -270,7 +272,7 @@ export function QualityManualSectionView({
                       className="gap-1.5"
                     >
                       <FileEdit className="h-4 w-4" />
-                      Send to CI
+                      Create Document
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Export this section as a Document CI</TooltipContent>
@@ -417,18 +419,29 @@ export function QualityManualSectionView({
         </DialogContent>
       </Dialog>
 
-      {/* Send to CI Dialog */}
+      {/* Create Document Dialog */}
       {companyId && companyName && (
-        <SaveContentAsDocCIDialog
-          open={showDocCIDialog}
-          onOpenChange={setShowDocCIDialog}
-          title={`Quality Manual — §${stepClause} ${stepTitle}`}
-          htmlContent={currentContent}
-          templateIdKey={`QM-${section.clause.replace(/\./g, '_')}-${companyId}`}
-          companyId={companyId}
-          companyName={companyName}
-          defaultScope="enterprise"
-        />
+        <>
+          <SaveContentAsDocCIDialog
+            open={showDocCIDialog}
+            onOpenChange={setShowDocCIDialog}
+            title={`Quality Manual — §${stepClause} ${stepTitle}`}
+            htmlContent={currentContent}
+            templateIdKey={`QM-${section.clause.replace(/\./g, '_')}-${companyId}`}
+            companyId={companyId}
+            companyName={companyName}
+            defaultScope="enterprise"
+            onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+          />
+          <DocumentDraftDrawer
+            open={!!draftDrawerDoc}
+            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+            documentId={draftDrawerDoc?.id || ''}
+            documentName={draftDrawerDoc?.name || ''}
+            documentType={draftDrawerDoc?.type || ''}
+            companyId={companyId}
+          />
+        </>
       )}
     </div>
   );

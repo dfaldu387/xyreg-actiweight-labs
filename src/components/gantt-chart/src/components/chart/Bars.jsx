@@ -10,6 +10,7 @@ import { locate, locateID } from '@svar-ui/lib-dom';
 import { getID } from '../../helpers/locate';
 import storeContext from '../../context';
 import { useStore, useStoreWithCounter } from '@svar-ui/lib-react';
+import { useSafeStore } from '../../helpers/safeUseStore';
 import './Bars.css';
 
 function Bars(props) {
@@ -24,7 +25,7 @@ function Bars(props) {
   const taskTypesValue = useStore(api,"taskTypes");
   const baselinesValue = useStore(api,"baselines");
   const selectedValue = useStore(api,"_selected");
-  const scrollTaskStore = useStore(api,"_scrollTask" );
+  const scrollTaskStore = useSafeStore(api, "_scrollTask");
 
   const tasks = useMemo(() => {
     if (!areaValue || !Array.isArray(rTasksValue)) return [];

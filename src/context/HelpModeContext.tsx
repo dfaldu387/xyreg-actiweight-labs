@@ -5,6 +5,8 @@ interface HelpModeContextType {
   setComplianceMode: (value: boolean) => void;
   isHelpEnabled: boolean;
   setHelpEnabled: (value: boolean) => void;
+  isAdvisoryBoardVisible: boolean;
+  setAdvisoryBoardVisible: (value: boolean) => void;
 }
 
 const HelpModeContext = createContext<HelpModeContextType>({
@@ -12,6 +14,8 @@ const HelpModeContext = createContext<HelpModeContextType>({
   setComplianceMode: () => {},
   isHelpEnabled: true,
   setHelpEnabled: () => {},
+  isAdvisoryBoardVisible: true,
+  setAdvisoryBoardVisible: () => {},
 });
 
 export function HelpModeProvider({ children }: { children: ReactNode }) {
@@ -25,6 +29,11 @@ export function HelpModeProvider({ children }: { children: ReactNode }) {
     return saved !== 'false'; // default to true
   });
 
+  const [isAdvisoryBoardVisible, setAdvisoryBoardVisible] = useState(() => {
+    const saved = localStorage.getItem('xyreg-advisory-board-visible');
+    return saved !== 'false'; // default to true
+  });
+
   useEffect(() => {
     localStorage.setItem('help-compliance-mode', String(isComplianceMode));
   }, [isComplianceMode]);
@@ -33,8 +42,12 @@ export function HelpModeProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('help-hints-enabled', String(isHelpEnabled));
   }, [isHelpEnabled]);
 
+  useEffect(() => {
+    localStorage.setItem('xyreg-advisory-board-visible', String(isAdvisoryBoardVisible));
+  }, [isAdvisoryBoardVisible]);
+
   return (
-    <HelpModeContext.Provider value={{ isComplianceMode, setComplianceMode, isHelpEnabled, setHelpEnabled }}>
+    <HelpModeContext.Provider value={{ isComplianceMode, setComplianceMode, isHelpEnabled, setHelpEnabled, isAdvisoryBoardVisible, setAdvisoryBoardVisible }}>
       {children}
     </HelpModeContext.Provider>
   );

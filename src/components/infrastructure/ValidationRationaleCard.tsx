@@ -12,7 +12,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { ValidationEvidenceLinker } from './ValidationEvidenceLinker';
 import { ValidationSignatureBlock, type SignatureMeaning } from './ValidationSignatureBlock';
 import { ValidationTestStepChecklist, type TestStepResult } from './ValidationTestStepChecklist';
-import { Building2, UserCheck } from 'lucide-react';
+import { Building2, UserCheck, RotateCcw, Loader2 } from 'lucide-react';
 
 export interface TestEnvironmentData {
   xyregVersion?: string;
@@ -20,6 +20,31 @@ export interface TestEnvironmentData {
   browser?: string;
   os?: string;
   network?: string;
+}
+
+/** Auto-detect browser name and version from userAgent */
+function detectBrowser(): string {
+  const ua = navigator.userAgent;
+  if (ua.includes('Edg/')) return `Edge ${ua.match(/Edg\/([\d.]+)/)?.[1] ?? ''}`.trim();
+  if (ua.includes('Chrome/') && !ua.includes('Edg/')) return `Chrome ${ua.match(/Chrome\/([\d.]+)/)?.[1] ?? ''}`.trim();
+  if (ua.includes('Firefox/')) return `Firefox ${ua.match(/Firefox\/([\d.]+)/)?.[1] ?? ''}`.trim();
+  if (ua.includes('Safari/') && !ua.includes('Chrome/')) return `Safari ${ua.match(/Version\/([\d.]+)/)?.[1] ?? ''}`.trim();
+  return ua.slice(0, 60);
+}
+
+/** Auto-detect operating system from userAgent */
+function detectOS(): string {
+  const ua = navigator.userAgent;
+  if (ua.includes('Windows NT 10.0')) return ua.includes('Windows NT 10.0; Win64') ? 'Windows 10/11 (64-bit)' : 'Windows 10/11';
+  if (ua.includes('Windows NT')) return 'Windows';
+  if (ua.includes('Mac OS X')) {
+    const ver = ua.match(/Mac OS X ([\d_]+)/)?.[1]?.replace(/_/g, '.');
+    return ver ? `macOS ${ver}` : 'macOS';
+  }
+  if (ua.includes('Linux')) return 'Linux';
+  if (ua.includes('Android')) return `Android ${ua.match(/Android ([\d.]+)/)?.[1] ?? ''}`.trim();
+  if (ua.includes('iPhone') || ua.includes('iPad')) return 'iOS';
+  return navigator.platform || 'Unknown';
 }
 
 export type ResponsibilityType = 'customer_authored' | 'vendor_supplied';
@@ -55,7 +80,7 @@ interface ValidationRationaleCardProps {
   evidenceDocIds?: string[];
   companyId?: string;
   responsibilityType?: ResponsibilityType;
-  testSteps?: { step: string; expectedResult: string }[];
+  testSteps?: { step: string; expectedResult: string; navigateTo?: string }[];
   testStepResults?: TestStepResult[];
   onTestStepsChange?: (results: TestStepResult[]) => void;
   phase?: 'iq' | 'oq' | 'pq';
@@ -150,6 +175,25 @@ export function ValidationRationaleCard({
 }: ValidationRationaleCardProps) {
   const { lang } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const hasAutoDetected = React.useRef(false);
+
+  // Auto-detect browser/OS/URL on first open when fields are empty (fixes G3)
+  React.useEffect(() => {
+    if (isOpen && !hasAutoDetected.current && onTestEnvironmentChange && !disabled) {
+      const needsDetection = !testEnvironment?.browser && !testEnvironment?.os;
+      if (needsDetection) {
+        hasAutoDetected.current = true;
+        onTestEnvironmentChange({
+          ...testEnvironment,
+          instanceUrl: testEnvironment?.instanceUrl || window.location.origin,
+          browser: detectBrowser(),
+          os: detectOS(),
+          network: testEnvironment?.network || 'Public Internet',
+        });
+      }
+    }
+  }, [isOpen]);
 
   const verdictMeta = verdict ? VERDICT_ICONS[verdict] : undefined;
   const verdictLabel = verdict ? lang(VERDICT_LABEL_KEYS[verdict]) : undefined;
@@ -204,18 +248,44 @@ export function ValidationRationaleCard({
 
             {/* Test Environment */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium flex items-center gap-1.5">
-                <Monitor className="h-3.5 w-3.5 text-muted-foreground" />
-                Test Environment
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium flex items-center gap-1.5">
+                  <Monitor className="h-3.5 w-3.5 text-muted-foreground" />
+                  Test Environment
+                </Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  disabled={disabled || isDetecting}
+                  onClick={() => {
+                    setIsDetecting(true);
+                    setTimeout(() => {
+                      onTestEnvironmentChange?.({
+                        ...testEnvironment,
+                        instanceUrl: testEnvironment?.instanceUrl || window.location.origin,
+                        browser: detectBrowser(),
+                        os: detectOS(),
+                        network: testEnvironment?.network || 'Public Internet',
+                      });
+                      setIsDetecting(false);
+                    }, 600);
+                  }}
+                >
+                  {isDetecting ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RotateCcw className="h-3 w-3 mr-1" />}
+                  {isDetecting ? 'Detecting...' : 'Auto-detect'}
+                </Button>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">XYREG Version</Label>
                   <Input
                     value={testEnvironment?.xyregVersion || ''}
-                    readOnly
+                    onChange={(e) => onTestEnvironmentChange?.({ ...testEnvironment, xyregVersion: e.target.value })}
+                    placeholder="e.g., v1.0.0"
                     disabled={disabled}
-                    className="h-8 text-sm bg-muted/50 cursor-default"
+                    className="h-8 text-sm"
                   />
                 </div>
                 <div className="space-y-1">
@@ -234,7 +304,7 @@ export function ValidationRationaleCard({
                     onChange={(e) => onTestEnvironmentChange?.({ ...testEnvironment, browser: e.target.value })}
                     placeholder="e.g., Chrome 124"
                     disabled={disabled}
-                    className="h-8 text-sm"
+                    className="h-8 text-sm bg-muted/50"
                   />
                 </div>
                 <div className="space-y-1">
@@ -244,7 +314,7 @@ export function ValidationRationaleCard({
                     onChange={(e) => onTestEnvironmentChange?.({ ...testEnvironment, os: e.target.value })}
                     placeholder="e.g., Windows 11"
                     disabled={disabled}
-                    className="h-8 text-sm"
+                    className="h-8 text-sm bg-muted/50"
                   />
                 </div>
                 <div className="col-span-2 space-y-1">

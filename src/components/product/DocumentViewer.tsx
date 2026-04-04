@@ -22,6 +22,7 @@ import {
   Highlighter,
   Square,
   Type,
+  PenTool,
 } from "lucide-react";
 import { UniversalReviewManager } from "@/components/review/UniversalReviewManager";
 import { DocumentRichContentView } from "@/components/documents/DocumentRichContentView";
@@ -42,6 +43,7 @@ import { useDocumentReviewAssignments } from "@/hooks/useDocumentReviewAssignmen
 import { LoadingSpinner } from "../ui/loading-spinner";
 import { AnnotationSidebar } from "./AnnotationSidebar";
 import { DocToPdfConverterService } from "@/services/docToPdfConverterService";
+import { ESignPopup } from "@/components/esign/ESignPopup";
 
 // React PDF imports for viewing
 import { Document, Page, pdfjs } from "react-pdf";
@@ -124,6 +126,7 @@ export function DocumentViewer({
   const [auditLogDialogOpen, setAuditLogDialogOpen] = useState(false);
   const [showAnnotationSidebar, setShowAnnotationSidebar] = useState(false);
   const [closeStatusDialogOpen, setCloseStatusDialogOpen] = useState(false);
+  const [showESign, setShowESign] = useState(false);
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -1551,12 +1554,29 @@ export function DocumentViewer({
                     </Button>
                   </>
                 )}
+                {/* <Button
+                  variant="default"
+                  onClick={() => setShowESign(true)}
+                  className="px-3 bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <PenTool className="h-3 w-3 mr-1" />
+                  E-Signature
+                </Button> */}
                 <Button variant="outline" onClick={() => setCloseStatusDialogOpen(true)} className="px-3">
                   Close
                 </Button>
               </div>
             </div>
           </DialogHeader>
+
+          {/* E-Signature Popup */}
+          <ESignPopup
+            open={showESign}
+            onOpenChange={setShowESign}
+            documentId={documentId || ''}
+            documentName={documentName}
+            onClose={() => setShowESign(false)}
+          />
 
           <div className="flex-1 flex overflow-hidden bg-gray-50 relative">
             {showDocument && (

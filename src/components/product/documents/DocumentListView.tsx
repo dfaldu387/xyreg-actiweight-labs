@@ -11,7 +11,9 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Eye, FileEdit, Send, MoreHorizontal, Link, Copy } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Eye, FileEdit, Send, MoreHorizontal, Link, Copy, FileDown, Loader2 } from "lucide-react";
+import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
+import { toast } from 'sonner';
 import { InheritanceExclusionPopover } from "@/components/shared/InheritanceExclusionPopover";
 import { ItemExclusionScope } from "@/hooks/useInheritanceExclusion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -108,6 +110,8 @@ interface DocumentListViewProps {
   getDocExclusionScope?: (itemId: string) => ItemExclusionScope;
   onSetDocExclusionScope?: (itemId: string, scope: ItemExclusionScope) => void;
   familyProductIds?: string[];
+  // Column visibility
+  hiddenColumns?: string[];
   // Bulk mode props
   bulkMode?: boolean;
   bulkSelectedDocs?: Set<string>;
@@ -122,6 +126,9 @@ const getStatusBadgeStyles = (status: string) => {
     case 'in review':
     case 'under review':
       return 'bg-orange-50 text-orange-700 border-orange-200';
+    case 'changes requested':
+    case 'changes_requested':
+      return 'bg-amber-50 text-amber-700 border-amber-300';
     case 'rejected':
       return 'bg-red-50 text-red-700 border-red-200';
     case 'n/a':
@@ -129,6 +136,24 @@ const getStatusBadgeStyles = (status: string) => {
     case 'not started':
     default:
       return 'bg-gray-50 text-gray-600 border-gray-200';
+  }
+};
+
+const getActionIconColor = (status: string) => {
+  switch (status?.toLowerCase()) {
+    case 'approved':
+    case 'report':
+      return 'text-green-700';
+    case 'in review':
+    case 'under review':
+      return 'text-amber-700';
+    case 'changes requested':
+    case 'changes_requested':
+      return 'text-orange-700';
+    case 'rejected':
+      return 'text-red-700';
+    default:
+      return 'text-primary';
   }
 };
 
@@ -162,6 +187,7 @@ export function DocumentListView({
   getDocExclusionScope,
   onSetDocExclusionScope,
   familyProductIds,
+  hiddenColumns = [],
   bulkMode = false,
   bulkSelectedDocs,
   onToggleBulkDoc,
@@ -172,7 +198,16 @@ export function DocumentListView({
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({
     updated_at: false,
   });
+
+  // Sync hiddenColumns prop to columnVisibility state
+  React.useEffect(() => {
+    const visibility: VisibilityState = { updated_at: false };
+    hiddenColumns.forEach(col => { visibility[col] = false; });
+    setColumnVisibility(visibility);
+  }, [hiddenColumns]);
+
   const [sendReviewDoc, setSendReviewDoc] = React.useState<DocumentListItem | null>(null);
+  const [pdfLoadingDocId, setPdfLoadingDocId] = React.useState<string | null>(null);
   const [deleteDoc, setDeleteDoc] = React.useState<DocumentListItem | null>(null);
   const [copyDoc, setCopyDoc] = React.useState<DocumentListItem | null>(null);
   const { getAuthorById, isLoading: authorsLoading } = useDocumentAuthors(companyId || '');
@@ -680,9 +715,13 @@ export function DocumentListView({
 
         if (isNotInteractable) return null;
 
+        const docStatus = doc.status || 'Not Started';
+        const iconColor = getActionIconColor(docStatus);
+        const isNotStarted = !doc.status || doc.status.toLowerCase() === 'not started';
+
         return (
-          <div className="flex items-center justify-end gap-1 max-w-[180px]">
-            {/* Studio */}
+          <div className="flex items-center justify-end gap-1 max-w-[220px]">
+            {/* Studio editor button */}
             {onCreateInStudio && (
               <Button
                 variant="ghost"
@@ -691,10 +730,10 @@ export function DocumentListView({
                 disabled={isProcessing || disabled}
                 title={doc.document_reference?.startsWith('DS-') ? "Edit Document" : "Create Document"}
               >
-                <FileEdit className="h-4 w-4 text-primary" />
+                <FileEdit className="h-4 w-4" />
               </Button>
             )}
-            {/* View */}
+            {/* View button */}
             {doc.file_path && (
               <Button
                 variant="ghost"
@@ -715,10 +754,10 @@ export function DocumentListView({
                 disabled={isProcessing || disabled}
                 title="Send for Review"
               >
-                <Send className="h-4 w-4 text-primary" />
+                <Send className={`h-4 w-4 ${iconColor}`} />
               </Button>
             )}
-            {/* 3-dot menu: Edit & Delete */}
+            {/* 3-dot menu: Edit, Delete, Preview PDF */}
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" disabled={isProcessing || disabled}>
@@ -726,6 +765,32 @@ export function DocumentListView({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {companyId && doc.status === 'Approved' && (
+                  <DropdownMenuItem
+                    disabled={pdfLoadingDocId === doc.id}
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      (async () => {
+                        setPdfLoadingDocId(doc.id);
+                        try {
+                          await DocumentPdfPreviewService.generatePreviewPdf(doc.id, companyId, productId);
+                        } catch (error) {
+                          console.error('PDF preview error:', error);
+                          toast.error('Failed to generate PDF preview');
+                        } finally {
+                          setPdfLoadingDocId(null);
+                        }
+                      })();
+                    }}
+                  >
+                    {pdfLoadingDocId === doc.id ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4 mr-2" />
+                    )}
+                    Preview PDF
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={() => onEdit(doc)}>
                   <Pencil className="h-4 w-4 mr-2" />
                   Edit
@@ -748,7 +813,7 @@ export function DocumentListView({
         );
       },
     },
-  ], [onEdit, onView, onDelete, onCopy, onCreateInStudio, processingDocuments, disabled, hideDelete, getAuthorById, authorsLoading, formatDate, selectedDocIds, onToggleDocSelection, isSidebarOpen, companyId, isVariant, isDocExcluded, onToggleDocExclusion, productId, getDocExclusionScope, onSetDocExclusionScope, bulkMode, bulkSelectedDocs, onToggleBulkDoc]);
+  ], [onEdit, onView, onDelete, onCopy, onCreateInStudio, processingDocuments, disabled, hideDelete, getAuthorById, authorsLoading, formatDate, selectedDocIds, onToggleDocSelection, isSidebarOpen, companyId, isVariant, isDocExcluded, onToggleDocExclusion, productId, getDocExclusionScope, onSetDocExclusionScope, bulkMode, bulkSelectedDocs, onToggleBulkDoc, pdfLoadingDocId]);
 
   const table = useReactTable({
     data: documents,

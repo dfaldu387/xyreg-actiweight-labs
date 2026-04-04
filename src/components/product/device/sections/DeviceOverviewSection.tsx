@@ -35,6 +35,7 @@ import { StorageSterilityHandlingSection } from './StorageSterilityHandlingSecti
 import { StorageSterilityHandlingData } from '@/types/storageHandling';
 import { FieldSuggestion, productDefinitionAIService } from '@/services/productDefinitionAIService';
 import { Sparkles } from 'lucide-react';
+import { AISuggestionReviewDialog } from '@/components/product/ai-assistant/AISuggestionReviewDialog';
 
 interface DeviceComponent {
   name: string;
@@ -254,7 +255,6 @@ function DeviceOverviewSectionComponent({
   });
 
   // Local state for managing new entries
-  const [newFeature, setNewFeature] = useState('');
   
   const [isEditingBaseProduct, setIsEditingBaseProduct] = useState(false);
 
@@ -267,6 +267,12 @@ function DeviceOverviewSectionComponent({
   // AI loading states
   const [aiLoadingStates, setAiLoadingStates] = useState<Set<string>>(new Set());
   const [activeAiButton, setActiveAiButton] = useState<string | null>(null);
+  const [pendingSuggestion, setPendingSuggestion] = useState<{
+    fieldLabel: string;
+    fieldKey: string;
+    original: string;
+    suggested: string;
+  } | null>(null);
 
   // Sync local state with props when they change from external sources
   React.useEffect(() => {
@@ -337,28 +343,6 @@ function DeviceOverviewSectionComponent({
     onDeviceTypeChange?.(characteristics);
   }, [onDeviceTypeChange]);
 
-  // Stable handlers for key features
-  const handleAddFeature = useCallback(() => {
-    if (!newFeature.trim() || !onKeyFeaturesChange) return;
-    if (keyFeatures.includes(newFeature.trim())) {
-      setNewFeature('');
-      return;
-    }
-    onKeyFeaturesChange([...keyFeatures, newFeature.trim()]);
-    setNewFeature('');
-  }, [newFeature, onKeyFeaturesChange, keyFeatures]);
-  const handleRemoveFeature = useCallback((index: number) => {
-    if (!onKeyFeaturesChange) return;
-    const updated = [...keyFeatures];
-    updated.splice(index, 1);
-    onKeyFeaturesChange(updated);
-  }, [onKeyFeaturesChange, keyFeatures]);
-  const handleFeatureKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleAddFeature();
-    }
-  }, [handleAddFeature]);
 
 
   // Helper functions for device indicator display
@@ -756,7 +740,44 @@ function DeviceOverviewSectionComponent({
             <AccordionContent className="border-t-0 rounded-b-lg p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className={isInGenesisFlow ? `p-3 rounded-lg transition-colors ${productName?.trim() ? 'border-2 border-emerald-500 bg-emerald-50/30' : 'border-2 border-amber-400 bg-amber-50/30'}` : ''}>
-                  <Label htmlFor="product-name">Device Name</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="product-name">Device Name</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className='hover:bg-transparent'
+                      disabled={isAiLoading('product_name') || isAiButtonDisabled('product_name')}
+                      onClick={async () => {
+                        if (!onAcceptAISuggestion || !company_id || isAiLoading('product_name')) return;
+                        setAiLoading('product_name', true);
+                        try {
+                          const response = await productDefinitionAIService.generateConciseFieldSuggestion(
+                            productName || 'Current Medical Device',
+                            'Device Name',
+                            'Suggest a proper regulatory-compliant device name based on the device category, EMDN code, and description.',
+                            productName || '',
+                            'product_name',
+                            company_id,
+                            'Provide a concise, regulatory-compliant medical device name. Do NOT include trade names or marketing language. 1 line maximum.'
+                          );
+                          if (response.success && response.suggestions?.[0]) {
+                            setPendingSuggestion({
+                              fieldLabel: 'Device Name',
+                              fieldKey: 'product_name',
+                              original: productName || '',
+                              suggested: response.suggestions[0].suggestion,
+                            });
+                          }
+                        } catch (error) {
+                          console.error('AI suggestion error:', error);
+                        } finally {
+                          setAiLoading('product_name', false);
+                        }
+                      }}
+                    >
+                      {isAiLoading('product_name') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-purple-600" />}
+                    </Button>
+                  </div>
                   <Input
                     id="product-name"
                     value={productName}
@@ -768,7 +789,44 @@ function DeviceOverviewSectionComponent({
                   <p className="text-xs text-muted-foreground mt-1">Official name of the medical device</p>
                 </div>
                 <div>
-                  <Label htmlFor="trade-name">Trade Name</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="trade-name">Trade Name</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className='hover:bg-transparent'
+                      disabled={isAiLoading('trade_name') || isAiButtonDisabled('trade_name')}
+                      onClick={async () => {
+                        if (!onAcceptAISuggestion || !company_id || isAiLoading('trade_name')) return;
+                        setAiLoading('trade_name', true);
+                        try {
+                          const response = await productDefinitionAIService.generateConciseFieldSuggestion(
+                            productName || 'Current Medical Device',
+                            'Trade Name',
+                            'Suggest a commercial/marketing trade name for this medical device.',
+                            tradeName || '',
+                            'trade_name',
+                            company_id,
+                            'Provide a catchy, memorable commercial trade name suitable for marketing. 1 line maximum.'
+                          );
+                          if (response.success && response.suggestions?.[0]) {
+                            setPendingSuggestion({
+                              fieldLabel: 'Trade Name',
+                              fieldKey: 'trade_name',
+                              original: tradeName || '',
+                              suggested: response.suggestions[0].suggestion,
+                            });
+                          }
+                        } catch (error) {
+                          console.error('AI suggestion error:', error);
+                        } finally {
+                          setAiLoading('trade_name', false);
+                        }
+                      }}
+                    >
+                      {isAiLoading('trade_name') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-purple-600" />}
+                    </Button>
+                  </div>
                   <Input 
                     id="trade-name" 
                     value={tradeName || ''} 
@@ -1344,8 +1402,12 @@ function DeviceOverviewSectionComponent({
 
                           if (response.success && response.suggestions?.[0]) {
                             const suggestion = response.suggestions[0].suggestion;
-                            onDescriptionChange?.(suggestion);
-                            onAcceptAISuggestion('product_description', suggestion);
+                            setPendingSuggestion({
+                              fieldLabel: 'Device Description',
+                              fieldKey: 'product_description',
+                              original: description || '',
+                              suggested: suggestion,
+                            });
                           }
                         } catch (error) {
                           console.error('AI suggestion error:', error);
@@ -1360,80 +1422,6 @@ function DeviceOverviewSectionComponent({
                   <RichTextField value={description || ''} onChange={(html) => onDescriptionChange?.(html)} placeholder="Enter a detailed description of the device..." minHeight="100px" disabled={isLoading} />
                 </div>
 
-                {/* Key Features */}
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Label className="text-sm font-medium">Key Features</Label>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className='hover:bg-transparent'
-                      disabled={isAiLoading('key_features') || isAiButtonDisabled('key_features')}
-                      onClick={async () => {
-                        if (!onAcceptAISuggestion || !company_id || isAiLoading('key_features')) return;
-
-                        setAiLoading('key_features', true);
-                        try {
-                          const response = await productDefinitionAIService.generateConciseFieldSuggestion(
-                            productName || 'Current Medical Device',
-                            'Key Features',
-                            'Generate one specific key feature for this medical device. Focus on a unique capability, technology, or benefit that distinguishes this device.',
-                            '',
-                            'key_features',
-                            company_id,
-                            'Provide exactly one key feature of the product in 6-10 words. Focus on a specific capability or benefit. Do NOT mention AI, machine learning, artificial intelligence, or any automated/algorithmic features. (don\'t use *, "", :, etc.)'
-                          );
-
-                          if (response.success && response.suggestions?.[0]) {
-                            const suggestion = response.suggestions[0].suggestion;
-                            
-                            const trimmedValue = suggestion
-                              .replace(/^[\d\s•*\-\.:]+\s*/, '')
-                              .replace(/["']/g, '')
-                              .replace(/[^\w\s\-]/g, '')
-                              .trim();
-                            
-                            if (trimmedValue) {
-                              setNewFeature(trimmedValue);
-                            }
-                          }
-                        } catch (error) {
-                          console.error('AI suggestion error:', error);
-                        } finally {
-                          setAiLoading('key_features', false);
-                        }
-                      }}
-                    >
-                      {isAiLoading('key_features') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-purple-600" />}
-                    </Button>
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex gap-2">
-                      <Input value={newFeature} onChange={e => setNewFeature(e.target.value)} placeholder="Enter a key feature..." onKeyDown={handleFeatureKeyDown} disabled={isLoading} />
-                      <Button onClick={handleAddFeature} disabled={!newFeature.trim() || isLoading}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {keyFeatures.length > 0 && <div className="space-y-2">
-                        {keyFeatures.map((feature, index) => <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                            <span className="text-sm">{feature}</span>
-                            <Button variant="ghost" size="sm" onClick={() => handleRemoveFeature(index)} disabled={isLoading}>
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>)}
-                      </div>}
-                  </div>
-                </div>
-
-                {/* Device Components */}
-                <div>
-                  <Label className="text-sm font-medium mb-3 block">Device Components</Label>
-                  <DeviceComponentsSection
-                    productId={productId}
-                    companyId={company_id}
-                    isLoading={isLoading}
-                  />
-                </div>
 
               </div>
             </AccordionContent>
@@ -1545,6 +1533,30 @@ function DeviceOverviewSectionComponent({
 
         </Accordion>
       </CardContent>
+
+      {/* AI Suggestion Review Dialog */}
+      <AISuggestionReviewDialog
+        open={pendingSuggestion !== null}
+        onOpenChange={(open) => !open && setPendingSuggestion(null)}
+        fieldLabel={pendingSuggestion?.fieldLabel || ''}
+        originalContent={pendingSuggestion?.original || ''}
+        suggestedContent={pendingSuggestion?.suggested || ''}
+        onAccept={(content) => {
+          if (pendingSuggestion) {
+            const key = pendingSuggestion.fieldKey;
+            if (key === 'product_name') {
+              onProductNameChange?.(content);
+            } else if (key === 'trade_name') {
+              onTradeNameChange?.(content);
+            } else {
+              onDescriptionChange?.(content);
+            }
+            onAcceptAISuggestion?.(key, content);
+          }
+          setPendingSuggestion(null);
+        }}
+        onReject={() => setPendingSuggestion(null)}
+      />
     </Card>;
 }
 export const DeviceOverviewSection = memo(DeviceOverviewSectionComponent);

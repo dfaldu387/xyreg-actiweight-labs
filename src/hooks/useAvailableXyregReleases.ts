@@ -6,6 +6,7 @@ export interface XyregReleaseOption {
   version: string;
   release_date: string;
   changelog: string | null;
+  impacted_module_groups: string[] | null;
 }
 
 export function useAvailableXyregReleases() {
@@ -14,7 +15,7 @@ export function useAvailableXyregReleases() {
     queryFn: async (): Promise<XyregReleaseOption[]> => {
       const { data, error } = await (supabase as any)
         .from('xyreg_releases')
-        .select('id, version, release_date, changelog')
+        .select('id, version, release_date, changelog, impacted_module_groups')
         .eq('status', 'published')
         .order('published_at', { ascending: false });
 

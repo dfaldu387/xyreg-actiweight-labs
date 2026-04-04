@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { File, Eye, FileEdit, Trash2, Send, Pencil, MoreHorizontal, Copy } from "lucide-react";
+import { File, Eye, FileEdit, Trash2, Send, Pencil, MoreHorizontal, Copy, FileDown, Loader2 } from "lucide-react";
+import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
+import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CompanyDocument } from '@/hooks/useCompanyDocuments';
 import { supabase } from '@/integrations/supabase/client';
@@ -58,6 +60,7 @@ export function CompanyDocumentCard({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCopyConfirm, setShowCopyConfirm] = useState(false);
   const [showSendReview, setShowSendReview] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const handleInlineEdit = () => {
     onCreateInStudio?.(document);
@@ -431,8 +434,8 @@ export function CompanyDocumentCard({
             </Button>
           )}
 
-          {/* 3-dot menu: Edit, Copy & Delete */}
-          {(onEdit || onCopy || onDelete) && (
+          {/* 3-dot menu: Preview PDF, Edit, Copy & Delete */}
+          {(onEdit || onCopy || onDelete || companyId) && (
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" disabled={isDeleting || disabled} className="h-8 px-3 bg-background">
@@ -440,6 +443,32 @@ export function CompanyDocumentCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {companyId && document.status === 'Approved' && (
+                  <DropdownMenuItem
+                    disabled={pdfLoading}
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      (async () => {
+                        setPdfLoading(true);
+                        try {
+                          await DocumentPdfPreviewService.generatePreviewPdf(document.id, companyId);
+                        } catch (error) {
+                          console.error('PDF preview error:', error);
+                          toast.error('Failed to generate PDF preview');
+                        } finally {
+                          setPdfLoading(false);
+                        }
+                      })();
+                    }}
+                  >
+                    {pdfLoading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4 mr-2" />
+                    )}
+                    Preview PDF
+                  </DropdownMenuItem>
+                )}
                 {onEdit && (
                   <DropdownMenuItem onSelect={() => { setTimeout(() => onEdit(document), 0); }}>
                     <Pencil className="h-4 w-4 mr-2" />

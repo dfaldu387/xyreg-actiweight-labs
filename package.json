@@ -3,11 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "resolutions": {
+    "@isaacs/cliui": "9.0.0"
+  },
   "overrides": {
-    "@wamra/gantt-task-react": {
-      "@mui/icons-material": "$@mui/icons-material",
-      "@mui/material": "$@mui/material"
-    }
+    "@isaacs/cliui": "9.0.0"
   },
   "scripts": {
     "dev": "vite",
@@ -64,7 +64,7 @@
     "@reactour/tour": "^3.8.0",
     "@stripe/stripe-js": "^7.5.0",
     "@supabase/supabase-js": "^2.49.4",
-    "@svar-ui/react-gantt": "^2.3.4",
+    "@svar-ui/react-gantt": "2.3.4",
     "@swc/core": "^1.2.102",
     "@tanstack/react-query": "^5.76.1",
     "@tanstack/react-query-devtools": "^5.76.1",

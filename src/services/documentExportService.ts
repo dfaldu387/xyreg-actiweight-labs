@@ -40,7 +40,7 @@ export class DocumentExportService {
     // Reuse the internal DOCX generation logic
     const documentSections = [];
 
-    template.sections.forEach((section, sectionIndex) => {
+    for (const section of template.sections) {
       documentSections.push(
         new Paragraph({
           text: section.title,
@@ -49,9 +49,9 @@ export class DocumentExportService {
         })
       );
 
-      section.content.forEach((content, contentIndex) => {
+      for (const content of section.content) {
         if (content.type === 'table') {
-          const elements = this.convertContentToWordElements(content, false);
+          const elements = await this.convertContentToWordElements(content, false);
           documentSections.push(...elements);
         } else if (content.type === 'heading') {
           const headingText = this.stripHtmlTags(content.content);
@@ -63,13 +63,72 @@ export class DocumentExportService {
             })
           );
         } else {
-          const elements = this.convertContentToWordElements(content, false);
+          const elements = await this.convertContentToWordElements(content, false);
           documentSections.push(...elements);
         }
-      });
+      }
 
       documentSections.push(new Paragraph({ text: "" }));
+    }
+
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: documentSections,
+      }],
+      title: template.name,
+      description: `${template.type} document generated on ${new Date().toLocaleDateString()}`,
+      creator: "Document Studio",
     });
+
+    return await Packer.toBlob(doc);
+  }
+
+  /**
+   * Generate a DOCX blob that includes the full Document Control header + sections.
+   * Like exportToDocx() but returns a Blob instead of triggering a download.
+   */
+  static async generateFullDocxBlob(
+    template: DocumentTemplate,
+    options?: ExportOptions
+  ): Promise<Blob> {
+    const documentSections: (Paragraph | Table)[] = [];
+
+    // Add document control header
+    const headerElements = await this.generateDocumentControlHeader(template, options);
+    documentSections.push(...headerElements);
+
+    // Process each template section
+    for (const section of template.sections) {
+      documentSections.push(
+        new Paragraph({
+          text: section.title,
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 400, after: 200 }
+        })
+      );
+
+      for (const content of section.content) {
+        if (content.type === 'table') {
+          const elements = await this.convertContentToWordElements(content, false);
+          documentSections.push(...elements);
+        } else if (content.type === 'heading') {
+          const headingText = this.stripHtmlTags(content.content);
+          documentSections.push(
+            new Paragraph({
+              text: headingText,
+              heading: HeadingLevel.HEADING_2,
+              spacing: { before: 200, after: 120 }
+            })
+          );
+        } else {
+          const elements = await this.convertContentToWordElements(content, false);
+          documentSections.push(...elements);
+        }
+      }
+
+      documentSections.push(new Paragraph({ text: "" }));
+    }
 
     const doc = new Document({
       sections: [{
@@ -101,8 +160,7 @@ export class DocumentExportService {
     // The parseMultiLineHeader will properly extract effective date and other fields
 
     // Process each template section with proper numbering
-    template.sections.forEach((section, sectionIndex) => {
-      // Add section heading with numbering
+    for (const section of template.sections) {
       documentSections.push(
         new Paragraph({
           text: section.title,
@@ -110,37 +168,28 @@ export class DocumentExportService {
           spacing: { before: 400, after: 200 }
         })
       );
-      
-      // Process section content
-      section.content.forEach((content, contentIndex) => {
-        
-        
-        // Process all content normally - the parseMarkdownTable will handle header tables properly
-        
-        // Handle table content type specifically
+
+      for (const content of section.content) {
         if (content.type === 'table') {
-          // console.log('Processing table type content');
-          const elements = this.convertContentToWordElements(content, includeHighlighting);
+          const elements = await this.convertContentToWordElements(content, includeHighlighting);
           documentSections.push(...elements);
         } else if (content.type === 'heading') {
-          // For headings, strip HTML tags but preserve original numbering
           const headingText = this.stripHtmlTags(content.content);
           documentSections.push(
             new Paragraph({
-              text: headingText, // Use original text without adding extra numbering
+              text: headingText,
               heading: HeadingLevel.HEADING_2,
               spacing: { before: 200, after: 120 }
             })
           );
         } else {
-          const elements = this.convertContentToWordElements(content, includeHighlighting);
+          const elements = await this.convertContentToWordElements(content, includeHighlighting);
           documentSections.push(...elements);
         }
-      });
-      
-      // Add spacing between sections
+      }
+
       documentSections.push(new Paragraph({ text: "" }));
-    });
+    }
 
     // Create the Word document
     const doc = new Document({
@@ -639,8 +688,36 @@ export class DocumentExportService {
   /**
    * Convert content to Word elements with proper formatting (including tables)
    */
-  private static convertContentToWordElements(content: DocumentContent, includeHighlighting: boolean): (Paragraph | Table)[] {
+  /**
+   * Convert basic markdown syntax to HTML so the HTML parser can handle it.
+   */
+  private static markdownToHtml(text: string): string {
+    return text
+      // Headings: ## text → <h2>text</h2> (must be before bold)
+      .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+      // Strikethrough: ~~text~~
+      .replace(/~~(.+?)~~/g, '<s>$1</s>')
+      // Bold: **text** or __text__
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      // Italic: *text* or _text_
+      .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+      .replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>')
+      // Line breaks
+      .replace(/\n/g, '<br/>');
+  }
+
+  private static async convertContentToWordElements(content: DocumentContent, includeHighlighting: boolean): Promise<(Paragraph | Table)[]> {
     const elements = [];
+
+    // Pre-process: convert markdown syntax to HTML (handles pure markdown and mixed HTML+markdown)
+    const processedContent = { ...content };
+    if (content.content && (content.content.includes('**') || content.content.includes('## ') || content.content.includes('__') || content.content.includes('~~'))) {
+      processedContent.content = this.markdownToHtml(content.content);
+    }
+    const contentRef = processedContent;
 
     // Determine highlighting based on content metadata
     let highlightColor: "yellow" | undefined = undefined;
@@ -653,18 +730,18 @@ export class DocumentExportService {
       }
     }
 
-    switch (content.type) {
+    switch (contentRef.type) {
       case 'heading':
         elements.push(
           new Paragraph({
-            text: this.stripHtmlTags(content.content),
+            text: this.stripHtmlTags(contentRef.content),
             heading: HeadingLevel.HEADING_2,
           })
         );
         break;
-        
+
       case 'list':
-        const cleanListContent = this.stripHtmlTags(content.content);
+        const cleanListContent = this.stripHtmlTags(contentRef.content);
         const listItems = cleanListContent.split('\n').filter(item => item.trim());
         listItems.forEach(item => {
           const cleanItem = item.replace(/^[-*]\s*/, '').trim();
@@ -684,25 +761,24 @@ export class DocumentExportService {
         break;
         
       case 'table':
-       
-        
+
         // Check if this is HTML table content that should be converted to Word table
-        const htmlTable = this.parseHtmlTable(content.content);
+        const htmlTable = this.parseHtmlTable(contentRef.content);
         if (htmlTable) {
           elements.push(htmlTable);
-        } else if (content.content.includes('|')) {
+        } else if (contentRef.content.includes('|')) {
           // Try parsing as markdown-style table
-          const markdownTable = this.parseMarkdownTable(content.content);
+          const markdownTable = this.parseMarkdownTable(contentRef.content);
           if (markdownTable) {
             elements.push(markdownTable);
           } else {
             // console.log('Failed to parse markdown table, falling back to paragraph');
-            const cleanTableContent = this.stripHtmlTags(content.content);
+            const cleanTableContent = this.stripHtmlTags(contentRef.content);
             elements.push(new Paragraph({ text: cleanTableContent }));
           }
         } else {
           // Fallback to simple paragraph representation
-          const cleanTableContent = this.stripHtmlTags(content.content);
+          const cleanTableContent = this.stripHtmlTags(contentRef.content);
           const tableRows = cleanTableContent.split('\n').filter(row => row.trim());
           tableRows.forEach(row => {
             elements.push(
@@ -721,28 +797,28 @@ export class DocumentExportService {
         
       default:
         // Check if content contains HTML tables first
-        if (content.content.includes('<table')) {
-          const htmlTable = this.parseHtmlTable(content.content);
-          if (htmlTable) {
-            elements.push(htmlTable);
-            const nonTableContent = content.content.replace(/<table[^>]*>.*?<\/table>/gi, '').trim();
+        if (contentRef.content.includes('<table')) {
+          const htmlTable2 = this.parseHtmlTable(contentRef.content);
+          if (htmlTable2) {
+            elements.push(htmlTable2);
+            const nonTableContent = contentRef.content.replace(/<table[^>]*>.*?<\/table>/gi, '').trim();
             if (nonTableContent) {
-              elements.push(...this.parseHtmlToDocxParagraphs(nonTableContent, highlightColor));
+              elements.push(...await this.parseHtmlToDocxParagraphs(nonTableContent, highlightColor));
             }
           } else {
-            elements.push(...this.parseHtmlToDocxParagraphs(content.content, highlightColor));
+            elements.push(...await this.parseHtmlToDocxParagraphs(contentRef.content, highlightColor));
           }
-        } else if (content.content.includes('|') && content.content.split('\n').filter(l => l.includes('|')).length >= 2) {
+        } else if (contentRef.content.includes('|') && contentRef.content.split('\n').filter(l => l.includes('|')).length >= 2) {
           // Try parsing as markdown table
-          const mdTable = this.parseMarkdownTable(content.content);
+          const mdTable = this.parseMarkdownTable(contentRef.content);
           if (mdTable) {
             elements.push(mdTable);
           } else {
-            elements.push(...this.parseHtmlToDocxParagraphs(content.content, highlightColor));
+            elements.push(...await this.parseHtmlToDocxParagraphs(contentRef.content, highlightColor));
           }
         } else {
           // Parse rich HTML content into proper docx paragraphs
-          const parsed = this.parseHtmlToDocxParagraphs(content.content, highlightColor);
+          const parsed = await this.parseHtmlToDocxParagraphs(contentRef.content, highlightColor);
           if (parsed.length > 0) {
             elements.push(...parsed);
           }
@@ -1307,7 +1383,12 @@ export class DocumentExportService {
     );
     elements.push(new Paragraph({ text: '', spacing: { after: 100 } }));
 
-    // Approval table
+    // Approval table — meaning as header, name + timestamp in data row
+    const formatTimestamp = (d: Date | string | undefined) => {
+      if (!d) return '';
+      try { return format(new Date(d), 'dd/MM/yyyy HH:mm'); } catch { return String(d); }
+    };
+
     const approvalHeaderRow = new TableRow({
       children: ['', 'Issued By', 'Reviewed By', 'Approved By'].map(label =>
         new TableCell({
@@ -1320,42 +1401,48 @@ export class DocumentExportService {
       ),
     });
 
-    const makeApprovalRow = (label: string, field: 'preparedBy' | 'reviewedBy' | 'approvedBy') => {
-      const person = dc[field];
-      return new TableRow({
-        children: [
-          new TableCell({
-            children: [new Paragraph({ children: [new TextRun({ text: label, bold: true, font: 'Arial', size: 18 })] })],
+    const approvalDataRow = new TableRow({
+      children: [
+        { label: 'Name/Signature' },
+        { person: dc.preparedBy },
+        { person: dc.reviewedBy },
+        { person: dc.approvedBy },
+      ].map(col => {
+        if ('label' in col) {
+          return new TableCell({
+            children: [new Paragraph({ children: [new TextRun({ text: col.label, bold: true, font: 'Arial', size: 18 })] })],
             width: { size: 25, type: WidthType.PERCENTAGE },
-            shading: { fill: 'f3f4f6', type: ShadingType.CLEAR },
+            shading: { fill: 'e5e7eb', type: ShadingType.CLEAR },
             borders,
             margins: cellMargins,
-          }),
-          ...[dc.preparedBy, dc.reviewedBy, dc.approvedBy].map(p => {
-            let val = '';
-            if (label === 'Name') val = p?.name || '';
-            else if (label === 'Title') val = p?.title || '';
-            else if (label === 'Date') val = formatDate(p?.date);
-            return new TableCell({
-              children: [new Paragraph({ children: [new TextRun({ text: val, font: 'Arial', size: 18 })] })],
-              width: { size: 25, type: WidthType.PERCENTAGE },
-              borders,
-              margins: cellMargins,
-            });
-          }),
-        ],
-      });
-    };
+          });
+        }
+        const p = col.person;
+        const name = p?.name || '';
+        const timestamp = formatTimestamp(p?.date);
+        const children = [];
+        if (name) {
+          children.push(new Paragraph({ children: [new TextRun({ text: name, bold: true, font: 'Arial', size: 18 })] }));
+        }
+        if (timestamp) {
+          children.push(new Paragraph({ children: [new TextRun({ text: timestamp, font: 'Arial', size: 16, color: '666666' })] }));
+        }
+        if (children.length === 0) {
+          children.push(new Paragraph({ children: [] }));
+        }
+        return new TableCell({
+          children,
+          width: { size: 25, type: WidthType.PERCENTAGE },
+          borders,
+          margins: cellMargins,
+        });
+      }),
+    });
 
     elements.push(
       new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          approvalHeaderRow,
-          makeApprovalRow('Name', 'preparedBy'),
-          makeApprovalRow('Title', 'preparedBy'),
-          makeApprovalRow('Date', 'preparedBy'),
-        ],
+        rows: [approvalHeaderRow, approvalDataRow],
         layout: TableLayoutType.FIXED,
       })
     );
@@ -1368,7 +1455,7 @@ export class DocumentExportService {
   /**
    * Parse rich HTML content into proper docx Paragraph/Table elements
    */
-  private static parseHtmlToDocxParagraphs(html: string, highlightColor?: "black" | "blue" | "cyan" | "darkBlue" | "darkCyan" | "darkGray" | "darkGreen" | "darkMagenta" | "darkRed" | "darkYellow" | "green" | "lightGray" | "magenta" | "none" | "red" | "white" | "yellow"): (Paragraph | Table)[] {
+  private static async parseHtmlToDocxParagraphs(html: string, highlightColor?: "black" | "blue" | "cyan" | "darkBlue" | "darkCyan" | "darkGray" | "darkGreen" | "darkMagenta" | "darkRed" | "darkYellow" | "green" | "lightGray" | "magenta" | "none" | "red" | "white" | "yellow"): Promise<(Paragraph | Table)[]> {
     if (!html || !html.trim()) return [];
 
     if (typeof document === 'undefined') {
@@ -1381,8 +1468,9 @@ export class DocumentExportService {
     const container = document.createElement('div');
     container.innerHTML = html;
     const results: (Paragraph | Table)[] = [];
+    const pendingImages: { src: string; index: number }[] = [];
 
-    const collectInlineRuns = (node: Node, inheritBold = false, inheritItalic = false): TextRun[] => {
+    const collectInlineRuns = (node: Node, inheritBold = false, inheritItalic = false, inheritStrike = false, inheritUnderline = false): TextRun[] => {
       const runs: TextRun[] = [];
       node.childNodes.forEach(child => {
         if (child.nodeType === Node.TEXT_NODE) {
@@ -1392,6 +1480,8 @@ export class DocumentExportService {
               text,
               bold: inheritBold || undefined,
               italics: inheritItalic || undefined,
+              strike: inheritStrike || undefined,
+              underline: inheritUnderline ? {} as any : undefined,
               highlight: highlightColor,
               font: 'Arial',
             }));
@@ -1400,17 +1490,17 @@ export class DocumentExportService {
           const el = child as HTMLElement;
           const tag = el.tagName.toLowerCase();
           if (tag === 'strong' || tag === 'b') {
-            runs.push(...collectInlineRuns(el, true, inheritItalic));
+            runs.push(...collectInlineRuns(el, true, inheritItalic, inheritStrike, inheritUnderline));
           } else if (tag === 'em' || tag === 'i') {
-            runs.push(...collectInlineRuns(el, inheritBold, true));
+            runs.push(...collectInlineRuns(el, inheritBold, true, inheritStrike, inheritUnderline));
           } else if (tag === 'br') {
             runs.push(new TextRun({ break: 1 }));
           } else if (tag === 'u') {
-            const innerRuns = collectInlineRuns(el, inheritBold, inheritItalic);
-            innerRuns.forEach(r => { (r as any).underline = {}; });
-            runs.push(...innerRuns);
+            runs.push(...collectInlineRuns(el, inheritBold, inheritItalic, inheritStrike, true));
+          } else if (tag === 's' || tag === 'del' || tag === 'strike') {
+            runs.push(...collectInlineRuns(el, inheritBold, inheritItalic, true, inheritUnderline));
           } else {
-            runs.push(...collectInlineRuns(el, inheritBold, inheritItalic));
+            runs.push(...collectInlineRuns(el, inheritBold, inheritItalic, inheritStrike, inheritUnderline));
           }
         }
       });
@@ -1447,24 +1537,32 @@ export class DocumentExportService {
         }
       } else if (tag === 'ul' || tag === 'ol') {
         const items = el.querySelectorAll(':scope > li');
+        let olIndex = 1;
         items.forEach(li => {
           const runs = collectInlineRuns(li);
           if (runs.length > 0) {
-            if (tag === 'ul') {
-              results.push(new Paragraph({
-                children: [new TextRun({ text: '• ', font: 'Arial' }), ...runs],
-                indent: { left: 720 },
-                spacing: { after: 60 },
-              }));
-            } else {
-              results.push(new Paragraph({
-                children: runs,
-                indent: { left: 720 },
-                spacing: { after: 60 },
-              }));
-            }
+            const prefix = tag === 'ul'
+              ? '• '
+              : `${olIndex++}. `;
+            results.push(new Paragraph({
+              children: [new TextRun({ text: prefix, font: 'Arial' }), ...runs],
+              indent: { left: 720 },
+              spacing: { after: 60 },
+            }));
           }
         });
+      } else if (tag === 'img') {
+        // Queue image for async loading — store placeholder and resolve later
+        const src = el.getAttribute('src');
+        if (src) {
+          const imgPlaceholder = new Paragraph({
+            children: [new TextRun({ text: '[Image]', italics: true, color: '999999', font: 'Arial' })],
+            spacing: { after: 120 },
+          });
+          results.push(imgPlaceholder);
+          // Try to load and replace with actual image
+          pendingImages.push({ src, index: results.length - 1 });
+        }
       } else if (tag === 'table') {
         const tbl = this.parseHtmlTable(el.outerHTML);
         if (tbl) results.push(tbl);
@@ -1480,6 +1578,46 @@ export class DocumentExportService {
     };
 
     container.childNodes.forEach(child => processNode(child));
+
+    // Resolve pending images
+    for (const img of pendingImages) {
+      try {
+        const response = await fetch(img.src);
+        if (!response.ok) continue;
+        const blob = await response.blob();
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuffer);
+        const ext = img.src.toLowerCase().includes('.png') ? 'png' : 'jpg';
+
+        // Get image dimensions
+        const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+          const imgEl = new Image();
+          imgEl.onload = () => resolve({ w: imgEl.naturalWidth, h: imgEl.naturalHeight });
+          imgEl.onerror = () => resolve({ w: 400, h: 300 });
+          imgEl.src = img.src;
+        });
+
+        // Scale to fit page width (max ~500px)
+        const maxW = 500;
+        const scale = dims.w > maxW ? maxW / dims.w : 1;
+        const drawW = Math.round(dims.w * scale);
+        const drawH = Math.round(dims.h * scale);
+
+        results[img.index] = new Paragraph({
+          children: [
+            new ImageRun({
+              type: ext as 'png' | 'jpg',
+              data: uint8,
+              transformation: { width: drawW, height: drawH },
+              altText: { title: 'Document Image', description: 'Embedded image', name: 'image' },
+            }),
+          ],
+          spacing: { after: 120 },
+        });
+      } catch {
+        // Keep the [Image] placeholder on failure
+      }
+    }
 
     // If nothing was parsed but there was text, fallback
     if (results.length === 0) {

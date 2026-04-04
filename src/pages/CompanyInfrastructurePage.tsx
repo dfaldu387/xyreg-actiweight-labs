@@ -1,7 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Building, Server, Wrench, ClipboardList, AlertTriangle, CheckCircle2, Clock, FolderOpen, Search, Plus, Shield, Pencil, Info } from 'lucide-react';
+import { Building, Server, Wrench, ClipboardList, AlertTriangle, CheckCircle2, Clock, FolderOpen, Search, Plus, Shield, Pencil, Info, ArrowUpCircle, ArrowRight } from 'lucide-react';
 import { XyregValidationPanel } from '@/components/infrastructure/XyregValidationPanel';
+import { useCompanyId } from '@/hooks/useCompanyId';
+import { useCompanyAdoptedRelease } from '@/hooks/useCompanyAdoptedRelease';
+import { useAvailableXyregReleases } from '@/hooks/useAvailableXyregReleases';
 
 import { AddAssetDialog } from '@/components/infrastructure/AddAssetDialog';
 import { EditAssetDialog } from '@/components/infrastructure/EditAssetDialog';
@@ -192,6 +195,13 @@ export default function CompanyInfrastructurePage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingAsset, setEditingAsset] = useState<InfrastructureAsset | null>(null);
 
+  // Release notification
+  const companyId = useCompanyId() || '';
+  const { data: adoptedRelease } = useCompanyAdoptedRelease(companyId);
+  const { data: availableReleases = [] } = useAvailableXyregReleases();
+  const latestRelease = availableReleases.length > 0 ? availableReleases[0] : null;
+  const hasNewerVersion = latestRelease && (!adoptedRelease || latestRelease.id !== adoptedRelease.release_id);
+
   const [facilities, setFacilities] = useState(FACILITIES_INITIAL);
   const [digitalSystems, setDigitalSystems] = useState(DIGITAL_INITIAL);
   const [equipment, setEquipment] = useState(EQUIPMENT_INITIAL);
@@ -236,6 +246,36 @@ export default function CompanyInfrastructurePage() {
         subtitle={lang('infrastructure.subtitle')}
       />
 
+      {/* New Release Banner */}
+      {hasNewerVersion && latestRelease && (
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardContent className="py-3 px-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <ArrowUpCircle className="h-5 w-5 text-blue-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-blue-900">
+                    New XYREG version v{latestRelease.version} available
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    Released {new Date(latestRelease.release_date).toLocaleDateString()}
+                    {adoptedRelease && <span> — Current: v{adoptedRelease.version}</span>}
+                    {!adoptedRelease && <span> — No version adopted yet</span>}
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                onClick={() => setValidationPanelOpen(true)}
+              >
+                <ArrowRight className="h-3 w-3 mr-1" />
+                Open Validation Package
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Status Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

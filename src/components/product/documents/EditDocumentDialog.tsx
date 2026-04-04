@@ -932,12 +932,6 @@ export function EditDocumentDialog({
                     Approved
                   </Box>
                 </MenuItem>
-                <MenuItem value="Report">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#4caf50' }}></Box>
-                    Report
-                  </Box>
-                </MenuItem>
                 <MenuItem value="Rejected">
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#f44336' }}></Box>

@@ -447,7 +447,7 @@ export function ProductDataTable({ products, getProductCardBg, refetch }: Produc
     setCopyDialogOpen(true);
   };
 
-  const handleCopyConfirm = async (targetCompanyId: string, attachToFamily: boolean, customName?: string) => {
+  const handleCopyConfirm = async (targetCompanyId: string, attachToFamily: boolean, customName?: string, selectedFamilyId?: string) => {
     const product = copyTargetProduct;
     if (!product) return;
 
@@ -509,13 +509,18 @@ export function ProductDataTable({ products, getProductCardBg, refetch }: Produc
       (productData as any).name = copyName;
 
       // Handle family attachment
-      if (!attachToFamily) {
+      if (!attachToFamily || !selectedFamilyId) {
         (productData as any).is_master_device = false;
         (productData as any).is_master_product = false;
         (productData as any).is_variant = false;
+        (productData as any).parent_product_id = null;
+        (productData as any).parent_relationship_type = null;
       } else {
-        (productData as any).parent_product_id = fullProduct.parent_product_id || null;
-        (productData as any).master_product_id = fullProduct.master_product_id || null;
+        (productData as any).parent_product_id = selectedFamilyId;
+        (productData as any).parent_relationship_type = 'variant';
+        (productData as any).is_master_device = false;
+        (productData as any).is_master_product = false;
+        (productData as any).is_variant = true;
       }
 
       // Insert the copied product and get the new ID

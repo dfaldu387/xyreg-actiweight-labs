@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import {
   Loader2, Save, DollarSign, Cpu, Package, Sparkles, Check, RefreshCw,
-  Building2, Calendar, Edit2, Users, Search
+  Building2, Calendar, Edit2, Users, Search, Plus
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -135,6 +135,14 @@ export default function SuperAdminPlanPricing() {
     ai_booster_packs: "",
   });
   const [isSavingSub, setIsSavingSub] = useState(false);
+
+  // Add company dialog state
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [allCompanies, setAllCompanies] = useState<Array<{ id: string; name: string }>>([]);
+  const [isLoadingCompanies, setIsLoadingCompanies] = useState(false);
+  const [addForm, setAddForm] = useState({ company_id: "", plan_id: "", status: "active" });
+  const [isSavingAdd, setIsSavingAdd] = useState(false);
+  const [addCompanySearch, setAddCompanySearch] = useState("");
 
   // ── Fetch pricing plans ──
 
@@ -315,6 +323,78 @@ export default function SuperAdminPlanPricing() {
     }
   };
 
+  // ── Add company handlers ──
+
+  const fetchAllCompanies = async () => {
+    try {
+      setIsLoadingCompanies(true);
+      const { data, error } = await supabase
+        .from("companies")
+        .select("id, name")
+        .eq("is_archived", false)
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      setAllCompanies(data || []);
+    } catch (error: any) {
+      console.error("Error fetching companies:", error);
+      toast.error("Failed to load companies");
+    } finally {
+      setIsLoadingCompanies(false);
+    }
+  };
+
+  const openAddDialog = () => {
+    setAddForm({ company_id: "", plan_id: "", status: "active" });
+    setAddCompanySearch("");
+    fetchAllCompanies();
+    setAddDialogOpen(true);
+  };
+
+  const handleAddCompanySubscription = async () => {
+    if (!addForm.company_id || !addForm.plan_id) {
+      toast.error("Please select a company and a plan");
+      return;
+    }
+
+    try {
+      setIsSavingAdd(true);
+
+      const { error } = await supabase
+        .from("new_pricing_company_plans")
+        .insert({
+          company_id: addForm.company_id,
+          plan_id: addForm.plan_id,
+          status: addForm.status,
+          started_at: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+
+      toast.success("Company subscription added successfully");
+      setAddDialogOpen(false);
+      fetchSubscriptions();
+    } catch (error: any) {
+      console.error("Error adding subscription:", error);
+      if (error.message?.includes("duplicate") || error.code === "23505") {
+        toast.error("This company already has a subscription entry");
+      } else {
+        toast.error("Failed to add subscription: " + error.message);
+      }
+    } finally {
+      setIsSavingAdd(false);
+    }
+  };
+
+  // Companies not already in subscriptions
+  const availableCompanies = allCompanies.filter(
+    (c) => !subscriptions.some((s) => s.company_id === c.id)
+  );
+
+  const filteredAddCompanies = availableCompanies.filter(
+    (c) => !addCompanySearch || c.name.toLowerCase().includes(addCompanySearch.toLowerCase())
+  );
+
   const getStatusBadge = (status: string) => {
     const colors: Record<string, string> = {
       active: "bg-green-100 text-green-800 border-green-200",
@@ -486,6 +566,10 @@ export default function SuperAdminPlanPricing() {
                   <SelectItem value="pending">Pending</SelectItem>
                 </SelectContent>
               </Select>
+              <Button onClick={openAddDialog} className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white gap-2">
+                <Plus className="h-4 w-4" />
+                Add Company
+              </Button>
             </div>
 
             {/* Table */}
@@ -807,6 +891,107 @@ export default function SuperAdminPlanPricing() {
             >
               {isSavingSub ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {isSavingSub ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Add Company Subscription Dialog ── */}
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-emerald-600" />
+              Add Company Subscription
+            </DialogTitle>
+            <DialogDescription>
+              Select an existing company and assign a pricing plan.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Company Search & Select */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Company</Label>
+              <div className="relative mb-2">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder="Search companies..."
+                  value={addCompanySearch}
+                  onChange={(e) => setAddCompanySearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              {isLoadingCompanies ? (
+                <div className="flex items-center gap-2 text-sm text-slate-500 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading companies...
+                </div>
+              ) : (
+                <Select value={addForm.company_id} onValueChange={(v) => setAddForm((p) => ({ ...p, company_id: v }))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a company" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredAddCompanies.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-slate-500">No companies available</div>
+                    ) : (
+                      filteredAddCompanies.map((company) => (
+                        <SelectItem key={company.id} value={company.id}>
+                          {company.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Plan */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Plan</Label>
+              <Select value={addForm.plan_id} onValueChange={(v) => setAddForm((p) => ({ ...p, plan_id: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.id}>
+                      {plan.display_name} ({plan.name})
+                      {plan.monthly_price !== null ? ` — $${plan.monthly_price}/mo` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Status */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Status</Label>
+              <Select value={addForm.status} onValueChange={(v) => setAddForm((p) => ({ ...p, status: v }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="trial">Trial</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddCompanySubscription}
+              disabled={isSavingAdd || !addForm.company_id || !addForm.plan_id}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+            >
+              {isSavingAdd ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {isSavingAdd ? "Adding..." : "Add Subscription"}
             </Button>
           </DialogFooter>
         </DialogContent>

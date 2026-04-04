@@ -147,18 +147,24 @@ export function DocumentFileUpload({
     // Set removing flag immediately
     isRemovingRef.current = true;
     
-    // Clear the selected file
+    // Clear the selected file and reset upload status
     setSelectedFile(null);
+    setUploadStatus('idle');
     setIsFileRemoved(true);
-    
+
     // Clear the input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    
+
     // Notify parent to clear the file completely
     onFileChange(null, null);
-    
+
+    // Reset removing flag after state updates
+    setTimeout(() => {
+      isRemovingRef.current = false;
+    }, 100);
+
   }, [onFileChange, isFileRemoved, selectedFile, currentFile, uploadStatus, disabled]);
 
   const getStatusIcon = () => {
@@ -174,14 +180,23 @@ export function DocumentFileUpload({
     }
   };
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const getStatusText = () => {
     switch (uploadStatus) {
       case 'uploading':
-        return 'Uploading...';
+        return selectedFile ? `Uploading ${selectedFile.name}...` : 'Uploading...';
       case 'success':
-        return selectedFile ? `✓ ${selectedFile.name}` : 'Upload successful';
+        if (selectedFile) {
+          return `✓ ${selectedFile.name} (${formatFileSize(selectedFile.size)})`;
+        }
+        return 'Upload successful';
       case 'error':
-        return 'Upload failed';
+        return 'Upload failed. Please try again.';
       default:
         if (isFileRemoved) {
           return 'Drop files here or click to upload';

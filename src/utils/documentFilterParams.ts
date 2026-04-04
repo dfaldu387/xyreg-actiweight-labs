@@ -16,7 +16,23 @@ export type SortByDateOption =
   | 'due_newest'
   | 'due_oldest'
   | 'approval_newest'
-  | 'approval_oldest';
+  | 'approval_oldest'
+  | 'name_asc'
+  | 'name_desc'
+  | 'phase_asc'
+  | 'phase_desc'
+  | 'section_asc'
+  | 'section_desc'
+  | 'author_asc'
+  | 'author_desc'
+  | 'status_asc'
+  | 'status_desc'
+  | 'category_asc'
+  | 'category_desc'
+  | 'doctype_asc'
+  | 'doctype_desc'
+  | 'date_newest'
+  | 'date_oldest';
 
 export type ViewMode = 'card' | 'list';
 
@@ -99,7 +115,6 @@ export type ValidSortColumn = typeof VALID_SORT_COLUMNS[number];
 export const VALID_STATUS_OPTIONS = [
   'Not Started',
   'In Review',
-  'Report',
   'Approved',
   'Rejected',
   'N/A',
@@ -113,6 +128,22 @@ export const VALID_SORT_OPTIONS: SortByDateOption[] = [
   'due_oldest',
   'approval_newest',
   'approval_oldest',
+  'name_asc',
+  'name_desc',
+  'phase_asc',
+  'phase_desc',
+  'section_asc',
+  'section_desc',
+  'author_asc',
+  'author_desc',
+  'status_asc',
+  'status_desc',
+  'category_asc',
+  'category_desc',
+  'doctype_asc',
+  'doctype_desc',
+  'date_newest',
+  'date_oldest',
 ];
 
 export const VALID_VIEW_MODES: ViewMode[] = ['card', 'list'];
@@ -131,10 +162,42 @@ export const SORT_OPTION_LABELS: Record<SortByDateOption, string> = {
   due_oldest: 'Due Date (Oldest)',
   approval_newest: 'Approval (Newest)',
   approval_oldest: 'Approval (Oldest)',
+  name_asc: 'Name (A-Z)',
+  name_desc: 'Name (Z-A)',
+  phase_asc: 'Phase (A-Z)',
+  phase_desc: 'Phase (Z-A)',
+  section_asc: 'Section (A-Z)',
+  section_desc: 'Section (Z-A)',
+  author_asc: 'Author (A-Z)',
+  author_desc: 'Author (Z-A)',
+  status_asc: 'Status (A-Z)',
+  status_desc: 'Status (Z-A)',
+  category_asc: 'Category (A-Z)',
+  category_desc: 'Category (Z-A)',
+  doctype_asc: 'Document Type (A-Z)',
+  doctype_desc: 'Document Type (Z-A)',
+  date_newest: 'Date (Newest)',
+  date_oldest: 'Date (Oldest)',
 };
 
 export const SORT_OPTIONS_GROUPED = [
   { value: 'none' as SortByDateOption, label: 'Default', group: undefined },
+  { value: 'name_asc' as SortByDateOption, label: 'A → Z', group: 'Name' },
+  { value: 'name_desc' as SortByDateOption, label: 'Z → A', group: 'Name' },
+  { value: 'phase_asc' as SortByDateOption, label: 'A → Z', group: 'Phase' },
+  { value: 'phase_desc' as SortByDateOption, label: 'Z → A', group: 'Phase' },
+  { value: 'section_asc' as SortByDateOption, label: 'A → Z', group: 'Section' },
+  { value: 'section_desc' as SortByDateOption, label: 'Z → A', group: 'Section' },
+  { value: 'author_asc' as SortByDateOption, label: 'A → Z', group: 'Author' },
+  { value: 'author_desc' as SortByDateOption, label: 'Z → A', group: 'Author' },
+  { value: 'status_asc' as SortByDateOption, label: 'A → Z', group: 'Status' },
+  { value: 'status_desc' as SortByDateOption, label: 'Z → A', group: 'Status' },
+  { value: 'category_asc' as SortByDateOption, label: 'A → Z', group: 'Category' },
+  { value: 'category_desc' as SortByDateOption, label: 'Z → A', group: 'Category' },
+  { value: 'doctype_asc' as SortByDateOption, label: 'A → Z', group: 'Document Type' },
+  { value: 'doctype_desc' as SortByDateOption, label: 'Z → A', group: 'Document Type' },
+  { value: 'date_newest' as SortByDateOption, label: 'Newest First', group: 'Date' },
+  { value: 'date_oldest' as SortByDateOption, label: 'Oldest First', group: 'Date' },
   { value: 'updated_newest' as SortByDateOption, label: 'Newest First', group: 'Last Updated' },
   { value: 'updated_oldest' as SortByDateOption, label: 'Oldest First', group: 'Last Updated' },
   { value: 'due_newest' as SortByDateOption, label: 'Newest First', group: 'Due Date' },

@@ -4,14 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Shield, CheckCircle2, Clock, AlertTriangle, MinusCircle } from 'lucide-react';
 import { XYREG_MODULE_GROUPS } from '@/data/xyregModuleGroups';
+import { useAllModuleGroupValidations } from '@/hooks/useModuleGroupValidation';
+import { useCompanyId } from '@/hooks/useCompanyId';
 
 type ValidationStatus = 'validated' | 'pending' | 'invalidated' | 'not_started';
-
-function getModuleStatus(groupId: string): ValidationStatus {
-  const statuses: ValidationStatus[] = ['validated', 'pending', 'not_started', 'invalidated'];
-  const hash = groupId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-  return statuses[hash % statuses.length];
-}
 
 const STATUS_CONFIG: Record<ValidationStatus, { label: string; color: string; icon: React.ReactNode }> = {
   validated: { label: 'Validated', color: 'bg-emerald-500', icon: <CheckCircle2 className="h-3 w-3" /> },
@@ -20,8 +16,27 @@ const STATUS_CONFIG: Record<ValidationStatus, { label: string; color: string; ic
   not_started: { label: 'Not Started', color: 'bg-muted-foreground/40', icon: <MinusCircle className="h-3 w-3" /> },
 };
 
-export function ValidationCoverageDashboard() {
+interface ValidationCoverageDashboardProps {
+  adoptedReleaseId?: string | null;
+}
+
+export function ValidationCoverageDashboard({ adoptedReleaseId = null }: ValidationCoverageDashboardProps) {
   const groups = XYREG_MODULE_GROUPS;
+  const companyId = useCompanyId() || '';
+  const { data: dbValidations = [] } = useAllModuleGroupValidations(companyId, adoptedReleaseId);
+
+  // Derive status from real DB data instead of fake hash
+  function getModuleStatus(groupId: string): ValidationStatus {
+    const record = dbValidations.find(v => v.module_group_id === groupId);
+    if (!record) return 'not_started';
+    if (record.overall_verdict === 'validated') return 'validated';
+    if (record.overall_verdict === 'validated_with_conditions') return 'validated';
+    if (record.overall_verdict === 'not_validated') return 'invalidated';
+    // Has some data but no overall verdict yet = in progress
+    if (record.iq_verdict || record.oq_verdict || record.pq_verdict) return 'pending';
+    return 'not_started';
+  }
+
   const statuses = groups.map(g => ({ group: g, status: getModuleStatus(g.id) }));
 
   const counts: Record<ValidationStatus, number> = { validated: 0, pending: 0, invalidated: 0, not_started: 0 };

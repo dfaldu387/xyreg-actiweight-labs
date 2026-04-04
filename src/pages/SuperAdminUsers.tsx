@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Shield, Users, Search, Building2, Mail, Calendar, Activity, ChevronUp, ChevronDown, ArrowUpDown, KeyRound } from "lucide-react";
+import { Shield, Users, Search, Building2, Mail, Calendar, Activity, ChevronUp, ChevronDown, ArrowUpDown, KeyRound, Eye } from "lucide-react";
 import { GlobalPasswordPolicySettings } from "@/components/settings/GlobalPasswordPolicySettings";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -71,6 +71,7 @@ export default function SuperAdminUsers() {
   const [pageSize, setPageSize] = useState(20);
 
   const isSuperAdmin = user?.user_metadata?.role === 'super_admin';
+  const isDevMode = new URLSearchParams(window.location.search).get('mode') === 'dev';
 
   useEffect(() => {
     if (!isSuperAdmin) {
@@ -162,6 +163,53 @@ export default function SuperAdminUsers() {
       toast.error('Failed to fetch users. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleLoginAsUser = async (userId: string, userEmail: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        toast.error('Authentication required');
+        return;
+      }
+
+      const impersonationData = {
+        impersonatedBy: user?.id,
+        impersonatedByEmail: user?.email,
+        impersonatedAt: new Date().toISOString(),
+        originalUserEmail: userEmail,
+        targetUserId: userId
+      };
+
+      localStorage.setItem('impersonation_data', JSON.stringify(impersonationData));
+
+      const { data, error } = await supabase.functions.invoke('impersonate-user', {
+        body: { targetUserId: userId },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) {
+        console.error('Impersonation error:', error);
+        toast.error('Failed to impersonate user: ' + error.message);
+        localStorage.removeItem('impersonation_data');
+        return;
+      }
+
+      if (data?.success && data?.loginUrl) {
+        toast.success(`Logging in as ${userEmail}...`);
+        window.location.href = data.loginUrl;
+      } else {
+        toast.error('Failed to generate impersonation link');
+        localStorage.removeItem('impersonation_data');
+      }
+    } catch (error: any) {
+      console.error('Error impersonating user:', error);
+      toast.error('Failed to impersonate user: ' + error.message);
+      localStorage.removeItem('impersonation_data');
     }
   };
 
@@ -390,18 +438,23 @@ export default function SuperAdminUsers() {
                   Created {renderSortIcon('created_at')}
                 </button>
               </TableHead>
+              {isDevMode && (
+                <TableHead>
+                  <span className="font-medium">Actions</span>
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isDevMode ? 7 : 6} className="text-center py-8 text-muted-foreground">
                   Loading users...
                 </TableCell>
               </TableRow>
             ) : paginatedUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={isDevMode ? 7 : 6} className="text-center py-8 text-muted-foreground">
                   No users found.
                 </TableCell>
               </TableRow>
@@ -482,6 +535,18 @@ export default function SuperAdminUsers() {
                         </span>
                       </span>
                     </TableCell>
+
+                    {isDevMode && (
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          onClick={() => handleLoginAsUser(u.id, u.email)}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Login as User
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })

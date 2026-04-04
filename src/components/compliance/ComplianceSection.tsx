@@ -12,7 +12,7 @@ interface ComplianceSectionProps {
 export function ComplianceSection({ companyId, disabled = false }: ComplianceSectionProps) {
 
   return (
-    <Card>
+    <Card className="bg-transparent border-none pt-2">
       {/* <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-primary" />
@@ -22,7 +22,7 @@ export function ComplianceSection({ companyId, disabled = false }: ComplianceSec
           Access compliance tools and manage regulatory requirements
         </p>
       </CardHeader> */}
-      <CardContent>
+      <CardContent className="!p-0">
         <DocumentScopeManager
           companyId={companyId}
           scope="company"

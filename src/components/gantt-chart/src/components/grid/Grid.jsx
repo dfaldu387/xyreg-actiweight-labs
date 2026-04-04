@@ -14,6 +14,7 @@ import { Grid as WxGrid } from '@svar-ui/react-grid';
 import TextCell from './TextCell.jsx';
 import ActionCell from './ActionCell.jsx';
 import { useWritableProp, useStore } from '@svar-ui/lib-react';
+import { useSafeStore } from '../../helpers/safeUseStore';
 import storeContext from '../../context';
 import './Grid.css';
 
@@ -28,7 +29,7 @@ export default function Grid(props) {
 
   const scrollTopVal = useStore(api, "scrollTop");
   const cellHeightVal = useStore(api, "cellHeight");
-  const scrollTask = useStore(api, "_scrollTask");
+  const scrollTask = useSafeStore(api, "_scrollTask");
   const selectedVal = useStore(api, "_selected");
   const areaVal = useStore(api, "area");
   const rTasksVal = useStore(api, "_tasks");

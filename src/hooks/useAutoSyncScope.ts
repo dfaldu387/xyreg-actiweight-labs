@@ -516,12 +516,11 @@ export async function mirrorScopeToFamilyProducts(
   parentProductId?: string | null,
   additionalQueryKeys?: string[][]
 ): Promise<void> {
-  const rootId = parentProductId || productId;
   const { data: allProducts } = await supabase
     .from('products')
     .select('id, field_scope_overrides')
-    .eq('is_archived', false)
-    .or(`id.eq.${rootId},and(parent_product_id.eq.${rootId},parent_relationship_type.eq.variant)`);
+    .eq('company_id', companyId)
+    .eq('is_archived', false);
 
   if (!allProducts) return;
 
@@ -572,7 +571,7 @@ export function useScopeMirroring(
     const scopeWithFlag = { ...scope, isManualGroup: true };
     await exclusionHook.setExclusionScope(itemId, scopeWithFlag);
 
-    if (!belongsToFamily || !productId || !companyId) return;
+    if (!productId || !companyId) return;
     await mirrorScopeToFamilyProducts(itemId, scopeWithFlag, storageKey, productId, companyId, parentProductId, additionalQueryKeys);
   }, [exclusionHook, storageKey, productId, companyId, belongsToFamily, additionalQueryKeys, parentProductId]);
 
@@ -602,20 +601,17 @@ export function useAutoSyncScope(
   // Track fields manually changed by user via popover to prevent initial sync overwrite
   const manualOverrideKeysRef = useRef<Set<string>>(new Set());
 
-  // Root of the device family: if current product is a variant use its parent, otherwise use itself
-  const familyRootId = parentProductId || productId;
-
   const { data: familyProducts } = useQuery<FamilyProductData[]>({
-    queryKey: ['family-products-scope-sync', familyRootId],
+    queryKey: ['family-products-scope-sync', companyId],
     queryFn: async () => {
       const { data } = await supabase
         .from('products')
         .select('id, primary_regulatory_type, device_type, key_technology_characteristics, trade_name, device_category, description, model_reference, intended_purpose_data, clinical_benefits, intended_users, contraindications, user_instructions, storage_sterility_handling, images, product_platform, trl_level, updated_at')
-        .eq('is_archived', false)
-        .or(`id.eq.${familyRootId},and(parent_product_id.eq.${familyRootId},parent_relationship_type.eq.variant)`);
+        .eq('company_id', companyId!)
+        .eq('is_archived', false);
       return (data || []) as FamilyProductData[];
     },
-    enabled: !!familyRootId && belongsToFamily,
+    enabled: !!companyId && belongsToFamily,
     staleTime: 30_000,
   });
 
@@ -670,7 +666,7 @@ export function useAutoSyncScope(
             const freshValue = latestEditedValuesRef.current[fieldKey] ?? newValue;
             await propagateFieldToProducts(fieldKey, freshValue, groupMemberIds);
             const { queryClient } = await import('@/lib/query-client');
-            queryClient.invalidateQueries({ queryKey: ['family-products-scope-sync', familyRootId] });
+            queryClient.invalidateQueries({ queryKey: ['family-products-scope-sync', companyId] });
             for (const targetId of groupMemberIds) {
               queryClient.invalidateQueries({ queryKey: ['productDetails', targetId] });
               queryClient.invalidateQueries({ queryKey: ['product', targetId] });
@@ -698,7 +694,7 @@ export function useAutoSyncScope(
         excludedProductIds: divergentIds,
       });
     },
-    [exclusionHook, productId, familyProducts, belongsToFamily, companyId, familyRootId]
+    [exclusionHook, productId, familyProducts, belongsToFamily, companyId]
   );
 
   // Build a fingerprint of family data using updated_at for robust change detection
@@ -878,11 +874,11 @@ export function useAutoSyncScope(
 
       // Refetch family products (await ensures fresh data before returning) + invalidate current product
       const { queryClient } = await import('@/lib/query-client');
-      await queryClient.refetchQueries({ queryKey: ['family-products-scope-sync', familyRootId] });
+      await queryClient.refetchQueries({ queryKey: ['family-products-scope-sync', companyId] });
       queryClient.invalidateQueries({ queryKey: ['productDetails', productId] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
     },
-    [exclusionHook, productId, companyId, familyProducts, familyRootId]
+    [exclusionHook, productId, companyId, familyProducts]
   );
 
   return { syncScope, familyProducts, handleScopeChangeWithPropagation, getComputedScope };

@@ -945,6 +945,16 @@
       "noResults": "No results found"
     },
     "relatedTopics": "Related Topics",
+    "versionHistory": {
+      "title": "Version History",
+      "loading": "Loading releases...",
+      "empty": "No published releases yet",
+      "current": "Current",
+      "currentVersion": "Current version",
+      "startValidation": "Start Validation",
+      "showMore": "Show more",
+      "showLess": "Show less"
+    },
     "content": {
       "qms": {
         "description": "A robust Quality Management System is mandatory for medical device manufacturers under ISO 13485 and regulatory requirements.",
@@ -1902,7 +1912,8 @@
       "tabs": {
         "context": "Context",
         "guide": "Guide",
-        "reference": "Reference"
+        "reference": "Reference",
+        "versions": "Versions"
       },
       "title": "Help & Guide",
       "helpHints": {
@@ -16241,7 +16252,7 @@
     "validationPanel": {
       "title": "XYREG Validation Package",
       "back": "Back",
-      "validate": "Validate: {name}",
+      "validate": "Validate: {{name}}",
       "currentVersion": "Current Version",
       "moduleGroupsValidated": "Module Groups Validated",
       "downloadKit": "Download Vendor Validation Kit (DOCX)",
@@ -16254,11 +16265,11 @@
       "statusInProgress": "In Progress",
       "statusRevalidationRequired": "Re-validation Required",
       "statusNotStarted": "Not Started",
-      "validationSaved": "Validation record saved for {name}"
+      "validationSaved": "Validation record saved for {{name}}"
     },
     "checklist": {
-      "risk": "Risk: {level}",
-      "sops": "{count} SOPs",
+      "risk": "Risk: {{level}}",
+      "sops": "{{count}} SOPs",
       "iqTitle": "Installation Qualification (IQ)",
       "iqDescription": "Confirm that XYREG is accessible to authorized users with correct roles and configurations for your site. Why is the installation acceptable?",
       "iqThinkingPrompt": "Consider: Are user roles correctly mapped to your organizational structure? Is the configuration consistent with your quality policy? Are access controls appropriate for your regulatory requirements?",
@@ -16302,17 +16313,17 @@
       "riskRationalePlaceholder": "Explain your risk acceptance or rejection rationale...",
       "evidenceNotes": "Evidence Notes",
       "evidencePlaceholder": "Reference supporting evidence, test records, or document IDs...",
-      "invalidatedBy": "Invalidated by {service}"
+      "invalidatedBy": "Invalidated by {{service}}"
     },
     "releaseImpact": {
-      "title": "Release {version} — Impact Analysis",
-      "requireRevalidation": "{count} module group(s) require re-validation.",
-      "unaffected": "{count} group(s) unaffected.",
+      "title": "Release {{version}} — Impact Analysis",
+      "requireRevalidation": "{{count}} module group(s) require re-validation.",
+      "unaffected": "{{count}} group(s) unaffected.",
       "coreEngineChanges": "Core Engine Changes",
-      "cascadesTo": "Cascades to {count} module group(s)",
+      "cascadesTo": "Cascades to {{count}} module group(s)",
       "actionRequired": "Action Required ({count})",
       "directChange": "Direct change",
-      "coreCascade": "Core cascade: {services}",
+      "coreCascade": "Core cascade: {{services}}",
       "revalidate": "Re-validate",
       "noActionRequired": "No Action Required ({count})",
       "unaffectedBadge": "Unaffected"

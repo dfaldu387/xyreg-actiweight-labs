@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { Bell, AlertTriangle, FileText, CheckCircle2, Send, Users, MessageSquare } from "lucide-react";
+import { Bell, AlertTriangle, FileText, CheckCircle2, Send, Users, MessageSquare, ArrowUpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
@@ -101,6 +101,8 @@ export function NotificationBell() {
           return <Users className="h-4 w-4 text-green-600 flex-shrink-0" />;
         case 'communication':
           return <MessageSquare className="h-4 w-4 text-purple-600 flex-shrink-0" />;
+        case 'system':
+          return <ArrowUpCircle className="h-4 w-4 text-blue-600 flex-shrink-0" />;
         default:
           return <Bell className="h-4 w-4 text-muted-foreground flex-shrink-0" />;
       }
@@ -155,6 +157,9 @@ export function NotificationBell() {
       navigate(`/app/company/${encodeURIComponent(currentCompanyName)}/review${params}`);
     } else if (notification.action_url) {
       navigate(notification.action_url);
+    } else if (notification.source === 'app' && (notification as any).category === 'system' && currentCompanyName) {
+      // Fallback for system notifications (e.g., new_release) without action_url
+      navigate(`/app/company/${encodeURIComponent(currentCompanyName)}/infrastructure`);
     }
   };
 

@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { ISO_13485_GROUPS } from '@/config/gapISO13485Sections';
 import type { QualityManualSection } from '@/hooks/useQualityManual';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 
 interface QualityManualLaunchViewProps {
   sections: QualityManualSection[];
@@ -20,6 +21,7 @@ interface QualityManualLaunchViewProps {
 
 export function QualityManualLaunchView({ sections, exclusions, onSelectSection, onToggleExclusion, companyId, companyName }: QualityManualLaunchViewProps) {
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
   const groups = ISO_13485_GROUPS;
 
   const totalSteps = sections.length;
@@ -116,7 +118,7 @@ export function QualityManualLaunchView({ sections, exclusions, onSelectSection,
                 className="gap-1.5"
               >
                 <FileEdit className="h-4 w-4" />
-                Export to CI
+                Create Document
               </Button>
             )}
             <div className={cn(
@@ -170,19 +172,30 @@ export function QualityManualLaunchView({ sections, exclusions, onSelectSection,
 
       {/* Full QM Export Dialog */}
       {companyId && companyName && (
-        <SaveContentAsDocCIDialog
-          open={showDocCIDialog}
-          onOpenChange={setShowDocCIDialog}
-          title="Complete Quality Manual — ISO 13485"
-          htmlContent={sections
-            .filter(s => !exclusions.has(s.clause) && s.content && s.content.length > 20)
-            .map(s => `<h2>§${s.clause} ${s.title}</h2>${s.content}`)
-            .join('\n')}
-          templateIdKey={`QM-FULL-${companyId}`}
-          companyId={companyId}
-          companyName={companyName}
-          defaultScope="enterprise"
-        />
+        <>
+          <SaveContentAsDocCIDialog
+            open={showDocCIDialog}
+            onOpenChange={setShowDocCIDialog}
+            title="Complete Quality Manual — ISO 13485"
+            htmlContent={sections
+              .filter(s => !exclusions.has(s.clause) && s.content && s.content.length > 20)
+              .map(s => `<h2>§${s.clause} ${s.title}</h2>${s.content}`)
+              .join('\n')}
+            templateIdKey={`QM-FULL-${companyId}`}
+            companyId={companyId}
+            companyName={companyName}
+            defaultScope="enterprise"
+            onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+          />
+          <DocumentDraftDrawer
+            open={!!draftDrawerDoc}
+            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+            documentId={draftDrawerDoc?.id || ''}
+            documentName={draftDrawerDoc?.name || ''}
+            documentType={draftDrawerDoc?.type || ''}
+            companyId={companyId}
+          />
+        </>
       )}
     </div>
   );

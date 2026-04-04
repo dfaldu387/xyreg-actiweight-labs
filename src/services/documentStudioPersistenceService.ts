@@ -60,6 +60,7 @@ export class DocumentStudioPersistenceService {
           return { success: false, error: error.message };
         }
 
+        await this.updateCIStatusToDraft(data.template_id, data.company_id);
         return { success: true, id: updatedData.id };
       } else {
         // Create new template
@@ -74,11 +75,36 @@ export class DocumentStudioPersistenceService {
           return { success: false, error: error.message };
         }
 
+        await this.updateCIStatusToDraft(data.template_id, data.company_id);
         return { success: true, id: newData.id };
       }
     } catch (error) {
       console.error('Error in saveTemplate:', error);
       return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * Update the CI record status to "Draft" if it's currently "Not Started".
+   * Called after saving a draft so the document list reflects that work has begun.
+   */
+  private static async updateCIStatusToDraft(templateId: string, companyId: string): Promise<void> {
+    try {
+      const { data: ciRecord } = await supabase
+        .from('phase_assigned_document_template')
+        .select('id, status')
+        .eq('id', templateId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+
+      if (ciRecord && (!ciRecord.status || ciRecord.status.toLowerCase() === 'not started')) {
+        await supabase
+          .from('phase_assigned_document_template')
+          .update({ status: 'Draft', updated_at: new Date().toISOString() })
+          .eq('id', ciRecord.id);
+      }
+    } catch {
+      // Non-critical — don't fail the save if status update fails
     }
   }
 

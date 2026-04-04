@@ -12,7 +12,9 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronLeft, ChevronRight, FileEdit, Trash2, Eye, Send, Pencil, MoreHorizontal, Copy } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, FileEdit, Trash2, Eye, Send, Pencil, MoreHorizontal, Copy, FileDown, Loader2 } from "lucide-react";
+import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
+import { toast } from 'sonner';
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SendToReviewGroupDialog } from './SendToReviewGroupDialog';
@@ -75,6 +77,8 @@ interface CompanyDocumentListViewProps {
   isDeleting?: boolean;
   disabled?: boolean;
   companyId?: string;
+  hiddenColumns?: string[];
+  externalSortActive?: boolean;
   bulkMode?: boolean;
   bulkSelectedDocs?: Set<string>;
   onToggleBulkDoc?: (docId: string) => void;
@@ -116,6 +120,8 @@ export function CompanyDocumentListView({
   isDeleting = false,
   disabled = false,
   companyId,
+  hiddenColumns = [],
+  externalSortActive = false,
   bulkMode = false,
   bulkSelectedDocs,
   onToggleBulkDoc,
@@ -124,6 +130,7 @@ export function CompanyDocumentListView({
   const [pendingDeleteDoc, setPendingDeleteDoc] = React.useState<CompanyDocument | null>(null);
   const [pendingCopyDoc, setPendingCopyDoc] = React.useState<CompanyDocument | null>(null);
   const [sendReviewDoc, setSendReviewDoc] = React.useState<CompanyDocument | null>(null);
+  const [pdfLoadingDocId, setPdfLoadingDocId] = React.useState<string | null>(null);
   // Initialize sorting from URL params
   const [sorting, setSortingState] = React.useState<SortingState>(() => {
     const sortCol = searchParams.get(TABLE_URL_PARAMS.SORT_COLUMN);
@@ -143,6 +150,21 @@ export function CompanyDocumentListView({
 
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
+
+  // Sync hiddenColumns prop to columnVisibility state
+  React.useEffect(() => {
+    const visibility: VisibilityState = {};
+    hiddenColumns.forEach(col => { visibility[col] = false; });
+    setColumnVisibility(visibility);
+  }, [hiddenColumns]);
+
+  // Clear table sorting when external filter sort is active
+  React.useEffect(() => {
+    if (externalSortActive) {
+      setSortingState([]);
+    }
+  }, [externalSortActive]);
+
   const { getAuthorById, isLoading: authorsLoading } = useDocumentAuthors(companyId || '');
   const { formatDate } = useCompanyDateFormat(companyId);
   const navigate = useNavigate();
@@ -262,9 +284,51 @@ export function CompanyDocumentListView({
       cell: ({ row }) => {
         const doc = row.original;
         return (
-          <span className="font-medium">
-            {doc.name}
-          </span>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="font-medium max-w-[180px] truncate block cursor-default">
+                  {doc.name}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <span className="text-sm">{doc.name}</span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
+    },
+    {
+      accessorKey: "phase_name",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="p-0 hover:bg-transparent"
+          >
+            Phase
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const rawPhaseName = row.getValue("phase_name") as string | null;
+        const phaseName = !rawPhaseName || rawPhaseName.toLowerCase() === 'no phase' ? 'Core' : rawPhaseName;
+        return (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="max-w-[120px] truncate rounded-full border text-center text-xs font-semibold w-fit px-3 py-1 bg-primary/10 text-primary border-primary/30 cursor-default">
+                  {phaseName}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <span className="text-sm">{phaseName}</span>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         );
       },
     },
@@ -288,7 +352,7 @@ export function CompanyDocumentListView({
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 max-w-[120px] truncate block">
+                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 max-w-[120px] truncate w-fit">
                   {section}
                 </Badge>
               </TooltipTrigger>
@@ -397,12 +461,11 @@ export function CompanyDocumentListView({
       },
       cell: ({ row }) => {
         const docType = row.getValue("document_type") as string;
-        return docType && docType !== 'Standard' ? (
+        if (!docType) return <span className="text-muted-foreground">-</span>;
+        return (
           <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
             {docType}
           </Badge>
-        ) : (
-          <span className="text-muted-foreground">-</span>
         );
       },
     },
@@ -598,7 +661,7 @@ export function CompanyDocumentListView({
         const hasFile = !!(doc.file_path || doc.file_name);
 
         return (
-          <div className="flex items-center justify-end gap-1 max-w-[180px]">
+          <div className="flex items-center justify-end gap-1 max-w-[220px]">
             {/* Studio */}
             <Button
               variant="ghost"
@@ -633,8 +696,8 @@ export function CompanyDocumentListView({
                 <Send className="h-4 w-4 text-primary" />
               </Button>
             )}
-            {/* 3-dot menu: Edit, Copy & Delete */}
-            {(onEdit || onCopy || onDelete) && (
+            {/* 3-dot menu: Edit, Copy, Delete, Preview PDF */}
+            {(onEdit || onCopy || onDelete || companyId) && (
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" disabled={isDeleting || disabled}>
@@ -642,6 +705,32 @@ export function CompanyDocumentListView({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  {companyId && doc.status === 'Approved' && (
+                    <DropdownMenuItem
+                      disabled={pdfLoadingDocId === doc.id}
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        (async () => {
+                          setPdfLoadingDocId(doc.id);
+                          try {
+                            await DocumentPdfPreviewService.generatePreviewPdf(doc.id, companyId);
+                          } catch (error) {
+                            console.error('PDF preview error:', error);
+                            toast.error('Failed to generate PDF preview');
+                          } finally {
+                            setPdfLoadingDocId(null);
+                          }
+                        })();
+                      }}
+                    >
+                      {pdfLoadingDocId === doc.id ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <FileDown className="h-4 w-4 mr-2" />
+                      )}
+                      Preview PDF
+                    </DropdownMenuItem>
+                  )}
                   {onEdit && (
                     <DropdownMenuItem onSelect={() => { setTimeout(() => onEdit(doc), 0); }}>
                       <Pencil className="h-4 w-4 mr-2" />
@@ -667,7 +756,7 @@ export function CompanyDocumentListView({
         );
       },
     },
-  ], [onView, onEdit, onDelete, onCopy, isDeleting, disabled, getAuthorById, authorsLoading, formatDate, navigate, activeCompanyRole, bulkMode, bulkSelectedDocs, onToggleBulkDoc]);
+  ], [onView, onEdit, onDelete, onCopy, isDeleting, disabled, getAuthorById, authorsLoading, formatDate, navigate, activeCompanyRole, bulkMode, bulkSelectedDocs, onToggleBulkDoc, companyId, pdfLoadingDocId]);
 
   const table = useReactTable({
     data: documents,
@@ -677,7 +766,7 @@ export function CompanyDocumentListView({
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
+    ...(externalSortActive ? { manualSorting: true } : { getSortedRowModel: getSortedRowModel() }),
     getFilteredRowModel: getFilteredRowModel(),
     onColumnVisibilityChange: setColumnVisibility,
     manualPagination: false,

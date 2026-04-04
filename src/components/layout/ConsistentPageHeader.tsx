@@ -4,6 +4,9 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useSubscriptionContext } from "@/context/SubscriptionContext";
 import { useSearchParams } from "react-router-dom";
 import { useCompanyRole } from "@/context/CompanyRoleContext";
+import { FileEdit } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface BreadcrumbItem {
   label: string;
@@ -16,6 +19,7 @@ interface ConsistentPageHeaderProps {
   title: string | React.ReactNode;
   subtitle?: string | React.ReactNode;
   actions?: React.ReactNode;
+  onCreateDocument?: () => void;
 }
 
 // Page name keys for matching - order matters, check longer strings first
@@ -98,7 +102,8 @@ export function ConsistentPageHeader({
   breadcrumbs,
   title,
   subtitle,
-  actions
+  actions,
+  onCreateDocument
 }: ConsistentPageHeaderProps) {
   const { lang } = useTranslation();
   const { planName, isSubscriptionLoading } = useSubscriptionContext();
@@ -164,17 +169,32 @@ export function ConsistentPageHeader({
                       </>
                     );
                   }
-                  // If no page section found, treat as standalone company name and apply standard color
                   return <span className="text-foreground">{title}</span>;
                 } else {
-                  // Handle ReactNode titles directly
                   return title;
                 }
               })()}
             </h1>
             {subtitle && (
-              <div className="text-muted-foreground text-base">
-                {subtitle}
+              <div className="flex items-center gap-2 text-muted-foreground text-base">
+                <span>{subtitle}</span>
+                {onCreateDocument && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={onCreateDocument}
+                        >
+                          <FileEdit className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Create Document</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
             )}
           </div>

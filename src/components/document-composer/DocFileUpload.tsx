@@ -169,14 +169,23 @@ export function DocFileUpload({
     }
   };
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const getStatusText = () => {
     switch (uploadStatus) {
       case 'uploading':
-        return 'Uploading...';
+        return selectedFile ? `Uploading ${selectedFile.name}...` : 'Uploading...';
       case 'success':
-        return selectedFile ? `✓ ${selectedFile.name}` : 'Upload successful';
+        if (selectedFile) {
+          return `✓ ${selectedFile.name} (${formatFileSize(selectedFile.size)})`;
+        }
+        return 'Upload successful';
       case 'error':
-        return 'Upload failed';
+        return 'Upload failed. Please try again.';
       default:
         return 'Drop .doc/.docx files here or click to upload';
     }

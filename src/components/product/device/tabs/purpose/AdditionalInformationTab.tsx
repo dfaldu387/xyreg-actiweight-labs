@@ -17,6 +17,7 @@ import { useFieldGovernance } from '@/hooks/useFieldGovernance';
 
 import { Json } from '@/integrations/supabase/types';
 import { supabase } from '@/integrations/supabase/client';
+import { AISuggestionReviewDialog } from '@/components/product/ai-assistant/AISuggestionReviewDialog';
 
 interface CustomField {
   id: string;
@@ -150,6 +151,12 @@ export function AdditionalInformationTab({
 
   // Local state for instructions (used for both IP and PF mode)
   const [localInstructions, setLocalInstructions] = useState<UserInstructions>(userInstructions);
+  const [pendingSuggestion, setPendingSuggestion] = useState<{
+    fieldLabel: string;
+    fieldKey: string;
+    original: string;
+    suggested: string;
+  } | null>(null);
 
   // Track whether we have unsaved local changes to prevent sync from overwriting
   const isInternalRef = useRef(false);
@@ -381,8 +388,17 @@ export function AdditionalInformationTab({
 
                       if (response.success && response.suggestions?.[0]) {
                         const suggestion = response.suggestions[0].suggestion;
-                        handleInstructionChange(activeUserInstructionTab, suggestion);
-                        onAcceptAISuggestion(`user_instructions_${activeUserInstructionTab}`, suggestion);
+                        const fieldLabels: Record<string, string> = {
+                          'how_to_use': 'How to Use',
+                          'charging': 'Charging',
+                          'maintenance': 'Maintenance'
+                        };
+                        setPendingSuggestion({
+                          fieldLabel: fieldLabels[activeUserInstructionTab] || activeUserInstructionTab,
+                          fieldKey: `user_instructions_${activeUserInstructionTab}`,
+                          original: (userInstructions as any)[activeUserInstructionTab] || '',
+                          suggested: suggestion,
+                        });
                       }
                     } catch (error) {
                       console.error('AI suggestion error:', error);
@@ -572,6 +588,23 @@ export function AdditionalInformationTab({
           Add Field
         </Button>
       </div>
+      {/* AI Suggestion Review Dialog */}
+      <AISuggestionReviewDialog
+        open={pendingSuggestion !== null}
+        onOpenChange={(open) => !open && setPendingSuggestion(null)}
+        fieldLabel={pendingSuggestion?.fieldLabel || ''}
+        originalContent={pendingSuggestion?.original || ''}
+        suggestedContent={pendingSuggestion?.suggested || ''}
+        onAccept={(content) => {
+          if (pendingSuggestion) {
+            const tabKey = pendingSuggestion.fieldKey.replace('user_instructions_', '');
+            handleInstructionChange(tabKey, content);
+            onAcceptAISuggestion?.(pendingSuggestion.fieldKey, content);
+          }
+          setPendingSuggestion(null);
+        }}
+        onReject={() => setPendingSuggestion(null)}
+      />
 
     </div>
   );

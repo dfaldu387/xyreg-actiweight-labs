@@ -12,6 +12,7 @@ import Links from './Links.jsx';
 import { hotkeys } from '@svar-ui/grid-store';
 import storeContext from '../../context';
 import { useStore, useStoreWithCounter } from '@svar-ui/lib-react';
+import { useSafeStore } from '../../helpers/safeUseStore';
 import './Chart.css';
 
 function Chart(props) {
@@ -33,7 +34,7 @@ function Chart(props) {
   const cellWidth = useStore(api, "cellWidth");
   const scales = useStore(api, "_scales");
   const markers = useStore(api, "_markers");
-  const rScrollTask = useStore(api, "_scrollTask");
+  const rScrollTask = useSafeStore(api, "_scrollTask");
   const zoom = useStore(api, "zoom");
 
   const [chartHeight, setChartHeight] = useState();

@@ -2,7 +2,9 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, LayoutGrid, List, RefreshCw, CheckSquare, Trash2, CalendarDays, Sparkles, Layers } from "lucide-react";
+import { Plus, FileText, LayoutGrid, List, RefreshCw, CheckSquare, Trash2, CalendarDays, Sparkles, Layers, Settings2 } from "lucide-react";
+import { ColumnVisibilitySettings, type ColumnDefinition } from '@/components/shared/ColumnVisibilitySettings';
+import { useListColumnPreferences } from '@/hooks/useListColumnPreferences';
 import { Badge } from "@/components/ui/badge";
 import { BulkDocumentSummarySidebar } from "@/components/product/documents/BulkDocumentSummarySidebar";
 import {
@@ -94,6 +96,29 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
 
   // Bulk mode state
   const [bulkMode, setBulkMode] = useState(false);
+
+  // Column visibility
+  const COMPANY_DOC_COLUMNS: ColumnDefinition[] = [
+    { key: 'name', label: 'Name', required: true },
+    { key: 'phase_name', label: 'Phase' },
+    { key: 'sub_section', label: 'Section' },
+    { key: 'authors_ids', label: 'Author' },
+    { key: 'document_type', label: 'Document Type' },
+    { key: 'is_record', label: 'Category' },
+    { key: 'status', label: 'Status' },
+    { key: 'due_date', label: 'Due Date' },
+    { key: 'date', label: 'Date' },
+    { key: 'approval_date', label: 'Approved' },
+    { key: 'updated_at', label: 'Updated' },
+  ];
+  const { data: columnPrefs } = useListColumnPreferences(companyId, null, 'company_documents', 'list');
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (columnPrefs?.hidden_columns) {
+      setHiddenColumns(columnPrefs.hidden_columns);
+    }
+  }, [columnPrefs]);
   const [bulkSelectedDocs, setBulkSelectedDocs] = useState<Set<string>>(new Set());
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [selectedBulkAction, setSelectedBulkAction] = useState<string>("");
@@ -570,6 +595,52 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
     // Apply sorting
     if (sortByDate !== 'none') {
       result = [...result].sort((a, b) => {
+        switch (sortByDate) {
+          case 'name_asc':
+            return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+          case 'name_desc':
+            return (b.name || '').localeCompare(a.name || '', undefined, { sensitivity: 'base' });
+          case 'phase_asc':
+            return (a.phase_name || '').localeCompare(b.phase_name || '', undefined, { sensitivity: 'base' });
+          case 'phase_desc':
+            return (b.phase_name || '').localeCompare(a.phase_name || '', undefined, { sensitivity: 'base' });
+          case 'section_asc':
+            return (a.sub_section || '').localeCompare(b.sub_section || '', undefined, { sensitivity: 'base' });
+          case 'section_desc':
+            return (b.sub_section || '').localeCompare(a.sub_section || '', undefined, { sensitivity: 'base' });
+          case 'doctype_asc':
+            return (a.document_type || '').localeCompare(b.document_type || '', undefined, { sensitivity: 'base' });
+          case 'doctype_desc':
+            return (b.document_type || '').localeCompare(a.document_type || '', undefined, { sensitivity: 'base' });
+          case 'author_asc': {
+            const aAuthor = a.authors_ids?.[0] ? (allAuthorsMap?.[a.authors_ids[0]]?.name || '') : '';
+            const bAuthor = b.authors_ids?.[0] ? (allAuthorsMap?.[b.authors_ids[0]]?.name || '') : '';
+            return aAuthor.localeCompare(bAuthor, undefined, { sensitivity: 'base' });
+          }
+          case 'author_desc': {
+            const aAuthor = a.authors_ids?.[0] ? (allAuthorsMap?.[a.authors_ids[0]]?.name || '') : '';
+            const bAuthor = b.authors_ids?.[0] ? (allAuthorsMap?.[b.authors_ids[0]]?.name || '') : '';
+            return bAuthor.localeCompare(aAuthor, undefined, { sensitivity: 'base' });
+          }
+          case 'status_asc':
+            return (a.status || '').localeCompare(b.status || '', undefined, { sensitivity: 'base' });
+          case 'status_desc':
+            return (b.status || '').localeCompare(a.status || '', undefined, { sensitivity: 'base' });
+          case 'category_asc': {
+            const aCat = a.is_record ? 'Report' : 'Document';
+            const bCat = b.is_record ? 'Report' : 'Document';
+            return aCat.localeCompare(bCat);
+          }
+          case 'category_desc': {
+            const aCat = a.is_record ? 'Report' : 'Document';
+            const bCat = b.is_record ? 'Report' : 'Document';
+            return bCat.localeCompare(aCat);
+          }
+          default:
+            break;
+        }
+
+        // Date-based sorting
         let dateA: Date | null = null;
         let dateB: Date | null = null;
 
@@ -583,6 +654,11 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
           case 'due_oldest':
             dateA = a.due_date ? new Date(a.due_date) : null;
             dateB = b.due_date ? new Date(b.due_date) : null;
+            break;
+          case 'approval_newest':
+          case 'approval_oldest':
+            dateA = a.approval_date ? new Date(a.approval_date) : null;
+            dateB = b.approval_date ? new Date(b.approval_date) : null;
             break;
           default:
             return 0;
@@ -600,7 +676,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
     }
 
     return result;
-  }, [documents, searchTerm, statusFilter, authorFilter, sectionFilter, tagFilter, refTagFilter, sortByDate, refDocTagMap]);
+  }, [documents, searchTerm, statusFilter, authorFilter, sectionFilter, tagFilter, refTagFilter, sortByDate, refDocTagMap, allAuthorsMap]);
 
   // Handler for status filter toggle
   const handleStatusFilterChange = useCallback((status: string) => {
@@ -694,24 +770,77 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
 
   return (
     <>
-      <div className="space-y-6">
+      <div className="space-y-4">
         <CompanyDocumentStatusSummary documents={documents} />
+
+        {/* Row 1: Filters + Sort | Card/List toggle + Refresh (outside Card) */}
+        <div className="flex items-center justify-between gap-4">
+          <EnhancedDocumentFilters
+            statusFilter={statusFilter}
+            onStatusFilterChange={handleStatusFilterChange}
+            searchQuery={searchTerm}
+            onSearchChange={setSearchTerm}
+            authorFilter={authorFilter}
+            onAuthorFilterChange={handleAuthorFilterChange}
+            sectionFilter={sectionFilter}
+            onSectionFilterChange={handleSectionFilterChange}
+            availableSections={availableSections}
+            tagFilter={tagFilter}
+            onTagFilterChange={handleTagFilterChange}
+            availableTags={availableTags}
+            refTagFilter={refTagFilter}
+            onRefTagFilterChange={handleRefTagFilterChange}
+            availableRefTags={availableRefTags}
+            sortByDate={sortByDate}
+            onSortByDateChange={setSortByDate}
+            clearAllFilters={clearAllFilters}
+            availableAuthors={availableAuthors}
+          />
+          <div className="flex items-center gap-2">
+            <ToggleGroup
+              type="single"
+              className="border rounded-md bg-background"
+              value={viewMode}
+              onValueChange={(value) => value && setViewMode(value as 'card' | 'list')}
+            >
+              <ToggleGroupItem value="card" aria-label="Card view" className="h-9 px-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+                <LayoutGrid className="h-4 w-4" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value="list" aria-label="List view" className="h-9 px-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+                <List className="h-4 w-4" />
+              </ToggleGroupItem>
+            </ToggleGroup>
+            <Button variant="outline" size="sm" onClick={() => setShowRefreshConfirm(true)} disabled={isRefreshing}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          </div>
+        </div>
+
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Layers className="h-5 w-5" />
+          <CardContent className="pt-6">
+
+            {/* Row 2: Title + count | Columns + AI Summary + Bulk + Add Document */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <Layers className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">
                   {lang('companyDocumentManager.title')}
-                  <Badge variant="secondary" className="ml-1">
-                    {filteredDocuments.length} / {documents.length}
-                  </Badge>
                 </CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {lang('companyDocumentManager.description')}
-                </p>
+                <Badge variant="secondary">
+                  {filteredDocuments.length} of {documents.length} documents
+                </Badge>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
+                {viewMode === 'list' && (
+                  <ColumnVisibilitySettings
+                    companyId={companyId}
+                    module="company_documents"
+                    columns={COMPANY_DOC_COLUMNS}
+                    hiddenColumns={hiddenColumns}
+                    onHiddenColumnsChange={setHiddenColumns}
+                  />
+                )}
                 <Button
                   onClick={() => setBulkSummarySidebarOpen(true)}
                   size="sm"
@@ -733,54 +862,11 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                   <CheckSquare className="h-4 w-4 mr-2" />
                   {bulkMode ? 'Cancel Bulk' : 'Bulk'}
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setShowRefreshConfirm(true)} disabled={isRefreshing}>
-                  <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  {isRefreshing ? 'Refreshing...' : 'Refresh'}
-                </Button>
                 <Button size="sm" onClick={() => !disabled && setCreateDialogOpen(true)} disabled={disabled}>
                   <Plus className="h-4 w-4 mr-2" />
                   {lang('companyDocumentManager.addDocument')}
                 </Button>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {/* Search and Filter Controls */}
-            <div className="flex items-center justify-between gap-4 mb-6">
-              <EnhancedDocumentFilters
-                statusFilter={statusFilter}
-                onStatusFilterChange={handleStatusFilterChange}
-                searchQuery={searchTerm}
-                onSearchChange={setSearchTerm}
-                authorFilter={authorFilter}
-                onAuthorFilterChange={handleAuthorFilterChange}
-                sectionFilter={sectionFilter}
-                onSectionFilterChange={handleSectionFilterChange}
-                availableSections={availableSections}
-                tagFilter={tagFilter}
-                onTagFilterChange={handleTagFilterChange}
-                availableTags={availableTags}
-                refTagFilter={refTagFilter}
-                onRefTagFilterChange={handleRefTagFilterChange}
-                availableRefTags={availableRefTags}
-                sortByDate={sortByDate}
-                onSortByDateChange={setSortByDate}
-                clearAllFilters={clearAllFilters}
-                availableAuthors={availableAuthors}
-              />
-              <ToggleGroup
-                type="single"
-                className="border rounded-md bg-background"
-                value={viewMode}
-                onValueChange={(value) => value && setViewMode(value as 'card' | 'list')}
-              >
-                <ToggleGroupItem value="card" aria-label="Card view" className="h-9 px-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
-                  <LayoutGrid className="h-4 w-4" />
-                </ToggleGroupItem>
-                <ToggleGroupItem value="list" aria-label="List view" className="h-9 px-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
-                  <List className="h-4 w-4" />
-                </ToggleGroupItem>
-              </ToggleGroup>
             </div>
 
             {/* Bulk Action Bar */}
@@ -913,6 +999,8 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                   isDeleting={isDeleting}
                   disabled={disabled}
                   companyId={companyId}
+                  hiddenColumns={hiddenColumns}
+                  externalSortActive={sortByDate !== 'none'}
                   bulkMode={bulkMode}
                   bulkSelectedDocs={bulkSelectedDocs}
                   onToggleBulkDoc={(docId: string) => {

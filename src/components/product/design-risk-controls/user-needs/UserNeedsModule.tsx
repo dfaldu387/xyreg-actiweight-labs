@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Sparkles, Plus, Download, AlertTriangle, Upload } from "lucide-react";
+import { Sparkles, Plus, Download, AlertTriangle, Upload, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
@@ -16,6 +16,9 @@ import { EditUserNeedDialog } from "./EditUserNeedDialog";
 import { UserNeedsSuggestions } from "./UserNeedsSuggestions";
 import { ExcelExportService } from "@/utils/excelExport";
 import { useTranslation } from "@/hooks/useTranslation";
+import { generateUserNeedsURSHtml } from "@/utils/userNeedsDocumentGenerator";
+import { SaveContentAsDocCIDialog } from "@/components/shared/SaveContentAsDocCIDialog";
+import { supabase } from "@/integrations/supabase/client";
 import type { UserNeed, CreateUserNeedRequest, UpdateUserNeedRequest } from "./types";
 import { UserNeedsImportDialog } from "./UserNeedsImportDialog";
 
@@ -33,11 +36,25 @@ export function UserNeedsModule({ productId, companyId, disabled = false }: User
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [showAISuggestions, setShowAISuggestions] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [showURSDialog, setShowURSDialog] = useState(false);
   const baselineLock = useBaselineLockError();
 
   // Fetch product details for AI suggestions
   const { data: productData } = useProductDetails(productId);
 
+  // Fetch company name for URS document generation
+  const { data: company } = useQuery({
+    queryKey: ['company-name', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('id, name')
+        .eq('id', companyId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+  });
 
   const { 
     data: userNeeds = [], 
@@ -211,6 +228,14 @@ export function UserNeedsModule({ productId, companyId, disabled = false }: User
               </Button>
               <Button
                 variant="outline"
+                onClick={() => setShowURSDialog(true)}
+                disabled={disabled || userNeeds.length === 0}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Generate URS
+              </Button>
+              <Button
+                variant="outline"
                 onClick={handleDownloadExcel}
                 disabled={disabled || userNeeds.length === 0}
               >
@@ -312,6 +337,19 @@ export function UserNeedsModule({ productId, companyId, disabled = false }: User
         companyId={companyId}
         productId={productId}
       />
+      {company?.name && (
+        <SaveContentAsDocCIDialog
+          open={showURSDialog}
+          onOpenChange={setShowURSDialog}
+          title="User Needs Specification (URS)"
+          htmlContent={generateUserNeedsURSHtml(userNeeds, productData?.name || 'Product', company.name)}
+          templateIdKey={`URS-UN-${productId}`}
+          companyId={companyId}
+          companyName={company.name}
+          productId={productId}
+          defaultScope="device"
+        />
+      )}
     </div>
   );
 }
