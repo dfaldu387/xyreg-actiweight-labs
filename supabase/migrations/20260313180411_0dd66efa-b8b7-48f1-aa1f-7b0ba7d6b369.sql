@@ -1,0 +1,1 @@
+UPDATE public.notifications SET type = 'communication' WHERE type = 'group_member_added' AND title LIKE 'New Communication:%' AND is_remove = false;

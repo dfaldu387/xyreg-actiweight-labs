@@ -1,0 +1,83 @@
+{
+  "common": {
+    "loading": "Caricamento...",
+    "error": "Errore",
+    "back": "Indietro",
+    "save": "Salva",
+    "cancel": "Annulla",
+    "delete": "Elimina",
+    "edit": "Modifica",
+    "close": "Chiudi"
+  },
+  "gantt": {
+    "backToMilestones": "Torna alle milestone",
+    "ganttChartV23": "Diagramma di Gantt v2.3",
+    "loadingGanttChart": "Caricamento del diagramma di Gantt v2.3...",
+    "errorLoadingData": "Errore nel caricamento dei dati",
+    "noTasksAvailable": "Nessuna attivita disponibile",
+    "addTasksMessage": "Aggiungi attivita per visualizzare il diagramma di Gantt.",
+    "timeline": "Cronologia",
+    "taskName": "Nome attivita",
+    "assigned": "Assegnato",
+    "startDate": "Data di inizio",
+    "duration": "Durata",
+    "unassigned": "Non assegnato"
+  },
+  "deviceOverview": {
+    "internalDeviceId": "ID Dispositivo Interno:",
+    "deviceCategory": "Categoria Dispositivo:"
+  },
+  "appLayout": {
+    "awaitingMyReview": "In attesa della mia revisione",
+    "notifications": "Notifiche",
+    "profile": "Profilo",
+    "plans": "Piani",
+    "logOut": "Disconnetti"
+  },
+  "genesis": {
+    "sidebar": {
+      "backToGenesisHome": "Torna alla home di Genesis",
+      "allSteps": "Tutti i passaggi",
+      "partITitle": "PARTE I: FONDAMENTA PRODOTTO & TECNOLOGIA",
+      "partISubtitle": "Il \"Cosa\" e il \"Come.\"",
+      "partIITitle": "PARTE II: ANALISI MERCATO & STAKEHOLDER",
+      "partIISubtitle": "Il \"Chi\" e il \"Perche.\"",
+      "partIIITitle": "PARTE III: STRATEGIA & EVIDENZE",
+      "partIIISubtitle": "Le \"Barriere\" e la \"Validazione.\"",
+      "partVTitle": "PARTE V: ESECUZIONE OPERATIVA & LOGISTICA",
+      "partVSubtitle": "Il \"Piano d'azione.\"",
+      "stepComplete": "Passaggio completato!",
+      "nextStep": "Prossimo passaggio",
+      "completeToProceed": "Completa \"{{step}}\" per procedere",
+      "clickToContinue": "Clicca per continuare al prossimo passaggio incompleto"
+    },
+    "steps": {
+      "deviceName": "Nome del dispositivo",
+      "deviceDescription": "Descrizione del dispositivo",
+      "uploadDeviceImage": "Carica immagine del dispositivo",
+      "intendedUseAndValue": "Uso previsto e proposta di valore",
+      "deviceType": "Tipo di dispositivo",
+      "trlAndArchitecture": "TRL e architettura del sistema",
+      "classifyDevice": "Classifica dispositivo",
+      "profileUser": "Profilo utente",
+      "profileEconomicBuyer": "Profilo acquirente economico",
+      "selectTargetMarkets": "Seleziona mercati target",
+      "marketSizing": "Dimensionamento del mercato",
+      "competitorAnalysis": "Analisi della concorrenza",
+      "ipStrategy": "Strategia PI & liberta di utilizzo",
+      "clinicalEvidence": "Strategia delle evidenze cliniche",
+      "healthEconomics": "Modello di economia sanitaria (HEOR)",
+      "reimbursement": "Rimborso & accesso al mercato",
+      "revenueForecast": "Previsione dei ricavi",
+      "goToMarketStrategy": "Strategia go-to-market",
+      "strategicPartners": "Partner strategici",
+      "manufacturing": "Produzione & catena di fornitura",
+      "teamComposition": "Composizione del team",
+      "essentialGates": "Piano progetto & risorse di alto livello",
+      "riskAssessment": "Valutazione dei rischi",
+      "businessCanvas": "Business Model Canvas",
+      "strategicHorizon": "Orizzonte strategico",
+      "useOfProceeds": "Finanziamento & utilizzo dei fondi"
+    }
+  }
+}

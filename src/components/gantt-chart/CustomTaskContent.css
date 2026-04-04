@@ -1,0 +1,23 @@
+button.wx-BzRGIq8x {
+    font-size: 10px;
+    position: relative;
+    z-index: 2;
+    font: var(--wx-gantt-bar-font);
+  }
+  
+  .text-right.wx-BzRGIq8x {
+    left: 100%;
+    top: -2px;
+  }
+  
+  .text-left.wx-BzRGIq8x {
+    right: 100%;
+    top: -2px;
+  }
+  
+  .text-right.wx-BzRGIq8x,
+  .text-left.wx-BzRGIq8x,
+  button.wx-BzRGIq8x {
+    padding: 0 2px;
+    font-size: 12px;
+  }

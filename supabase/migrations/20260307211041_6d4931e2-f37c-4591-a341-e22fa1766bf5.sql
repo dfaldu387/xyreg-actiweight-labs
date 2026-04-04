@@ -1,0 +1,1 @@
+ALTER TABLE requirement_specifications ADD COLUMN component_id uuid REFERENCES device_components(id) ON DELETE SET NULL;

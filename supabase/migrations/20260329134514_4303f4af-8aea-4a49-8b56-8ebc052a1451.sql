@@ -1,0 +1,1 @@
+ALTER TABLE public.xyreg_releases ADD COLUMN impacted_module_groups text[] DEFAULT '{}';

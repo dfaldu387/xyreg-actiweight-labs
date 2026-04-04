@@ -1,0 +1,1 @@
+UPDATE products SET actual_launch_date = NULL WHERE id = 'fe979f56-c572-471b-815f-3e300365fa9e'

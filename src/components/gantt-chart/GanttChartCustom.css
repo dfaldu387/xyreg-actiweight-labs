@@ -1,0 +1,287 @@
+/* Custom Task Type Styles for Phase Status and Category */
+
+/* Today marker - red/coral color */
+/* .wx-gantt .wx-today-marker {
+    background-color: rgba(255, 84, 84, 0.77);
+} */
+
+/* All bar text bold */
+.wx-gantt .wx-bar {
+    font-weight: 700 !important;
+}
+
+/* Category - Custom styling for category tasks (similar to summary but distinct) */
+.wx-gantt .wx-bar.wx-summary.category {
+    background-color: hsl(25, 95%, 53%) !important;
+    border-color: hsl(25, 95%, 53%) !important;
+    font-weight: 900 !important;
+}
+
+.wx-gantt .wx-bar.wx-summary.category .wx-bar-title {
+    color: #ffffff !important;
+    font-weight: 900 !important;
+}
+
+/* More specific selector for category bars */
+.wx-gantt .wx-chart .wx-bar.wx-summary.category {
+    background-color: hsl(25, 95%, 53%) !important;
+    border-color: hsl(25, 95%, 53%) !important;
+}
+
+/* Target the bar background directly */
+.wx-gantt .wx-bar.category {
+    background-color: hsl(25, 95%, 53%) !important;
+    border-color: hsl(25, 95%, 53%) !important;
+}
+
+/* Additional specific selectors for category type */
+.wx-gantt .wx-chart .wx-bar.category,
+.wx-gantt .wx-bar[data-type="category"],
+.wx-gantt .wx-bar.wx-task.category {
+    background-color: hsl(25, 95%, 53%) !important;
+    border-color: hsl(25, 95%, 53%) !important;
+}
+
+/* Target SVG/rect elements inside category bars */
+.wx-gantt .wx-bar.wx-summary.category rect,
+.wx-gantt .wx-bar.category rect {
+    fill: hsl(25, 95%, 53%) !important;
+    stroke: hsl(25, 95%, 48%) !important;
+}
+
+/* Target the bar inner elements */
+.wx-gantt .wx-bar.wx-summary.category .wx-bar-bg,
+.wx-gantt .wx-bar.category .wx-bar-bg {
+    background-color: hsl(25, 95%, 53%) !important;
+    border-color: hsl(25, 95%, 48%) !important;
+}
+
+.wx-gantt .wx-bar.wx-task.category .wx-resize-handle {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+.wx-gantt .wx-bar.wx-task.category {
+    cursor: default !important;
+}
+
+/* Prevent resize handles for category type */
+.wx-gantt .wx-bar.wx-summary.category .wx-resize-handle {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Prevent link connection points for category type */
+.wx-gantt .wx-bar.wx-summary.category .wx-link,
+.wx-gantt .wx-bar.category .wx-link {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* Hide link inner elements for category type */
+.wx-gantt .wx-bar.wx-summary.category .wx-link .wx-inner,
+.wx-gantt .wx-bar.category .wx-link .wx-inner {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Prevent link hover effects for category type */
+.wx-gantt .wx-bar.wx-summary.category:hover .wx-link,
+.wx-gantt .wx-bar.category:hover .wx-link {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Section - Teal/Cyan styling (document sections inside containers) */
+.wx-gantt .wx-bar.wx-summary.subsection,
+.wx-gantt .wx-bar.wx-task.subsection,
+.wx-gantt .wx-bar.subsection,
+.wx-gantt .wx-chart .wx-bar.subsection,
+.wx-gantt .wx-bar[data-type="subsection"] {
+    background-color: #475569 !important;
+    border-color: #334155 !important;
+    font-weight: 700 !important;
+}
+
+.wx-gantt .wx-bar.wx-summary.subsection .wx-bar-title,
+.wx-gantt .wx-bar.subsection .wx-bar-title {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* Target SVG/rect elements inside subsection bars */
+.wx-gantt .wx-bar.wx-summary.subsection rect,
+.wx-gantt .wx-bar.subsection rect {
+    fill: #475569 !important;
+    stroke: #334155 !important;
+}
+
+/* Target the bar inner elements */
+.wx-gantt .wx-bar.wx-summary.subsection .wx-bar-bg,
+.wx-gantt .wx-bar.subsection .wx-bar-bg {
+    background-color: #475569 !important;
+    border-color: #334155 !important;
+}
+
+/* Prevent resize handles for subsection type */
+.wx-gantt .wx-bar.wx-summary.subsection .wx-resize-handle,
+.wx-gantt .wx-bar.wx-task.subsection .wx-resize-handle {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+.wx-gantt .wx-bar.wx-task.subsection {
+    cursor: default !important;
+}
+
+/* Prevent link connection points for subsection type */
+.wx-gantt .wx-bar.wx-summary.subsection .wx-link,
+.wx-gantt .wx-bar.subsection .wx-link {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+.wx-gantt .wx-bar.wx-summary.subsection .wx-link .wx-inner,
+.wx-gantt .wx-bar.subsection .wx-link .wx-inner {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+.wx-gantt .wx-bar.wx-summary.subsection:hover .wx-link,
+.wx-gantt .wx-bar.subsection:hover .wx-link {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Prevent link connection points for summary type (non-category) */
+.wx-gantt .wx-bar.wx-summary:not(.category) .wx-link,
+.wx-gantt .wx-bar[data-type="summary"]:not(.category) .wx-link {
+    display: none !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* Hide link inner elements for summary type (non-category) */
+.wx-gantt .wx-bar.wx-summary:not(.category) .wx-link .wx-inner,
+.wx-gantt .wx-bar[data-type="summary"]:not(.category) .wx-link .wx-inner {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Prevent link hover effects for summary type (non-category) */
+.wx-gantt .wx-bar.wx-summary:not(.category):hover .wx-link,
+.wx-gantt .wx-bar[data-type="summary"]:not(.category):hover .wx-link {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Custom Task Type Styles for Phase Status */
+
+/* Not Started - Gray */
+.wx-gantt .wx-bar.wx-task.not-started {
+    background-color: #6B7280;
+    border-color: #6B7280;
+}
+
+.wx-gantt .wx-bar.wx-task.not-started .wx-progress {
+    background-color: #6B7280;
+}
+
+.wx-gantt .wx-bar.wx-task.not-started .wx-bar-title {
+    color: #ffffff;
+}
+
+/* Running - Yellow with black text */
+.wx-gantt .wx-bar.wx-task.running,
+.wx-gantt .wx-bar.wx-summary.running,
+.wx-gantt .wx-bar.running {
+    background-color: hsl(48, 96%, 53%) !important;
+    border-color: hsl(48, 96%, 53%) !important;
+    color: #000000 !important;
+    font-weight: 700 !important;
+}
+
+/* Overdue - Red */
+.wx-gantt .wx-bar.wx-task.overdue {
+    background-color: #EF4444;
+    border-color: #EF4444;
+}
+
+.wx-gantt .wx-bar.wx-task.overdue .wx-progress {
+    background-color: #EF4444;
+}
+
+.wx-gantt .wx-bar.wx-task.overdue .wx-bar-title {
+    color: #ffffff;
+}
+
+/* On Time - Green */
+.wx-gantt .wx-bar.wx-task.on-time {
+    background-color: #16A34A;
+    border-color: #16A34A;
+}
+
+.wx-gantt .wx-bar.wx-task.on-time .wx-progress {
+    background-color: #16A34A;
+}
+
+.wx-gantt .wx-bar.wx-task.on-time .wx-bar-title {
+    color: #ffffff;
+}
+
+/* Hide progress indicator (percentage number on hover) */
+.wx-gantt .wx-progress,
+.wx-gantt .wx-bar .wx-progress,
+.wx-gantt .wx-bar-progress,
+.wx-progress-text,
+.wx-bar .wx-progress-text,
+.wx-gantt .wx-progress-text {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* Hide progress bar fill */
+.wx-gantt .wx-bar .wx-progress-fill,
+.wx-gantt .wx-bar-progress-fill,
+.wx-gantt .wx-bar .wx-bar-progress {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Hide any text showing progress percentage */
+.wx-gantt text[class*="progress"],
+.wx-gantt .wx-chart text[class*="progress"],
+.wx-gantt svg text[class*="progress"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Hide progress wrapper and marker completely */
+.wx-progress-wrapper,
+.wx-gantt .wx-progress-wrapper,
+.wx-bar .wx-progress-wrapper,
+.wx-progress-marker,
+.wx-gantt .wx-progress-marker,
+.wx-bar .wx-progress-marker,
+.wx-progress-percent,
+.wx-gantt .wx-progress-percent,
+.wx-bar .wx-progress-percent {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* Hide progress on hover */
+.wx-bar:hover .wx-progress-marker,
+.wx-bar:hover .wx-progress-wrapper,
+.wx-bar:hover .wx-progress-percent {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}

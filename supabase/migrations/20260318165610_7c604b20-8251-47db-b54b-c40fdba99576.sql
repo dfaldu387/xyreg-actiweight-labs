@@ -1,0 +1,1 @@
+DELETE FROM company_document_templates WHERE name = 'SOP-019 Cybersecurity Management';

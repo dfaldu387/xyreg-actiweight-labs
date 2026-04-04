@@ -1,0 +1,198 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { TargetMarketsInput } from './TargetMarketsInput';
+import { useCreateBundleGroup } from '@/hooks/useProductBundleGroups';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { useTranslation } from '@/hooks/useTranslation';
+
+interface CreateBundleDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  productId?: string;
+  companyId: string;
+  productName?: string;
+  existingBundleNames: string[];
+  onBundleCreated: (bundleId: string) => void;
+  onNavigateToBuild?: () => void;
+}
+
+export function CreateBundleDialog({
+  open,
+  onOpenChange,
+  productId,
+  companyId,
+  productName,
+  existingBundleNames,
+  onBundleCreated,
+  onNavigateToBuild,
+}: CreateBundleDialogProps) {
+  const { lang } = useTranslation();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [isFeasibilityStudy, setIsFeasibilityStudy] = useState(false);
+  const [targetMarkets, setTargetMarkets] = useState<string[]>([]);
+  const createMutation = useCreateBundleGroup();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  // Generate suggested bundle name based on product name
+  const generateSuggestedName = (productName: string | undefined, existingNames: string[]): string => {
+    if (!productName) return 'New Bundle';
+    
+    const baseName = `${productName} Bundle`;
+    
+    if (!existingNames.includes(baseName)) {
+      return baseName;
+    }
+    
+    // Find the next available number
+    let counter = 1;
+    while (existingNames.includes(`${baseName} ${counter}`)) {
+      counter++;
+    }
+    return `${baseName} ${counter}`;
+  };
+
+  // Auto-populate name when dialog opens
+  useEffect(() => {
+    if (open) {
+      const suggestedName = generateSuggestedName(productName, existingBundleNames);
+      setName(suggestedName);
+      setTargetMarkets([]);
+    }
+  }, [open, productName, existingBundleNames]);
+
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      toast.error(lang('bundle.enterBundleName'));
+      return;
+    }
+
+    createMutation.mutate(
+      {
+        companyId,
+        bundleName: name,
+        members: [],
+        description: description || undefined,
+        createdByProductId: productId,
+        isFeasibilityStudy,
+        targetMarkets,
+      },
+      {
+        onSuccess: (data) => {
+          toast.success(lang('bundle.createdSuccess'));
+
+          // Invalidate all bundle-related queries to refresh UI
+          queryClient.invalidateQueries({ queryKey: ['product-bundles', productId] });
+          queryClient.invalidateQueries({ queryKey: ['existing-bundle-names', companyId] });
+          queryClient.invalidateQueries({ queryKey: ['company-bundles', companyId] });
+
+          // Update URL to point to new bundle
+          onBundleCreated(data.id);
+
+          // Reset form
+          setName('');
+          setDescription('');
+          setIsFeasibilityStudy(false);
+          setTargetMarkets([]);
+          onOpenChange(false);
+
+          // If created from portfolio (no productId), navigate to standalone builder
+          if (!productId) {
+            navigate(`/app/bundle/${data.id}/build`);
+          }
+          // If created from product page with onNavigateToBuild callback, use it
+          else if (onNavigateToBuild) {
+            onNavigateToBuild();
+          }
+        },
+        onError: (error) => {
+          console.error('Error creating bundle:', error);
+          toast.error(lang('bundle.createFailed'));
+        },
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{lang('bundle.createNewBundle')}</DialogTitle>
+          <DialogDescription>
+            {productId
+              ? lang('bundle.createDescriptionWithProduct')
+              : lang('bundle.createDescriptionStandalone')}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">{lang('bundle.bundleName')} *</Label>
+            <Input
+              id="name"
+              placeholder={lang('bundle.bundleNamePlaceholder')}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            {productName && (
+              <p className="text-xs text-muted-foreground">
+                {lang('bundle.autoGeneratedHint')}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">{lang('bundle.description')}</Label>
+            <Textarea
+              id="description"
+              placeholder={lang('bundle.descriptionPlaceholder')}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          <TargetMarketsInput
+            value={targetMarkets}
+            onChange={setTargetMarkets}
+            disabled={createMutation.isPending}
+          />
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="feasibility-study"
+              checked={isFeasibilityStudy}
+              onCheckedChange={(checked) => setIsFeasibilityStudy(checked as boolean)}
+            />
+            <Label
+              htmlFor="feasibility-study"
+              className="text-sm font-normal cursor-pointer"
+            >
+              {lang('bundle.markAsFeasibilityStudy')}
+            </Label>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={createMutation.isPending}>
+            {lang('common.cancel')}
+          </Button>
+          <Button
+            onClick={handleCreate}
+            disabled={createMutation.isPending}
+          >
+            {createMutation.isPending ? lang('bundle.creating') : lang('bundle.createBundle')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

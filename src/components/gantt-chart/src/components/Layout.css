@@ -1,0 +1,36 @@
+.wx-gantt.wx-jlbQoHOz {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+}
+.wx-pseudo-rows.wx-jlbQoHOz {
+  width: 100%;
+  height: 100%;
+  min-height: 510px;
+  max-height: 600px;
+  overflow: hidden;
+}
+.wx-stuck.wx-jlbQoHOz {
+  position: sticky;
+  top: 0;
+  height: 100%;
+  width: 100%;
+  max-height: 100%;
+}
+.wx-layout.wx-jlbQoHOz {
+  position: relative;
+  display: flex;
+  max-height: 100%;
+  max-width: 100%;
+  background-color: var(--wx-background);
+  overflow: hidden;
+  outline: none;
+  height: 100%;
+}
+
+.wx-content.wx-jlbQoHOz {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}

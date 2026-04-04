@@ -1,0 +1,28 @@
+-- Direct import of MDR Annex I requirements for template 8b1ac5c4-28f0-4a5d-97ff-6bd093565e75
+-- First, clear existing items for this template
+DELETE FROM gap_template_items WHERE template_id = '8b1ac5c4-28f0-4a5d-97ff-6bd093565e75';
+
+-- Insert the comprehensive MDR Annex I requirements
+INSERT INTO gap_template_items (
+  template_id,
+  clause,
+  section, 
+  requirement,
+  description,
+  category,
+  framework,
+  chapter,
+  clause_description,
+  priority,
+  question_number
+) VALUES 
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 1', 'Chapter I - General Requirements', 'GSPR 1 - Devices shall achieve the performance intended by their manufacturer and shall be designed and manufactured in such a way that, during normal conditions of use, they are suitable for their intended purpose', 'Device achieves intended performance as specified by manufacturer', 'verification', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'General performance and safety requirements for medical devices', 'high', '1'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 1', 'Chapter I - General Requirements', 'GSPR 1 - Devices shall achieve the performance intended by their manufacturer and shall be designed and manufactured in such a way that, during normal conditions of use, they are suitable for their intended purpose', 'Device is suitable for intended purpose under normal conditions of use', 'verification', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'General performance and safety requirements for medical devices', 'high', '2'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 1', 'Chapter I - General Requirements', 'GSPR 1 - Devices shall achieve the performance intended by their manufacturer and shall be designed and manufactured in such a way that, during normal conditions of use, they are suitable for their intended purpose', 'Design and manufacturing processes ensure consistent performance', 'documentation', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'General performance and safety requirements for medical devices', 'high', '3'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 2', 'Chapter I - General Requirements', 'GSPR 2 - The devices shall be designed and manufactured in such a way that they do not compromise the clinical condition or the safety of patients, or the safety and health of users or, where applicable, other persons', 'Design ensures patient clinical condition is not compromised', 'verification', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'Safety requirements for patients, users and other persons', 'high', '4'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 2', 'Chapter I - General Requirements', 'GSPR 2 - The devices shall be designed and manufactured in such a way that they do not compromise the clinical condition or the safety of patients, or the safety and health of users or, where applicable, other persons', 'Device does not compromise patient safety', 'verification', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'Safety requirements for patients, users and other persons', 'high', '5'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 2', 'Chapter I - General Requirements', 'GSPR 2 - The devices shall be designed and manufactured in such a way that they do not compromise the clinical condition or the safety of patients, or the safety and health of users or, where applicable, other persons', 'User safety and health protection measures implemented', 'verification', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'Safety requirements for patients, users and other persons', 'high', '6'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 2', 'Chapter I - General Requirements', 'GSPR 2 - The devices shall be designed and manufactured in such a way that they do not compromise the clinical condition or the safety of patients, or the safety and health of users or, where applicable, other persons', 'Third party safety considerations addressed where applicable', 'verification', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'Safety requirements for patients, users and other persons', 'high', '7'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 3', 'Chapter I - General Requirements', 'GSPR 3 - The devices shall achieve the performance intended by their manufacturer and shall be designed and manufactured in such a way that the risks which may be associated with their use constitute an acceptable risk when weighed against the benefits to the patient', 'Risk-benefit analysis conducted and documented', 'documentation', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'Risk-benefit analysis requirements', 'high', '8'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 3', 'Chapter I - General Requirements', 'GSPR 3 - The devices shall achieve the performance intended by their manufacturer and shall be designed and manufactured in such a way that the risks which may be associated with their use constitute an acceptable risk when weighed against the benefits to the patient', 'Risks constitute acceptable level when weighed against patient benefits', 'verification', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'Risk-benefit analysis requirements', 'high', '9'),
+('8b1ac5c4-28f0-4a5d-97ff-6bd093565e75', 'GSPR 3', 'Chapter I - General Requirements', 'GSPR 3 - The devices shall achieve the performance intended by their manufacturer and shall be designed and manufactured in such a way that the risks which may be associated with their use constitute an acceptable risk when weighed against the benefits to the patient', 'Risk management process implemented throughout device lifecycle', 'compliance', 'EU MDR 2017/745', 'Chapter I - General Requirements', 'Risk-benefit analysis requirements', 'high', '10')

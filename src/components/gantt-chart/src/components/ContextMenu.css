@@ -1,0 +1,7 @@
+.wx-menu .wx-option.wx-disabled.wx-LU2cdPQ2 {
+  pointer-events: none;
+}
+.wx-menu .wx-option.wx-disabled.wx-LU2cdPQ2 .wx-value,
+.wx-menu .wx-option.wx-disabled.wx-LU2cdPQ2 .wx-icon {
+  color: var(--wx-color-font-disabled);
+}

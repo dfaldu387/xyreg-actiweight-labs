@@ -1,0 +1,1 @@
+DELETE FROM eudamed_device_registry;

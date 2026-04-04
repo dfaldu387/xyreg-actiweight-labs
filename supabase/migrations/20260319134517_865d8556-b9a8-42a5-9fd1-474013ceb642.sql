@@ -1,0 +1,1 @@
+ALTER TABLE public.feedback_submissions ADD COLUMN assigned_to UUID REFERENCES auth.users(id);

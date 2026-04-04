@@ -1,0 +1,1 @@
+DELETE FROM gap_analysis_templates WHERE id = 'ab771d8d-28b6-4d23-9bce-5d066cf26d4f';

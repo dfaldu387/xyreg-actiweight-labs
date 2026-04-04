@@ -1,0 +1,4 @@
+Item Number,Description,Internal Part Number,Quantity,Unit of Measure,Unit Cost,Material Name,Material Specification,Supplier Part Number,Category,Reference Designator,RoHS Compliant,REACH Compliant,Drawing URL,Sterilization Compatible,Lead Time (days),Shelf Life (days),Biocompatibility Notes,Notes
+100,Housing Assembly,DHS-MEC-001,1,EA,45.00,316L Stainless Steel,ASTM F138,SUP-12345,manufactured_part,H1,Yes,Yes,https://example.com/drawing.pdf,EtO,30,365,ISO 10993 tested,Main structural component
+200,Sensor Module,DHS-ELC-002,2,EA,12.50,FR-4 PCB,,SUP-67890,purchased_part,S1,Yes,Not Assessed,,N/A,14,,,"Temperature sensor"
+300,Biocompatible Seal,DHS-RAW-003,4,EA,3.25,Silicone,USP Class VI,,raw_material,B1,Yes,Yes,,Autoclave,60,180,ISO 10993-5 cytotoxicity pass,Patient-contacting seal

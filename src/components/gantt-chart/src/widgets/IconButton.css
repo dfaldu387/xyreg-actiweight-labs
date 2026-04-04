@@ -1,0 +1,36 @@
+.wx-button.wx-TyZ1fHBj {
+  width: 40px;
+  height: 40px;
+  border: none;
+  outline: none;
+  border-radius: 50%;
+  cursor: pointer;
+
+  padding-top: 7px;
+}
+
+.wx-primary.wx-TyZ1fHBj {
+  color: var(--wx-color-primary-font);
+  background-color: var(--wx-color-primary);
+}
+
+.wx-primary.wx-TyZ1fHBj:hover {
+  background-color: #0b9db1;
+}
+
+.wx-transparent.wx-TyZ1fHBj {
+  width: 40px;
+  height: 40px;
+
+  color: var(--wx-color-primary-font);
+  background-color: rgba(99, 99, 99, 0.45);
+}
+
+.wx-transparent.wx-TyZ1fHBj:hover {
+  background-color: rgba(69, 69, 69, 0.45);
+}
+
+.wx-button-icon.wx-TyZ1fHBj {
+  font-size: 20px;
+  padding-top: 2px;
+}

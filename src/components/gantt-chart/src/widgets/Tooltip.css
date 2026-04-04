@@ -1,0 +1,21 @@
+.wx-tooltip-area.wx-KG0Lwsqo {
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+.wx-gantt-tooltip {
+  pointer-events: none;
+  position: absolute;
+  z-index: 10;
+  box-shadow: var(--wx-box-shadow);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.wx-gantt-tooltip-text.wx-KG0Lwsqo {
+  padding: 6px 10px;
+  background-color: var(--wx-tooltip-background);
+  font: var(--wx-tooltip-font);
+  color: var(--wx-tooltip-font-color);
+}

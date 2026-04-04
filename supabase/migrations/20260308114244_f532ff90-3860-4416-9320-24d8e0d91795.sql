@@ -1,0 +1,1 @@
+ALTER TABLE basic_udi_aliases ADD COLUMN description TEXT;

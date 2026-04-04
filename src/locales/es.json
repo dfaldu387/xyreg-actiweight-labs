@@ -1,0 +1,41 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "back": "Atrás",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "edit": "Editar",
+    "close": "Cerrar"
+  },
+  "gantt": {
+    "backToMilestones": "Volver a Hitos",
+    "ganttChartV23": "Gráfico de Gantt v2.3",
+    "loadingGanttChart": "Cargando Gráfico de Gantt v2.3...",
+    "errorLoadingData": "Error al Cargar Datos",
+    "noTasksAvailable": "No Hay Tareas Disponibles",
+    "addTasksMessage": "Agregue tareas para ver el gráfico de Gantt.",
+    "timeline": "Línea de Tiempo",
+    "taskName": "Nombre de tarea",
+    "assigned": "Asignado",
+    "startDate": "Fecha de inicio",
+    "duration": "Duración",
+    "unassigned": "Sin asignar"
+  },
+  "deviceOverview": {
+    "internalDeviceId": "ID de Dispositivo Interno:",
+    "deviceCategory": "Categoría del Dispositivo:"
+  },
+  "appLayout": {
+    "awaitingMyReview": "Esperando mi revisión",
+    "notifications": "Notificaciones",
+    "profile": "Perfil",
+    "plans": "Planes",
+    "logOut": "Cerrar sesión"
+  },
+  "rnpv": {
+    "estimatedFirstLaunch": "Primer Lanzamiento Estimado"
+  }
+}
+

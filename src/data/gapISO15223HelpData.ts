@@ -1,0 +1,88 @@
+/**
+ * Contextual help data for ISO 15223-1 Medical Device Symbols clauses.
+ */
+import type { GapClauseHelp } from './gapAnalysisHelpData';
+
+export const ISO_15223_HELP: Record<string, GapClauseHelp> = {
+  '4.1': {
+    section: '4.1', title: 'General Requirements for Symbols',
+    overview: 'All symbols used on medical device labels, packaging, and accompanying information must conform to ISO 15223-1. This ensures consistent, internationally recognized communication of safety and regulatory information.',
+    expectations: ['Documented symbol usage policy/procedure', 'Symbols selected from ISO 15223-1 (not custom/proprietary symbols)', 'Symbols meet size, colour, and visibility requirements', 'Symbol meaning explained in IFU if not universally understood'],
+    whyItMatters: 'Non-standard symbols confuse users and may not be recognized across markets. Regulatory authorities require standardised symbols for safety-critical information.',
+    tips: ['Create a symbol library/master list for your organization', 'Use ISO 15223-1:2021 (latest edition) symbol reference numbers', 'Ensure symbols are clearly visible at the actual label size', 'Test symbol visibility under expected lighting conditions'],
+    commonPitfalls: ['Using proprietary symbols without standardised equivalents', 'Symbols too small to be legible', 'Missing symbol glossary in IFU', 'Using outdated symbol versions'],
+    keyDeliverables: ['Symbol usage procedure', 'Symbol reference library'],
+  },
+  '4.2': {
+    section: '4.2', title: 'Symbol Selection and Application',
+    overview: 'Select the appropriate standardised symbols based on the device characteristics, regulatory requirements, and intended markets.',
+    expectations: ['Rationale for symbol selection documented', 'Complete symbol inventory for the device', 'Symbols appropriate for the device category', 'Consideration of market-specific requirements'],
+    whyItMatters: 'Correct symbol selection ensures users receive critical safety information in an internationally understood format.',
+    tips: ['Cross-reference symbols with MDR Annex I §23 requirements', 'Consider both inner and outer packaging symbols', 'Use the MDR/IVDR required symbols checklist', 'Review competitor labelling for completeness benchmarking'],
+    commonPitfalls: ['Missing required symbols for the device class', 'Inconsistent symbol usage between label and packaging', 'Not considering regional variations'],
+    keyDeliverables: ['Symbol selection rationale', 'Device symbol inventory'],
+  },
+  '5.1': {
+    section: '5.1', title: 'Manufacturer and Device Identification Symbols',
+    overview: 'Apply standardised symbols for manufacturer identification, catalogue/model number, batch code, serial number, and date of manufacture.',
+    expectations: ['Manufacturer symbol (5.1.1) present', 'Date of manufacture symbol (5.1.3) with correct format', 'Batch code (5.1.5) and/or serial number (5.1.6) symbols', 'Catalogue number symbol (5.1.7)', 'UDI carrier present and scannable'],
+    whyItMatters: 'These symbols enable device traceability, recall management, and post-market surveillance. They are mandatory under MDR.',
+    tips: ['Use YYYY-MM-DD or YYYY-MM date format per ISO 8601', 'Ensure UDI barcode is scannable at production line speed', 'Verify all identification information matches the EUDAMED registration'],
+    commonPitfalls: ['Date format not per ISO 8601', 'UDI barcode not scannable', 'Missing authorized representative symbol for non-EU manufacturers'],
+    keyDeliverables: ['Approved label artwork', 'UDI verification record'],
+  },
+  '5.2': {
+    section: '5.2', title: 'Handling and Storage Symbols',
+    overview: 'Apply appropriate handling and storage symbols to communicate storage conditions, fragility, and environmental limitations.',
+    expectations: ['Temperature limit symbols with actual values', 'Humidity limitation symbol if applicable', 'Keep dry symbol if moisture-sensitive', 'Fragile symbol if applicable', 'Do not use if package is damaged symbol'],
+    whyItMatters: 'Incorrect storage can degrade device performance or sterility. Clear symbols ensure proper handling throughout the supply chain.',
+    tips: ['Match symbol values to validated storage condition data', 'Consider transport conditions as well as storage', 'Include atmospheric pressure limits if device is air-shipped'],
+    commonPitfalls: ['Temperature symbols not matching validated storage range', 'Missing humidity symbols for moisture-sensitive devices', 'Symbols not visible on outer transport packaging'],
+    keyDeliverables: ['Labelled packaging specimens', 'Storage condition validation data'],
+  },
+  '5.3': {
+    section: '5.3', title: 'Sterility and Safety Symbols',
+    overview: 'Apply correct sterilisation method symbols, do-not-re-sterilise, non-sterile, and biological hazard symbols.',
+    expectations: ['Correct sterilisation method symbol (EO, radiation, steam, aseptic)', 'Do-not-re-sterilise symbol if applicable', 'Non-sterile symbol if device is supplied non-sterile', 'Biological hazard symbol where appropriate'],
+    whyItMatters: 'Incorrect sterility symbols can lead to use of non-sterile devices in sterile procedures or inappropriate re-sterilisation, risking patient infection.',
+    tips: ['Double-check the sterilisation method symbol matches the actual method', 'Include the do-not-re-sterilise symbol for single-use sterile devices', 'For non-sterile devices, explicitly mark them to avoid confusion'],
+    commonPitfalls: ['Wrong sterilisation method symbol', 'Missing do-not-re-sterilise symbol', 'Confusing sterile and non-sterile packaging levels'],
+    keyDeliverables: ['Sterile label specimens', 'Sterilisation validation cross-reference'],
+  },
+  '5.4': {
+    section: '5.4', title: 'IVD and Transfusion Symbols',
+    overview: 'Apply in vitro diagnostic, single use, do not re-use, and specific IVD/transfusion symbols where applicable.',
+    expectations: ['IVD symbol if device is an in vitro diagnostic', 'Single-use symbol for single-use devices', 'Do-not-re-use symbol clearly applied', 'Specific transfusion symbols if applicable'],
+    whyItMatters: 'Reuse of single-use devices poses serious infection and performance risks. Clear symbols prevent unsafe reuse.',
+    tips: ['For single-use devices, include both the symbol and a written statement', 'Consider user comprehension—some users may not recognize symbols alone', 'For IVD devices, ensure the IVD symbol is on both the device and packaging'],
+    commonPitfalls: ['Missing single-use symbol on repackaged devices', 'Not applying do-not-re-use for devices that cannot be safely reprocessed'],
+    keyDeliverables: ['Label artwork showing applicable symbols'],
+  },
+  '5.5': {
+    section: '5.5', title: 'Warnings and Regulatory Symbols',
+    overview: 'Apply caution, consult IFU, CE marking, UKCA mark, and authorized representative symbols as required by regulations.',
+    expectations: ['Caution symbol present where needed', 'Consult IFU symbol on the device label', 'CE marking correctly applied (size, placement, NB number)', 'UKCA marking if placing on UK market', 'Authorized representative symbol for non-EU manufacturers'],
+    whyItMatters: 'Regulatory markings are legally required. Incorrect CE marking can result in market withdrawal and regulatory action.',
+    tips: ['CE mark minimum height is 5mm and must maintain proportions', 'Include Notified Body number next to CE mark for Class Is, Im, Ir, IIa, IIb, III', 'UKCA mark has specific size and format requirements'],
+    commonPitfalls: ['CE mark too small or disproportionate', 'Missing NB number next to CE mark', 'Placing CE mark before declaration of conformity is completed'],
+    keyDeliverables: ['Regulatory marking specifications', 'Label artwork with regulatory symbols'],
+  },
+  '6.1': {
+    section: '6.1', title: 'Symbol Verification with Target Users',
+    overview: 'Verify that intended users can correctly interpret the symbols used on the device. ISO 15223-1 references ISO 9186 for comprehension testing.',
+    expectations: ['Comprehension verification for non-standard symbols', 'Documentation of verification methodology', 'Results demonstrating adequate user comprehension', 'Justification if verification was not performed (standard symbols)'],
+    whyItMatters: 'Symbols are only effective if users understand them. Comprehension testing confirms that safety information is communicated effectively.',
+    tips: ['ISO 15223-1 standardised symbols generally do not need re-testing', 'Focus comprehension testing on any supplementary or modified symbols', 'Include representative users from all target markets and user groups', 'Consider usability testing (IEC 62366) to cover symbol comprehension'],
+    commonPitfalls: ['Not testing non-standard symbols', 'Testing only with experienced users, not novices', 'Not documenting the verification methodology'],
+    keyDeliverables: ['Symbol comprehension verification report'],
+  },
+  '6.2': {
+    section: '6.2', title: 'Documentation of Symbol Usage',
+    overview: 'Maintain comprehensive records of all symbols used, their meanings, ISO reference numbers, and where they appear on the device and packaging.',
+    expectations: ['Complete symbol register/glossary', 'ISO 15223-1 reference number for each symbol', 'Location mapping (where each symbol appears)', 'Records maintained in the technical file'],
+    whyItMatters: 'The technical file must demonstrate that all symbols are correctly identified and standardised. This is a routine audit check point.',
+    tips: ['Create a symbol register template and keep it updated with each label change', 'Include symbol images alongside reference numbers', 'Cross-reference with the labelling specification'],
+    commonPitfalls: ['No formal symbol register', 'Register not updated after label changes', 'Missing ISO reference numbers'],
+    keyDeliverables: ['Symbol register', 'Technical file labelling section'],
+  },
+};

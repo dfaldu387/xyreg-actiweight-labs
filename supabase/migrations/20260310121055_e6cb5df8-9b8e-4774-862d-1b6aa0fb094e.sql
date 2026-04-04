@@ -1,0 +1,1 @@
+ALTER TABLE gap_analysis_items ADD COLUMN IF NOT EXISTS form_responses JSONB DEFAULT '{}'::jsonb;

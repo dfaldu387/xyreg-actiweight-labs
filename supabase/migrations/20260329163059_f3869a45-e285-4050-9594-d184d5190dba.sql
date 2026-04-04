@@ -1,0 +1,2 @@
+ALTER TABLE public.feedback_submissions DROP CONSTRAINT feedback_submissions_assigned_to_fkey;
+ALTER TABLE public.feedback_submissions ALTER COLUMN assigned_to TYPE text;

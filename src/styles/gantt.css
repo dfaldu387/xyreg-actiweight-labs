@@ -1,0 +1,59 @@
+/* Gantt Chart Styles */
+/* Using @wamra/gantt-task-react CSS imported directly in components */
+
+/* Additional styling for Gantt chart */
+.gantt-container {
+  width: 100%;
+  height: 600px;
+  min-height: 400px;
+  position: relative;
+}
+
+.gantt-container * {
+  box-sizing: border-box;
+}
+
+/* Ensure Gantt chart has proper dimensions */
+.gantt-container .gantt {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Override any conflicting styles */
+.gantt-container .gantt .gantt-task {
+  border-radius: 4px;
+}
+
+.gantt-container .gantt .gantt-task-summary {
+  font-weight: bold;
+}
+
+.gantt-container .gantt .gantt-task-text {
+  color: #333;
+  font-size: 12px;
+}
+
+/* Fix for wx-react-gantt specific styling */
+.wx-gantt {
+  font-family: inherit !important;
+}
+
+.wx-gantt * {
+  box-sizing: border-box !important;
+}
+
+/* Ensure proper z-index for Gantt elements */
+.wx-gantt .gantt_task_line {
+  z-index: 1;
+}
+
+.wx-gantt .gantt_task_progress {
+  z-index: 2;
+}
+
+/* Fix for potential Tailwind conflicts */
+.wx-gantt .gantt_task_text {
+  color: inherit !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+}

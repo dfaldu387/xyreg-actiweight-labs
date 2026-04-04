@@ -1,0 +1,4 @@
+ALTER TABLE public.bom_items
+  ADD COLUMN rohs_compliant BOOLEAN DEFAULT NULL,
+  ADD COLUMN reach_compliant BOOLEAN DEFAULT NULL,
+  ADD COLUMN drawing_url TEXT DEFAULT NULL;

@@ -1,0 +1,1 @@
+DELETE FROM company_document_templates WHERE name IN ('SOP-010 Production and Process Controls (P&PC)', 'SOP-020 Statistical Control');

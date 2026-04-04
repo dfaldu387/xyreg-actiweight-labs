@@ -1,0 +1,1 @@
+ALTER TABLE communication_threads ADD COLUMN IF NOT EXISTS thread_type text DEFAULT 'general';

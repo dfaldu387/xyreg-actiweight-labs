@@ -1,0 +1,1 @@
+ALTER TABLE products ADD COLUMN has_no_accessories boolean DEFAULT false;

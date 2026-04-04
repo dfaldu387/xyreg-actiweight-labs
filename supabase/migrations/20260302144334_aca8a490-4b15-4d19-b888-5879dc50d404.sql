@@ -1,0 +1,1 @@
+ALTER TABLE public.bom_revisions DROP CONSTRAINT bom_revisions_created_by_fkey, DROP CONSTRAINT bom_revisions_approved_by_fkey;

@@ -1,0 +1,12 @@
+-- Communication tables are already in supabase_realtime publication.
+-- However, the RLS policies on these tables use SECURITY DEFINER functions
+-- (is_thread_participant), which Supabase Realtime cannot evaluate for
+-- per-subscriber filtering. This means postgres_changes events for these
+-- tables are silently dropped.
+--
+-- The fix is in the frontend: useCommunicationThreads now also listens to
+-- app_notifications (which has simple RLS: user_id = auth.uid()) as a
+-- reliable realtime channel for communication updates.
+--
+-- No database changes needed — this file is kept for documentation.
+SELECT 1;

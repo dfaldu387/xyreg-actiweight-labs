@@ -1,0 +1,30 @@
+.wx-content.wx-pqc08MHU {
+  width: 100%;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+.wx-toggle-icon.wx-pqc08MHU {
+  width: var(--wx-icon-size);
+  min-width: 12px;
+  height: 16px;
+  line-height: 16px;
+  margin: 0 5px;
+  font-size: var(--wx-icon-size);
+  color: var(--wx-gantt-icon-color);
+  cursor: pointer;
+}
+.wx-toggle-placeholder.wx-pqc08MHU {
+  width: var(--wx-icon-size);
+  height: 16px;
+  line-height: 16px;
+  margin: 0 5px;
+  flex: 0 0 var(--wx-icon-size);
+}
+
+.wx-text.wx-pqc08MHU {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}

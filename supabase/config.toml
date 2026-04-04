@@ -1,0 +1,221 @@
+project_id = "wzzkbmmgxxrfhhxggrcl"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+enabled = true
+
+
+[inbucket]
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+
+[auth.email.template.recovery]
+subject = "Reset Your Password - Xyreg"
+content_path = "./src/emails/ResetPasswordEmail.html"
+
+[edge_runtime]
+enabled = true
+
+[functions.analyze-document-structure]
+verify_jwt = true
+
+[functions.extract-document-section]
+verify_jwt = true
+
+[functions.parse-competitor-table]
+verify_jwt = true
+
+[functions.parse-document]
+verify_jwt = true
+
+
+[functions.get-all-emdn-codes]
+verify_jwt = false
+
+[functions.fda-device-search]
+verify_jwt = false
+
+[functions.fda-build-predicate-trail]
+verify_jwt = false
+
+[functions.fda-eu-us-bridge]
+verify_jwt = false
+
+[functions.fda-enhanced-document-parser]
+verify_jwt = false
+
+[functions.fda-predicate-search]
+verify_jwt = false
+
+[functions.fda-product-code-lookup]
+verify_jwt = false
+
+[functions.competitive-analysis-ai]
+verify_jwt = false
+
+[functions.fda-comprehensive-search]
+verify_jwt = false
+
+[functions.ai-document-analyzer]
+verify_jwt = true
+
+[functions.send-reviewer-assignment-email]
+verify_jwt = true
+
+[functions.ai-predicate-trail]
+verify_jwt = false
+
+[functions.ai-user-needs-generator]
+verify_jwt = true
+
+[functions.process-market-report]
+verify_jwt = false
+
+[functions.ask-reports]
+verify_jwt = false
+
+[functions.ask-single-report]
+verify_jwt = false
+
+[functions.fix-product-names]
+verify_jwt = false
+
+[functions.suggest-udi-company-prefix]
+verify_jwt = false
+
+[functions.ai-requirement-specs-generator]
+verify_jwt = true
+
+[functions.ai-system-requirements-generator]
+verify_jwt = true
+
+[functions.ai-software-requirements-generator]
+verify_jwt = true
+
+[functions.ai-hardware-requirements-generator]
+verify_jwt = true
+
+[functions.ai-document-version-compare]
+verify_jwt = true
+
+[functions.ai-content-generator]
+verify_jwt = true
+
+[functions.sync-api-key-usage]
+verify_jwt = true
+
+[functions.webhook-handler]
+verify_jwt = false
+
+[functions.stripe-analytics]
+verify_jwt = true
+
+[functions.cancel-subscription]
+verify_jwt = true
+
+[functions.change-subscription-plan]
+verify_jwt = true
+
+[functions.get-user-transactions]
+verify_jwt = true
+
+[functions.invite-guest-people]
+verify_jwt = true
+
+[functions.send-reset-password-email]
+verify_jwt = false
+
+[functions.generate-business-canvas]
+verify_jwt = true
+
+[functions.fda-classify]
+verify_jwt = false
+
+[functions.ai-reimbursement-code-suggester]
+verify_jwt = true
+
+[functions.generate-udi-characteristics]
+verify_jwt = true
+
+[functions.get-payment-method]
+verify_jwt = true
+
+[functions.create-portal-session]
+verify_jwt = true
+
+[functions.reactivate-subscription]
+verify_jwt = true
+
+[functions.generate-qmsr-rationale]
+verify_jwt = true
+
+[functions.ai-category-suggester]
+verify_jwt = false
+
+[functions.ai-feature-user-needs-suggester]
+verify_jwt = false
+
+[functions.ai-feature-component-suggester]
+verify_jwt = false
+
+[functions.ai-hazard-filler]
+verify_jwt = true
+
+[functions.ai-ui-analysis]
+verify_jwt = false
+
+[functions.ai-vv-plan-generator]
+verify_jwt = false
+
+[functions.ai-evaluation-plan-generator]
+verify_jwt = false
+
+[functions.ai-usability-test-generator]
+verify_jwt = false
+
+[functions.ai-usability-hazard-generator]
+verify_jwt = false
+
+[functions.ai-feature-details-suggester]
+verify_jwt = false
+
+[functions.ai-gap-field-assist]
+verify_jwt = false
+
+[functions.ai-collateral-assessment]
+verify_jwt = false
+
+[functions.ai-gap-step-assess]
+verify_jwt = false
+
+[functions.ai-gap-checklist-import]
+verify_jwt = false
+
+[functions.slack-knowledge-bot]
+verify_jwt = false
+
+[functions.slack-knowledge-sync]
+verify_jwt = false
+
+[functions.ai-usability-evaluation-importer]
+verify_jwt = false

@@ -1,0 +1,1 @@
+ALTER TABLE training_modules ADD COLUMN group_name TEXT;

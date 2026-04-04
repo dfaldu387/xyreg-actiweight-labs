@@ -1,0 +1,11 @@
+UPDATE training_modules SET group_name = 'Quality Core' WHERE name LIKE 'SOP-004%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Quality Core' WHERE name LIKE 'SOP-005%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Quality Core' WHERE name LIKE 'SOP-006%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Quality Core' WHERE name LIKE 'SOP-011%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Quality Core' WHERE name LIKE 'SOP-012%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Quality Core' WHERE name LIKE 'SOP-017%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Design & Development' WHERE name LIKE 'SOP-019%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Production & Supply' WHERE name LIKE 'SOP-016%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Production & Supply' WHERE name LIKE 'SOP-020%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Production & Supply' WHERE name LIKE 'SOP-051%' AND (group_name IS NULL OR group_name = 'Other');
+UPDATE training_modules SET group_name = 'Regulatory & Compliance' WHERE name LIKE 'SOP-048%' AND (group_name IS NULL OR group_name = 'Other');

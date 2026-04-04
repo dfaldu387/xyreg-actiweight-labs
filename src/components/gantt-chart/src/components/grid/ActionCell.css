@@ -1,0 +1,11 @@
+.wx-action-icon.wx-9DAESAHW {
+  cursor: pointer;
+  font-size: var(--wx-icon-size);
+  height: 16px;
+  line-height: 16px;
+  display: block;
+  color: var(--wx-gantt-icon-color);
+}
+.wx-action-icon.wx-9DAESAHW:hover {
+  color: var(--wx-color-link);
+}

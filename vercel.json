@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/onlyoffice/(.*)",
+      "destination": "/api/onlyoffice-proxy"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

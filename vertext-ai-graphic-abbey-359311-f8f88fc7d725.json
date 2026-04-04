@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "graphic-abbey-359311",
+  "private_key_id": "f8f88fc7d7250cc4c26ba9eea98ffc59df71dcd0",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC3ktwOrCM6evAd\nwuiPD36EpcZqp/kKRcbalSEUKiZ5mslwejB/UGMrQYwDfQ97oVlvg6mg90BLwHwA\nFVCzLiSgllFrNErzERmPjmIbztp+d0Pld61OtLZJzGCg1Rj7iqV5n4Zg6Bg3wdLZ\nZaUVshfzDOIhFOauaZsRU0juyp+BF6RflFEut7E6rWh0P6Mm4N12XjmGWztmFK1f\nV2mXYQhl8arZSe1tzdz1tMDxIk4d9FtiQbz06kSyygAVAmhPR3iB5VSBEYlHw030\nS/bo38ln0OdEtxQvuljK07Se57Qf5KMeCU17GBgD/BZ6jN4tSX5vSbbFRJ0ZmtlD\nijlKh5CzAgMBAAECggEAVXXrOHFu3RTKoDBS7/b4oWxDmPel+uBNGQmAItEUpFwp\nF1HrLfoQkNytABrCkH2nE0EqQSOaLSnpEGjb7u62YoRYVx47HjmButFAX03HbkS7\nuSIj7pY2ntiky3spbEE5lAtuFcM3Mw3qyQaG+ji06ZO/2kLOube0VzZ8p55w7zl2\nFveDfrUNWkWTSh7vPSEQRgYMTbLDdmwpc4QEZ/4q5y+kjKhkEmBdCjLcUP6Y66pL\nX/jVWBB0Pp5Xe5BV3qy10TxWad3E5Jvrq0/WAg7sb2lDFN/n+P3tGZr/DimWLl2F\n6HfufNt/LjCy6P1Z81FVHGbjtdDtvlMMF2oMsgnOIQKBgQDoisnkH0mzhBxsE0My\nYA0YDND5F4+Usdn7z1PfwaJjQ5kg7aTqHG32nxlUNp/SjWmIlM4hFxkEXtv0YsuI\n/rF57gpzC2oRaOfwqIzq/wpWbcG/yD1I4yXrandW6XrIPkjXC1LNC7mvcAsqBYBv\nydd23kjsE3dXSS9zbsLzqbQV2QKBgQDKF4ADdAM+gwGTafIKnG9W7myPDkKSNDla\nJqotnwQLm1F527HCvJZToXg/In8LD12jpQYD7+SDgvJGFFHg2abBQkM68/dTENeA\nnEAvW0jvOS0wVDEw1fP6zAvPU2Icf1KPl9L9DAXrgkV1g22SHEPLEl7q6KvuilnB\nzlmWg4WHawKBgQDOhOvWH/9ZYZvIU7ca1vjqAf/ZKJaITQc1viRUFOi91Xv6JXOP\nwt3Z5+QbyUNZP+OYu+bwtk2udvxK5y6xpNhDXCeFkn6JpaxPK7GyxfwNU/587z2W\nLL0xfOUtl79GdSJFcTYBCkfHSe9wS2CMZypm0/TZTFRxfXqZvqV+tplLyQKBgQCW\ndzbF22vK8EmNE1W2FtFDHVPQk2J3btDA0YblXr7pUWQxYaSRhE48yD06bJnAh1lF\nzUmURtmSHT37dYec7RCeVZKu4xRjUWfShwO2/rVn/98oW5cgcDwuoBuu6rti0l2L\nMhRSedAykBTdMNS087x6BxyKtF/GxFWd2eCUEyqpLwKBgGwoNRxYwJMXrL764Kct\n8COCGcBCNyerXoVqtnPdMYQpNht1h1wZdVpKKjgXJtoMOgdAbg8aEPmtdrvhg8aW\nKkohk2bJjcIfR1uit7GXlI+Hm7YgCTQvLZ/1XX+laP4typyYQ41aekYv65gS0KNX\nKVd1aOdEH9nIf+bS+Y0jkSlc\n-----END PRIVATE KEY-----\n",
+  "client_email": "vertex-ai-client@graphic-abbey-359311.iam.gserviceaccount.com",
+  "client_id": "108837633377404927093",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/vertex-ai-client%40graphic-abbey-359311.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
