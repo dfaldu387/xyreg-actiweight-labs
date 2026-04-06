@@ -1,12 +1,15 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { RichTextField } from '@/components/shared/RichTextField';
 import { useSearchParams, useParams } from 'react-router-dom';
+import { PendingFieldSuggestion } from '@/components/product/device/PendingFieldSuggestion';
+import { ProductFieldSuggestion } from '@/hooks/useProductFieldSuggestions';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { HelpCircle, Package, Lock, AlertTriangle, Loader2, Sparkles } from "lucide-react";
 import { InheritanceExclusionPopover } from '@/components/shared/InheritanceExclusionPopover';
 import { resolveFieldValue, normalizeScopeValue } from '@/hooks/useAutoSyncScope';
+import { markdownToHtml } from '@/utils/markdownToHtml';
 import { GovernanceBookmark } from '@/components/ui/GovernanceBookmark';
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -119,6 +122,9 @@ interface DefinitionTabProps {
   familyProducts?: any[];
   onScopeChangeWithPropagation?: (fieldKey: string, oldScope: import('@/hooks/useInheritanceExclusion').ItemExclusionScope, newScope: import('@/hooks/useInheritanceExclusion').ItemExclusionScope) => Promise<void>;
   onAcceptAISuggestion?: (fieldType: string, suggestion: string) => void;
+  fieldSuggestions?: ProductFieldSuggestion[];
+  onAcceptFieldSuggestion?: (suggestion: ProductFieldSuggestion, newValue: string) => void;
+  onRejectFieldSuggestion?: (suggestionId: string) => void;
 }
 
 export function DefinitionTab({
@@ -159,6 +165,9 @@ export function DefinitionTab({
   familyProducts,
   onScopeChangeWithPropagation,
   onAcceptAISuggestion,
+  fieldSuggestions = [],
+  onAcceptFieldSuggestion,
+  onRejectFieldSuggestion,
 }: DefinitionTabProps) {
   const { lang } = useTranslation();
   const { isInInvestorFlow } = useInvestorFlow();
@@ -301,7 +310,7 @@ export function DefinitionTab({
           fieldKey,
           fieldLabel: config.fieldLabel,
           original: currentValue,
-          suggested: response.suggestions[0].suggestion,
+          suggested: markdownToHtml(response.suggestions[0].suggestion),
         });
       }
     } catch (error) {
@@ -409,7 +418,7 @@ export function DefinitionTab({
 
   const renderScopeAndGov = (fieldKey: string, hideScope = false, currentValue?: any) => (
     <div className="flex items-center gap-0.5 ml-auto">
-      {!hideScope && belongsToFamily && company_id && productId && classificationExclusion ? (
+      {!hideScope && company_id && productId && classificationExclusion ? (
         <InheritanceExclusionPopover
           companyId={company_id}
           currentProductId={productId}
@@ -427,6 +436,19 @@ export function DefinitionTab({
   );
 
   const wrapWithOverlay = (_fieldKey: string, children: React.ReactNode) => children;
+
+  const renderFieldSuggestion = (fieldKey: string) => {
+    const s = fieldSuggestions.find(fs => fs.field_key === fieldKey);
+    if (!s) return null;
+    return (
+      <PendingFieldSuggestion
+        fieldLabel={s.field_label}
+        suggestedValue={s.suggested_value}
+        onAccept={() => onAcceptFieldSuggestion?.(s, s.suggested_value)}
+        onReject={() => onRejectFieldSuggestion?.(s.id)}
+      />
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -467,6 +489,7 @@ export function DefinitionTab({
             maxLength={255}
           />
           <p className="text-xs text-muted-foreground mt-1">{lang('deviceBasics.identification.deviceNameHelper')}</p>
+          {renderFieldSuggestion('name')}
         </div>
 
         <div>
@@ -514,6 +537,7 @@ export function DefinitionTab({
               <p className="text-xs text-muted-foreground mt-1">{lang('deviceBasics.identification.tradeNameHelper')}</p>
             </>
           ))}
+          {renderFieldSuggestion('trade_name')}
         </div>
 
         <div>
@@ -584,6 +608,8 @@ export function DefinitionTab({
             disabled={isLoading}
           />
         ))}
+        {renderFieldSuggestion('description')}
+        {renderFieldSuggestion('device_summary')}
       </div>
 
       <AIExplainerDialog

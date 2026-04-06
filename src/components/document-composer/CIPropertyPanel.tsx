@@ -5,16 +5,22 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { DocumentStatusDropdown } from '@/components/ui/document-status-dropdown';
 import { PhaseRestrictedDatePicker } from '@/components/ui/phase-restricted-date-picker';
 import { MultiAuthorSelector } from '@/components/common/MultiAuthorSelector';
 import { SectionSelector } from '@/components/common/SectionSelector';
 import { ReferenceDocumentPicker } from '@/components/common/ReferenceDocumentPicker';
 import { useDocumentTypes } from '@/hooks/useDocumentTypes';
+import { useDocumentCategoryConfigs } from '@/hooks/useDocumentCategoryConfigs';
 import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
-import { Settings2, Check, Loader2, BookOpen, ChevronDown } from 'lucide-react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useCompanyActivePhases } from '@/hooks/useCompanyActivePhases';
+import { useReviewerGroups } from '@/hooks/useReviewerGroups';
+import { useExistingTags } from '@/hooks/useExistingTags';
+import { Settings2, Check, Loader2, BookOpen, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CIPropertyPanelProps {
@@ -32,6 +38,17 @@ interface CIPropertyPanelProps {
   authorsIds: string[];
   assignedTo?: string;
   referenceDocumentIds: string[];
+  // New fields
+  version?: string;
+  tags?: string[];
+  isRecord?: boolean;
+  date?: string;
+  isCurrentEffectiveVersion?: boolean;
+  needTemplateUpdate?: boolean;
+  reviewerGroupIds?: string[];
+  recordId?: string;
+  nextReviewDate?: string;
+  documentNumber?: string;
   // Callback to persist changes
   onFieldChange: (field: string, value: any) => Promise<void>;
   disabled?: boolean;
@@ -53,26 +70,75 @@ export function CIPropertyPanel({
   authorsIds,
   assignedTo,
   referenceDocumentIds,
+  version,
+  tags = [],
+  isRecord,
+  date,
+  isCurrentEffectiveVersion,
+  needTemplateUpdate,
+  reviewerGroupIds = [],
+  recordId,
+  nextReviewDate,
+  documentNumber,
   onFieldChange,
   disabled = false,
 }: CIPropertyPanelProps) {
   const { documentTypes } = useDocumentTypes(companyId);
+  const { configs: categoryConfigs, isLoading: isCategoryConfigsLoading, getNextDocumentNumber, getUsedNumbers } = useDocumentCategoryConfigs(companyId);
+  const [usedNumbersSet, setUsedNumbersSet] = useState<Set<string>>(new Set());
+  const [isLoadingUsedNumbers, setIsLoadingUsedNumbers] = useState(false);
   const { documents: refDocuments } = useReferenceDocuments(companyId);
+  const { activePhases } = useCompanyActivePhases(companyId);
+  const { reviewerGroups = [] } = useReviewerGroups(companyId);
+  const { data: existingTags = [] } = useExistingTags(companyId);
   const [isRefDocPickerOpen, setIsRefDocPickerOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(true);
 
   // Local state for text inputs (debounced)
   const [localName, setLocalName] = useState(name);
+  const [localVersion, setLocalVersion] = useState(version || '');
+  const [tagInput, setTagInput] = useState('');
   const [fieldStates, setFieldStates] = useState<Record<string, FieldSaveState>>({});
   const debounceRef = useRef<Record<string, NodeJS.Timeout>>({});
   const isEditingNameRef = useRef(false);
+  const isEditingVersionRef = useRef(false);
 
-  // Sync local name when prop changes externally (but not while user is typing)
+  // Sync local state when props change externally
   useEffect(() => {
     if (!isEditingNameRef.current) {
       setLocalName(name);
     }
   }, [name]);
+
+  useEffect(() => {
+    if (!isEditingVersionRef.current) {
+      setLocalVersion(version || '');
+    }
+  }, [version]);
+
+  // Strip prefix from name on load/change
+  useEffect(() => {
+    if (!isEditingNameRef.current && documentNumber && localName) {
+      const stripped = localName.replace(/^[A-Z]+-\d{3}\s+/, '');
+      if (stripped !== localName) {
+        setLocalName(stripped);
+        onFieldChange('name', stripped);
+      }
+    }
+  }, [documentNumber]);
+
+  // Fetch used numbers when category prefix changes
+  useEffect(() => {
+    if (!documentType) return;
+    setIsLoadingUsedNumbers(true);
+    getUsedNumbers(documentType).then(used => {
+      if (documentNumber) {
+        const ownMatch = documentNumber.match(new RegExp(`^${documentType}-(\\d+)`));
+        if (ownMatch) used.delete(ownMatch[1]);
+      }
+      setUsedNumbersSet(used);
+      setIsLoadingUsedNumbers(false);
+    });
+  }, [documentType, getUsedNumbers, documentNumber]);
 
   const showSaveIndicator = useCallback((field: string) => {
     setFieldStates(prev => ({ ...prev, [field]: 'saved' }));
@@ -116,26 +182,193 @@ export function CIPropertyPanel({
   };
 
   const parsedDueDate = dueDate ? new Date(dueDate) : undefined;
+  const parsedDate = date ? new Date(date) : undefined;
+  const parsedNextReviewDate = nextReviewDate ? new Date(nextReviewDate) : undefined;
+
+  // Safety net: auto-generate record_id if is_record is true but record_id is missing
+  useEffect(() => {
+    if (isRecord && !recordId && !disabled) {
+      const generatedId = name
+        ? `${name.replace(/\s+/g, '-').substring(0, 20).toUpperCase()}-REC-001`
+        : `REC-${documentId.slice(-8).toUpperCase()}-001`;
+      handleFieldSave('record_id', generatedId);
+    }
+  }, [isRecord, recordId, disabled, name, documentId]);
+
+  // Auto-detect document category and number from document name for existing docs
+  useEffect(() => {
+    if (disabled || !name || documentNumber || categoryConfigs.length === 0) return;
+    const knownPrefixes = categoryConfigs.map(c => c.prefix);
+    if (knownPrefixes.length === 0) return;
+    const prefixPattern = new RegExp(`^(${knownPrefixes.join('|')})-(\\d[\\d.-]*)`, 'i');
+    const match = name.match(prefixPattern);
+    if (match) {
+      const matchedPrefix = match[1].toUpperCase();
+      const fullId = `${matchedPrefix}-${match[2]}`;
+      const config = categoryConfigs.find(c => c.prefix.toUpperCase() === matchedPrefix);
+      if (config) {
+        handleFieldSave('document_number', fullId);
+        if (!documentType) {
+          handleFieldSave('document_type', config.prefix);
+        }
+      }
+    }
+  }, [name, documentNumber, categoryConfigs, disabled, documentType]);
 
   // Get reference doc names for display
   const selectedRefDocNames = refDocuments
     .filter(d => referenceDocumentIds.includes(d.id))
     .map(d => d.file_name);
 
+  // Tag handling
+  const handleAddTag = (tag: string) => {
+    const trimmed = tag.trim();
+    if (trimmed && !tags.includes(trimmed)) {
+      const newTags = [...tags, trimmed];
+      handleFieldSave('tags', newTags);
+    }
+    setTagInput('');
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    const newTags = tags.filter(t => t !== tagToRemove);
+    handleFieldSave('tags', newTags);
+  };
+
+  const filteredTagSuggestions = existingTags.filter(
+    (t: string) => t.toLowerCase().includes(tagInput.toLowerCase()) && !tags.includes(t)
+  );
+
   return (
-    <Collapsible open={!isCollapsed} onOpenChange={(open) => setIsCollapsed(!open)}>
     <Card className="border-0 rounded-none border-t">
-      <CollapsibleTrigger asChild>
-      <CardHeader className="pb-3 px-6 pt-4 cursor-pointer hover:bg-muted/50 transition-colors">
+      <CardHeader className="pb-3 px-6 pt-4">
         <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground font-medium">
           <Settings2 className="w-4 h-4" />
-          CI Properties
-          <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+          Document Properties
         </CardTitle>
       </CardHeader>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
       <CardContent className="px-6 pb-4 space-y-4">
+        {/* Document / Report Toggle */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Type</Label>
+            {renderSaveIndicator('is_record')}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={`text-sm ${!isRecord ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>Document</span>
+            <Switch
+              checked={isRecord ?? false}
+              onCheckedChange={async (checked) => {
+                await handleFieldSave('is_record', checked);
+                // Auto-generate record_id when toggling to Record mode
+                if (checked && !recordId) {
+                  const sopNum = (document.querySelector?.('[data-sop-number]') as HTMLElement)?.dataset?.sopNumber;
+                  const generatedId = name
+                    ? `${name.replace(/\s+/g, '-').substring(0, 20).toUpperCase()}-REC-001`
+                    : `REC-${documentId.slice(-8).toUpperCase()}-001`;
+                  await handleFieldSave('record_id', generatedId);
+                }
+              }}
+              disabled={disabled}
+            />
+            <span className={`text-sm ${isRecord ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>Record</span>
+          </div>
+        </div>
+
+        {/* Document Category + Number - side by side */}
+        <div className="space-y-1.5" data-field="document-category">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Document Category</Label>
+            {renderSaveIndicator('document_type')}
+          </div>
+          <div className="flex items-center gap-2">
+            <Select
+              value={documentType || undefined}
+              onValueChange={async (val) => {
+                await handleFieldSave('document_type', val);
+                if (documentNumber) {
+                  const currentPrefix = documentNumber.split('-')[0];
+                  if (currentPrefix !== val) {
+                    await handleFieldSave('document_number', '');
+                  }
+                }
+                const config = categoryConfigs.find(c => c.prefix === val);
+                if (config && !version) {
+                  await handleFieldSave('version', config.versionFormat);
+                }
+              }}
+              disabled={disabled}
+            >
+              <SelectTrigger className="h-8 text-sm flex-1">
+                <SelectValue placeholder={isCategoryConfigsLoading ? "Loading..." : "Category"} />
+              </SelectTrigger>
+              <SelectContent>
+                {isCategoryConfigsLoading ? (
+                  <SelectItem value="__loading__" disabled>
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading...
+                    </span>
+                  </SelectItem>
+                ) : categoryConfigs.length === 0 ? (
+                  <SelectItem value="__empty__" disabled>
+                    No categories configured
+                  </SelectItem>
+                ) : (
+                  <TooltipProvider delayDuration={300}>
+                    {categoryConfigs.map(config => (
+                      <Tooltip key={config.categoryKey}>
+                        <TooltipTrigger asChild>
+                          <SelectItem value={config.prefix}>
+                            <span className="font-mono font-medium">{config.prefix}</span>
+                          </SelectItem>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>{config.categoryName}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+                  </TooltipProvider>
+                )}
+              </SelectContent>
+            </Select>
+
+            <span className="text-muted-foreground text-sm">-</span>
+
+            <Select
+              value={documentNumber ? documentNumber.replace(`${documentType}-`, '') : undefined}
+              onValueChange={async (num) => {
+                const fullId = `${documentType}-${num}`;
+                await handleFieldSave('document_number', fullId);
+              }}
+              disabled={disabled || isLoadingUsedNumbers || !documentType}
+            >
+              <SelectTrigger className="h-8 text-sm font-mono w-24">
+                <SelectValue placeholder={isLoadingUsedNumbers ? "..." : "###"} />
+              </SelectTrigger>
+              <SelectContent className="max-h-60">
+                {Array.from({ length: 50 }, (_, i) => {
+                  const num = String(i + 1).padStart(3, '0');
+                  const isUsed = usedNumbersSet.has(num);
+                  return (
+                    <SelectItem key={num} value={num} disabled={isUsed}>
+                      <span className={isUsed ? 'text-muted-foreground line-through' : ''}>
+                        {num}
+                      </span>
+                      {isUsed && <span className="ml-2 text-xs text-muted-foreground">(in use)</span>}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          {documentNumber && (
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              Document ID: <span className="font-mono font-medium text-foreground">{documentNumber}</span>
+            </div>
+          )}
+        </div>
+
         {/* Name */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -156,6 +389,26 @@ export function CIPropertyPanel({
           />
         </div>
 
+        {/* Version */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Version</Label>
+            {renderSaveIndicator('version')}
+          </div>
+          <Input
+            value={localVersion}
+            onChange={(e) => {
+              setLocalVersion(e.target.value);
+              handleDebouncedFieldSave('version', e.target.value);
+            }}
+            onFocus={() => { isEditingVersionRef.current = true; }}
+            onBlur={() => { isEditingVersionRef.current = false; }}
+            disabled={disabled}
+            className="h-8 text-sm"
+            placeholder="e.g. 1.0"
+          />
+        </div>
+
         {/* Status */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -170,49 +423,32 @@ export function CIPropertyPanel({
           />
         </div>
 
-        {/* Due Date */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs text-muted-foreground">Due Date</Label>
-            {renderSaveIndicator('due_date')}
-          </div>
-          <PhaseRestrictedDatePicker
-            date={parsedDueDate}
-            setDate={(date) => {
-              const formatted = date
-                ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-                : null;
-              handleFieldSave('due_date', formatted);
-            }}
-            disabled={disabled}
-          />
-        </div>
-
         <Separator />
 
-        {/* Document Type */}
+        {/* Phase */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <Label className="text-xs text-muted-foreground">Document Type</Label>
-            {renderSaveIndicator('document_type')}
+            <Label className="text-xs text-muted-foreground">Phase</Label>
+            {renderSaveIndicator('phase_id')}
           </div>
           <Select
-            value={documentType || undefined}
-            onValueChange={(val) => handleFieldSave('document_type', val)}
+            value={phaseId || undefined}
+            onValueChange={(val) => handleFieldSave('phase_id', val)}
             disabled={disabled}
           >
             <SelectTrigger className="h-8 text-sm">
-              <SelectValue placeholder="Select type" />
+              <SelectValue placeholder="Select phase" />
             </SelectTrigger>
             <SelectContent>
-              {documentTypes.map(type => (
-                <SelectItem key={type} value={type}>{type}</SelectItem>
+              {activePhases.map(phase => (
+                <SelectItem key={phase.id} value={phase.id}>{phase.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
-        {/* Section / Tags */}
+
+        {/* Section */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <Label className="text-xs text-muted-foreground">Section</Label>
@@ -233,6 +469,117 @@ export function CIPropertyPanel({
 
         <Separator />
 
+        {/* Date */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Date</Label>
+            {renderSaveIndicator('date')}
+          </div>
+          <PhaseRestrictedDatePicker
+            date={parsedDate}
+            setDate={(d) => {
+              const formatted = d
+                ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                : null;
+              handleFieldSave('date', formatted);
+            }}
+            disabled={disabled}
+          />
+        </div>
+
+        {/* Due Date */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Due Date</Label>
+            {renderSaveIndicator('due_date')}
+          </div>
+          <PhaseRestrictedDatePicker
+            date={parsedDueDate}
+            setDate={(d) => {
+              const formatted = d
+                ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                : null;
+              handleFieldSave('due_date', formatted);
+            }}
+            disabled={disabled}
+          />
+        </div>
+
+        {/* Next Review Date - Document mode only */}
+        {!isRecord && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">Next Review Date</Label>
+              {renderSaveIndicator('next_review_date')}
+            </div>
+            <PhaseRestrictedDatePicker
+              date={parsedNextReviewDate}
+              setDate={(d) => {
+                const formatted = d
+                  ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                  : null;
+                handleFieldSave('next_review_date', formatted);
+              }}
+              disabled={disabled}
+            />
+          </div>
+        )}
+
+        <Separator />
+
+        {/* Tags */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Tags</Label>
+            {renderSaveIndicator('tags')}
+          </div>
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1">
+              {tags.map((tag, i) => (
+                <Badge key={i} variant="secondary" className="text-xs gap-1">
+                  {tag}
+                  {!disabled && (
+                    <X
+                      className="w-3 h-3 cursor-pointer hover:text-destructive"
+                      onClick={() => handleRemoveTag(tag)}
+                    />
+                  )}
+                </Badge>
+              ))}
+            </div>
+          )}
+          <div className="relative">
+            <Input
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && tagInput.trim()) {
+                  e.preventDefault();
+                  handleAddTag(tagInput);
+                }
+              }}
+              disabled={disabled}
+              className="h-8 text-sm"
+              placeholder="Add tag..."
+            />
+            {tagInput && filteredTagSuggestions.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-md max-h-32 overflow-y-auto">
+                {filteredTagSuggestions.slice(0, 5).map((suggestion: string) => (
+                  <button
+                    key={suggestion}
+                    className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted transition-colors"
+                    onClick={() => handleAddTag(suggestion)}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <Separator />
+
         {/* Authors */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -248,6 +595,64 @@ export function CIPropertyPanel({
             placeholder="Select authors"
           />
         </div>
+
+        {/* Reviewer Groups */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Reviewer Groups</Label>
+            {renderSaveIndicator('reviewer_group_ids')}
+          </div>
+          <div className="space-y-1">
+            {reviewerGroups.map((group: any) => (
+              <label key={group.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox
+                  checked={reviewerGroupIds.includes(group.id)}
+                  onCheckedChange={(checked) => {
+                    const newIds = checked
+                      ? [...reviewerGroupIds, group.id]
+                      : reviewerGroupIds.filter((id: string) => id !== group.id);
+                    handleFieldSave('reviewer_group_ids', newIds);
+                  }}
+                  disabled={disabled}
+                />
+                <span className="truncate">{group.name}</span>
+              </label>
+            ))}
+            {reviewerGroups.length === 0 && (
+              <p className="text-xs text-muted-foreground">No reviewer groups configured</p>
+            )}
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Current Effective Version */}
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Current Effective Version</Label>
+          <div className="flex items-center gap-2">
+            {renderSaveIndicator('is_current_effective_version')}
+            <Checkbox
+              checked={isCurrentEffectiveVersion ?? false}
+              onCheckedChange={(checked) => handleFieldSave('is_current_effective_version', !!checked)}
+              disabled={disabled}
+            />
+          </div>
+        </div>
+
+        {/* Need Template Update */}
+        <div className="flex items-center justify-between">
+          <Label className="text-xs text-muted-foreground">Need Template Update</Label>
+          <div className="flex items-center gap-2">
+            {renderSaveIndicator('need_template_update')}
+            <Checkbox
+              checked={needTemplateUpdate ?? false}
+              onCheckedChange={(checked) => handleFieldSave('need_template_update', !!checked)}
+              disabled={disabled}
+            />
+          </div>
+        </div>
+
+        <Separator />
 
         {/* Reference Documents */}
         <div className="space-y-1.5">
@@ -291,8 +696,6 @@ export function CIPropertyPanel({
           onConfirm={(ids) => handleFieldSave('reference_document_ids', ids)}
         />
       </CardContent>
-      </CollapsibleContent>
     </Card>
-    </Collapsible>
   );
 }

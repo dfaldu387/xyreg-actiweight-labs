@@ -73,10 +73,10 @@ export async function sendInvitationDirect(
       .eq('id', currentUser.user.id)
       .single();
 
-    // Get company details
+    // Get company details including app_url for custom invitation links
     const { data: company } = await supabase
       .from('companies')
-      .select('name')
+      .select('name, app_url')
       .eq('id', companyId)
       .single();
 
@@ -140,8 +140,9 @@ export async function sendInvitationDirect(
       data = insertedData;
     }
 
-    // Generate invitation link using the current origin (e.g., srk44.xyreg.com or app.xyreg.com)
-    const invitationLink = `${window.location.origin || 'https://app.xyreg.com'}/accept-invitation?token=${data.invitation_token}`;
+    // Use company's custom app_url if set, otherwise fall back to current origin
+    const baseUrl = company?.app_url || window.location.origin || 'https://app.xyreg.com';
+    const invitationLink = `${baseUrl}/accept-invitation?token=${data.invitation_token}`;
 
     // Prepare email data
     const inviterName = `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() ||
@@ -274,10 +275,10 @@ export function useInvitations(companyId?: string) {
         .eq('id', currentUser.user.id)
         .single();
 
-      // Get company details
+      // Get company details including app_url for custom invitation links
       const { data: company } = await supabase
         .from('companies')
-        .select('name')
+        .select('name, app_url')
         .eq('id', companyId)
         .single();
 
@@ -341,8 +342,9 @@ export function useInvitations(companyId?: string) {
         data = insertedData;
       }
 
-      // Generate invitation link using the invitation token
-      const invitationLink = `${window.location.origin || 'https://app.xyreg.com'}/accept-invitation?token=${data.invitation_token}`;
+      // Use company's custom app_url if set, otherwise fall back to current origin
+      const baseUrl = company?.app_url || window.location.origin || 'https://app.xyreg.com';
+      const invitationLink = `${baseUrl}/accept-invitation?token=${data.invitation_token}`;
 
       // Prepare email data
       const inviterName = `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() ||
@@ -432,16 +434,18 @@ export function useInvitations(companyId?: string) {
             .single()
         : { data: null };
 
-      // Get company details
+      // Get company details including app_url for custom invitation links
       const { data: company } = await supabase
         .from('companies')
-        .select('name')
+        .select('name, app_url')
         .eq('id', companyId!)
         .single();
 
       const inviterName = `${userProfile?.first_name || ''} ${userProfile?.last_name || ''}`.trim() || 'Someone';
       const companyName = company?.name || 'the company';
-      const invitationLink = `${window.location.origin || 'https://app.xyreg.com'}/accept-invitation?token=${updatedInvitation.invitation_token}`;
+      // Use company's custom app_url if set, otherwise fall back to current origin
+      const baseUrl = company?.app_url || window.location.origin || 'https://app.xyreg.com';
+      const invitationLink = `${baseUrl}/accept-invitation?token=${updatedInvitation.invitation_token}`;
 
       // Re-send the invitation email
       const emailResult = await postmarkService.sendInvitationEmail(

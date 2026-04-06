@@ -3743,6 +3743,7 @@ export type Database = {
       companies: {
         Row: {
           address: string | null
+          app_url: string | null
           ar_address: string | null
           ar_city: string | null
           ar_country: string | null
@@ -3782,6 +3783,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          app_url?: string | null
           ar_address?: string | null
           ar_city?: string | null
           ar_country?: string | null
@@ -3821,6 +3823,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          app_url?: string | null
           ar_address?: string | null
           ar_city?: string | null
           ar_country?: string | null
@@ -14849,6 +14852,7 @@ export type Database = {
           deadline: string | null
           description: string | null
           device_scope: Json | null
+          document_number: string | null
           document_reference: string | null
           document_scope: Database["public"]["Enums"]["document_scope"] | null
           document_type: string | null
@@ -14867,12 +14871,14 @@ export type Database = {
           milestone_due_date: string | null
           name: string
           need_template_update: boolean | null
+          next_review_date: string | null
           phase_id: string
           phases: Json[] | null
           platform_id: string | null
           platform_reference_id: string | null
           product_id: string | null
           public_url: string | null
+          record_id: string | null
           reference_document_ids: string[] | null
           reviewer_group_id: string | null
           reviewer_group_ids: string[] | null
@@ -14908,6 +14914,7 @@ export type Database = {
           deadline?: string | null
           description?: string | null
           device_scope?: Json | null
+          document_number?: string | null
           document_reference?: string | null
           document_scope?: Database["public"]["Enums"]["document_scope"] | null
           document_type?: string | null
@@ -14926,12 +14933,14 @@ export type Database = {
           milestone_due_date?: string | null
           name: string
           need_template_update?: boolean | null
+          next_review_date?: string | null
           phase_id: string
           phases?: Json[] | null
           platform_id?: string | null
           platform_reference_id?: string | null
           product_id?: string | null
           public_url?: string | null
+          record_id?: string | null
           reference_document_ids?: string[] | null
           reviewer_group_id?: string | null
           reviewer_group_ids?: string[] | null
@@ -14967,6 +14976,7 @@ export type Database = {
           deadline?: string | null
           description?: string | null
           device_scope?: Json | null
+          document_number?: string | null
           document_reference?: string | null
           document_scope?: Database["public"]["Enums"]["document_scope"] | null
           document_type?: string | null
@@ -14985,12 +14995,14 @@ export type Database = {
           milestone_due_date?: string | null
           name?: string
           need_template_update?: boolean | null
+          next_review_date?: string | null
           phase_id?: string
           phases?: Json[] | null
           platform_id?: string | null
           platform_reference_id?: string | null
           product_id?: string | null
           public_url?: string | null
+          record_id?: string | null
           reference_document_ids?: string[] | null
           reviewer_group_id?: string | null
           reviewer_group_ids?: string[] | null
@@ -15970,6 +15982,30 @@ export type Database = {
           status?: string
           total_platform_investment?: number | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_settings: {
+        Row: {
+          id: string
+          key: string
+          updated_at: string | null
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          id?: string
+          key: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value?: Json
+        }
+        Update: {
+          id?: string
+          key?: string
+          updated_at?: string | null
+          updated_by?: string | null
+          value?: Json
         }
         Relationships: []
       }
@@ -17536,6 +17572,80 @@ export type Database = {
             foreignKeyName: "product_exit_strategy_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: true
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_field_suggestions: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          current_value: string | null
+          field_key: string
+          field_label: string
+          id: string
+          product_id: string
+          source: string
+          status: string
+          suggested_value: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          current_value?: string | null
+          field_key: string
+          field_label: string
+          id?: string
+          product_id: string
+          source?: string
+          status?: string
+          suggested_value: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          current_value?: string | null
+          field_key?: string
+          field_label?: string
+          id?: string
+          product_id?: string
+          source?: string
+          status?: string
+          suggested_value?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_field_suggestions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_field_suggestions_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "product_field_suggestions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "portfolio_revenue_analytics"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "product_field_suggestions_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
           },

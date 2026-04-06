@@ -12,6 +12,7 @@ export interface DocumentStudioData {
   sections: any[];
   product_context?: any;
   document_control?: any;
+  document_number?: string;
   revision_history?: any[];
   associated_documents?: any[];
   metadata: any;
@@ -24,10 +25,231 @@ export interface DocumentStudioData {
   updated_at?: string;
 }
 
+interface DraftContentSignals {
+  aiGeneratedCount: number;
+  associatedDocumentCount: number;
+  documentControlFields: number;
+  filledParagraphCount: number;
+  manualSignalCount: number;
+  notesCount: number;
+  placeholderCount: number;
+  revisionHistoryCount: number;
+  totalCharacters: number;
+}
+
+const PLACEHOLDER_TEXT_PATTERN = /\*\[To be completed\]\*/i;
+
 /**
  * Service for persisting Document Studio data to Supabase
  */
 export class DocumentStudioPersistenceService {
+  private static normalizeTemplateRecord(data: any): DocumentStudioData {
+    return {
+      ...data,
+      sections: Array.isArray(data?.sections) ? data.sections : [],
+      product_context: data?.product_context || undefined,
+      document_control: data?.document_control || undefined,
+      revision_history: Array.isArray(data?.revision_history) ? data.revision_history : [],
+      associated_documents: Array.isArray(data?.associated_documents) ? data.associated_documents : [],
+      metadata: data?.metadata || {},
+      smart_data: data?.smart_data || undefined,
+      role_mappings: Array.isArray(data?.role_mappings) ? data.role_mappings : [],
+      notes: Array.isArray(data?.notes) ? data.notes : []
+    } as DocumentStudioData;
+  }
+
+  private static collectDraftContentSignals(row?: Partial<DocumentStudioData> | null): DraftContentSignals {
+    const sections = Array.isArray(row?.sections) ? row.sections : [];
+    const notes = Array.isArray(row?.notes) ? row.notes : [];
+    const revisionHistory = Array.isArray(row?.revision_history) ? row.revision_history : [];
+    const associatedDocuments = Array.isArray(row?.associated_documents) ? row.associated_documents : [];
+
+    let aiGeneratedCount = 0;
+    let filledParagraphCount = 0;
+    let manualSignalCount = 0;
+    let placeholderCount = 0;
+    let totalCharacters = 0;
+
+    for (const section of sections as any[]) {
+      const contentItems = Array.isArray(section?.content) ? section.content : [];
+
+      for (const item of contentItems) {
+        const text = typeof item?.content === 'string' ? item.content.trim() : '';
+        if (!text) continue;
+
+        filledParagraphCount += 1;
+        totalCharacters += text.length;
+
+        if (PLACEHOLDER_TEXT_PATTERN.test(text)) {
+          placeholderCount += 1;
+        }
+
+        if (item?.isAIGenerated) {
+          aiGeneratedCount += 1;
+        }
+
+        if (
+          item?.metadata?.author === 'user' ||
+          item?.metadata?.author === 'ai' ||
+          item?.metadata?.dataSource === 'manual' ||
+          item?.metadata?.dataSource === 'auto-populated' ||
+          item?.metadata?.aiUsed ||
+          item?.metadata?.companyDataUsed
+        ) {
+          manualSignalCount += 1;
+        }
+      }
+    }
+
+    const documentControl = row?.document_control && typeof row.document_control === 'object'
+      ? row.document_control as Record<string, any>
+      : {};
+
+    const documentControlFields = [
+      documentControl.sopNumber,
+      documentControl.documentOwner,
+      documentControl.version,
+      documentControl.preparedBy?.name,
+      documentControl.reviewedBy?.name,
+      documentControl.approvedBy?.name,
+    ].filter((value) => typeof value === 'string' && value.trim().length > 0).length;
+
+    return {
+      aiGeneratedCount,
+      associatedDocumentCount: associatedDocuments.length,
+      documentControlFields,
+      filledParagraphCount,
+      manualSignalCount,
+      notesCount: notes.length,
+      placeholderCount,
+      revisionHistoryCount: revisionHistory.length,
+      totalCharacters,
+    };
+  }
+
+  static hasMeaningfulSavedContent(row?: Partial<DocumentStudioData> | null): boolean {
+    const signals = this.collectDraftContentSignals(row);
+
+    return (
+      signals.notesCount > 0 ||
+      signals.aiGeneratedCount > 0 ||
+      signals.manualSignalCount > 0 ||
+      signals.documentControlFields > 0 ||
+      signals.revisionHistoryCount > 0 ||
+      signals.associatedDocumentCount > 0
+    );
+  }
+
+  private static rankTemplateCandidate(row: any, preferredTemplateIds: string[] = []): number {
+    const signals = this.collectDraftContentSignals(row);
+    const preferredIndex = preferredTemplateIds.indexOf(row?.template_id || '');
+    const preferredScore = preferredIndex === -1 ? 0 : Math.max(20, 60 - preferredIndex * 10);
+    const recencyScore = row?.updated_at ? new Date(row.updated_at).getTime() / 1e11 : 0;
+
+    return (
+      preferredScore +
+      signals.notesCount * 500 +
+      signals.aiGeneratedCount * 120 +
+      signals.manualSignalCount * 80 +
+      signals.documentControlFields * 35 +
+      signals.revisionHistoryCount * 40 +
+      signals.associatedDocumentCount * 25 +
+      signals.filledParagraphCount * 4 +
+      signals.totalCharacters / 200 -
+      signals.placeholderCount * 10 +
+      recencyScore
+    );
+  }
+
+  static pickBestTemplateRecord<T extends Partial<DocumentStudioData>>(rows: T[] | null | undefined, preferredTemplateIds: string[] = []): T | null {
+    if (!rows?.length) return null;
+
+    return [...rows].sort((left, right) => {
+      const scoreDelta = this.rankTemplateCandidate(right, preferredTemplateIds) - this.rankTemplateCandidate(left, preferredTemplateIds);
+      if (scoreDelta !== 0) return scoreDelta;
+
+      const rightUpdatedAt = right.updated_at ? new Date(right.updated_at).getTime() : 0;
+      const leftUpdatedAt = left.updated_at ? new Date(left.updated_at).getTime() : 0;
+      return rightUpdatedAt - leftUpdatedAt;
+    })[0] || null;
+  }
+
+  static async getDocumentCIsByReference(
+    companyId: string,
+    documentReference: string,
+    productId?: string
+  ): Promise<{ success: boolean; data?: Array<{ id: string; updated_at?: string | null }>; error?: string }> {
+    try {
+      let query = supabase
+        .from('phase_assigned_document_template')
+        .select('id, updated_at')
+        .eq('company_id', companyId)
+        .eq('document_reference', documentReference);
+
+      if (productId) {
+        query = query.eq('product_id', productId);
+      }
+
+      const { data, error } = await query.order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading CI records by document reference:', error);
+        return { success: false, error: error.message };
+      }
+
+      return {
+        success: true,
+        data: Array.isArray(data) ? data : [],
+      };
+    } catch (error) {
+      console.error('Error in getDocumentCIsByReference:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  static async loadBestTemplateForTemplateIds(
+    companyId: string,
+    templateIds: string[],
+    productId?: string
+  ): Promise<{ success: boolean; data?: DocumentStudioData; error?: string }> {
+    try {
+      const uniqueTemplateIds = [...new Set(templateIds.filter(Boolean))];
+
+      if (uniqueTemplateIds.length === 0) {
+        return { success: true, data: undefined };
+      }
+
+      let query = supabase
+        .from('document_studio_templates')
+        .select('*')
+        .eq('company_id', companyId)
+        .in('template_id', uniqueTemplateIds);
+
+      if (productId) {
+        query = query.eq('product_id', productId);
+      } else {
+        query = query.is('product_id', null);
+      }
+
+      const { data: rows, error } = await query.order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading template candidates:', error);
+        return { success: false, error: error.message };
+      }
+
+      const selectedRecord = this.pickBestTemplateRecord(rows as DocumentStudioData[] | null | undefined, uniqueTemplateIds);
+
+      return {
+        success: true,
+        data: selectedRecord ? this.normalizeTemplateRecord(selectedRecord) : undefined,
+      };
+    } catch (error) {
+      console.error('Error in loadBestTemplateForTemplateIds:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
   /**
    * Save or update document studio template data
    */
@@ -60,7 +282,7 @@ export class DocumentStudioPersistenceService {
           return { success: false, error: error.message };
         }
 
-        await this.updateCIStatusToDraft(data.template_id, data.company_id);
+        await this.updateCIStatusToDraft(data.template_id, data.company_id, updatedData.id);
         return { success: true, id: updatedData.id };
       } else {
         // Create new template
@@ -75,7 +297,7 @@ export class DocumentStudioPersistenceService {
           return { success: false, error: error.message };
         }
 
-        await this.updateCIStatusToDraft(data.template_id, data.company_id);
+        await this.updateCIStatusToDraft(data.template_id, data.company_id, newData.id);
         return { success: true, id: newData.id };
       }
     } catch (error) {
@@ -88,20 +310,36 @@ export class DocumentStudioPersistenceService {
    * Update the CI record status to "Draft" if it's currently "Not Started".
    * Called after saving a draft so the document list reflects that work has begun.
    */
-  private static async updateCIStatusToDraft(templateId: string, companyId: string): Promise<void> {
+  private static async updateCIStatusToDraft(templateId: string, companyId: string, studioId?: string): Promise<void> {
     try {
       const { data: ciRecord } = await supabase
         .from('phase_assigned_document_template')
-        .select('id, status')
+        .select('id, status, document_reference')
         .eq('id', templateId)
         .eq('company_id', companyId)
         .maybeSingle();
 
-      if (ciRecord && (!ciRecord.status || ciRecord.status.toLowerCase() === 'not started')) {
-        await supabase
-          .from('phase_assigned_document_template')
-          .update({ status: 'Draft', updated_at: new Date().toISOString() })
-          .eq('id', ciRecord.id);
+      if (ciRecord) {
+        const updates: Record<string, any> = {
+          updated_at: new Date().toISOString(),
+        };
+
+        // Set status to Draft if not started
+        if (!ciRecord.status || ciRecord.status.toLowerCase() === 'not started') {
+          updates.status = 'Draft';
+        }
+
+        // Link the document_reference to the studio template if not already set
+        if (studioId && (!ciRecord.document_reference || !ciRecord.document_reference.startsWith('DS-'))) {
+          updates.document_reference = `DS-${studioId}`;
+        }
+
+        if (Object.keys(updates).length > 1) { // more than just updated_at
+          await supabase
+            .from('phase_assigned_document_template')
+            .update(updates)
+            .eq('id', ciRecord.id);
+        }
       }
     } catch {
       // Non-critical — don't fail the save if status update fails
@@ -116,52 +354,7 @@ export class DocumentStudioPersistenceService {
     templateId: string, 
     productId?: string
   ): Promise<{ success: boolean; data?: DocumentStudioData; error?: string }> {
-    try {
-      let query = supabase
-        .from('document_studio_templates')
-        .select('*')
-        .eq('company_id', companyId)
-        .eq('template_id', templateId);
-
-      if (productId) {
-        query = query.eq('product_id', productId);
-      } else {
-        query = query.is('product_id', null);
-      }
-
-      const { data, error } = await query
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error loading template:', error);
-        return { success: false, error: error.message };
-      }
-
-      if (!data) {
-        return { success: true, data: undefined };
-      }
-
-      return { 
-        success: true, 
-        data: data ? {
-          ...data,
-          sections: Array.isArray(data.sections) ? data.sections : [],
-          product_context: data.product_context || undefined,
-          document_control: data.document_control || undefined,
-          revision_history: Array.isArray(data.revision_history) ? data.revision_history : [],
-          associated_documents: Array.isArray(data.associated_documents) ? data.associated_documents : [],
-          metadata: data.metadata || {},
-          smart_data: data.smart_data || undefined,
-          role_mappings: Array.isArray(data.role_mappings) ? data.role_mappings : [],
-          notes: Array.isArray(data.notes) ? data.notes : []
-        } as DocumentStudioData : undefined
-      };
-    } catch (error) {
-      console.error('Error in loadTemplate:', error);
-      return { success: false, error: String(error) };
-    }
+    return this.loadBestTemplateForTemplateIds(companyId, [templateId], productId);
   }
 
   /**
@@ -277,6 +470,7 @@ export class DocumentStudioPersistenceService {
         sections: Array.isArray(item.sections) ? item.sections : [],
         product_context: item.product_context || undefined,
         document_control: item.document_control || undefined,
+        document_number: undefined,
         revision_history: Array.isArray(item.revision_history) ? item.revision_history : [],
         associated_documents: Array.isArray(item.associated_documents) ? item.associated_documents : [],
         metadata: item.metadata || {},
@@ -285,12 +479,81 @@ export class DocumentStudioPersistenceService {
         notes: Array.isArray(item.notes) ? item.notes : []
       } as DocumentStudioData));
 
-      // Deduplicate: keep only the latest version per template_id + name
+      const templateIds = [...new Set(mapped.map(doc => doc.template_id).filter(Boolean))];
+      const studioIds = [...new Set(mapped.map(doc => doc.id).filter(Boolean))] as string[];
+      const dsReferences = studioIds.map(id => `DS-${id}`);
+
+      // Map: CI id -> metadata, and DS-{studioId} -> metadata
+      const ciMetadataById = new Map<string, { name: string | null; document_number: string | null }>();
+      const ciMetadataByDsRef = new Map<string, { name: string | null; document_number: string | null }>();
+
+      // Fetch CI metadata by template_id
+      if (templateIds.length > 0) {
+        const { data: ciMetadata, error: ciError } = await supabase
+          .from('phase_assigned_document_template')
+          .select('id, name, document_number')
+          .in('id', templateIds);
+
+        if (ciError) {
+          console.error('Error loading CI metadata for studio templates:', ciError);
+        } else {
+          (ciMetadata || []).forEach((row) => {
+            ciMetadataById.set(row.id, {
+              name: row.name,
+              document_number: row.document_number,
+            });
+          });
+        }
+      }
+
+      // Fetch CI metadata by document_reference = DS-{studioId}
+      if (dsReferences.length > 0) {
+        const { data: ciByRef, error: refError } = await supabase
+          .from('phase_assigned_document_template')
+          .select('id, name, document_number, document_reference')
+          .in('document_reference', dsReferences);
+
+        if (refError) {
+          console.error('Error loading CI metadata by DS reference:', refError);
+        } else {
+          (ciByRef || []).forEach((row) => {
+            if (row.document_reference) {
+              ciMetadataByDsRef.set(row.document_reference, {
+                name: row.name,
+                document_number: row.document_number,
+              });
+            }
+          });
+        }
+      }
+
+      const merged = mapped.map((doc) => {
+        // Try direct template_id match first, then fallback to DS-{studioId} reference
+        const ciMetadata = ciMetadataById.get(doc.template_id)
+          || (doc.id ? ciMetadataByDsRef.get(`DS-${doc.id}`) : undefined);
+        const existingDocumentControl = doc.document_control && typeof doc.document_control === 'object'
+          ? doc.document_control
+          : {};
+        const currentDocumentNumber = ciMetadata?.document_number || existingDocumentControl.sopNumber || undefined;
+        const currentName = ciMetadata?.name || doc.name;
+
+        return {
+          ...doc,
+          name: currentName,
+          document_number: currentDocumentNumber,
+          document_control: {
+            ...existingDocumentControl,
+            ...(currentDocumentNumber ? { sopNumber: currentDocumentNumber } : {}),
+            documentTitle: (currentName || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '') || existingDocumentControl.documentTitle,
+          },
+        } as DocumentStudioData;
+      });
+
+      // Deduplicate by document reference/template so renamed documents don't leave stale siblings in the list.
       const deduped = new Map<string, DocumentStudioData>();
-      for (const doc of mapped) {
-        const key = `${doc.template_id}::${doc.name}`;
-        const existing = deduped.get(key);
-        if (!existing || (doc.updated_at && existing.updated_at && doc.updated_at > existing.updated_at)) {
+      for (const doc of merged) {
+        const key = doc.template_id || doc.id || doc.name;
+        if (!deduped.has(key)) {
           deduped.set(key, doc);
         }
       }
@@ -329,13 +592,17 @@ export class DocumentStudioPersistenceService {
         }
       }
 
-      // Check for existing record by document_reference
-      const { data: existing } = await supabase
-        .from('phase_assigned_document_template')
-        .select('id')
-        .eq('company_id', params.companyId)
-        .eq('document_reference', params.documentReference)
-        .maybeSingle();
+      const existingResult = await this.getDocumentCIsByReference(
+        params.companyId,
+        params.documentReference,
+        params.productId
+      );
+
+      if (!existingResult.success) {
+        return { success: false, error: existingResult.error || 'Failed to check existing document CI records' };
+      }
+
+      const existing = existingResult.data?.[0];
 
       const record: Record<string, any> = {
         company_id: params.companyId,

@@ -180,7 +180,6 @@ export function GeneralTabsSection(props: GeneralTabsSectionProps) {
 
   // Wrap classificationExclusion to propagate values on scope change
   const classificationExclusionWithPropagation = useMemo(() => {
-    if (!belongsToFamily) return undefined;
     return {
       ...classificationExclusion,
       // Override getExclusionScope to return live computed scope

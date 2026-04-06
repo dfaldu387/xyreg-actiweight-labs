@@ -10,9 +10,13 @@ import { useCompanyRole } from '@/context/CompanyRoleContext';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentEditor } from "@onlyoffice/document-editor-react";
-import { FileEdit, ArrowLeft, Loader2, AlertCircle, Send } from 'lucide-react';
+import { FileEdit, ArrowLeft, Loader2, AlertCircle, Send, Check, FilePen, Eye, ShieldCheck, CircleCheckBig, Hourglass } from 'lucide-react';
 import { DocumentEditorSidebar } from '@/components/document-composer/DocumentEditorSidebar';
 import { SendToReviewGroupDialog } from '@/components/documents/SendToReviewGroupDialog';
+import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
+import { extractFieldsFromSections } from '@/utils/documentToFieldExtractor';
+import { useProductFieldSuggestions } from '@/hooks/useProductFieldSuggestions';
+import { toast } from 'sonner';
 
 // OnlyOffice constants
 const SUPABASE_URL = "https://wzzkbmmgxxrfhhxggrcl.supabase.co";
@@ -56,6 +60,7 @@ interface DocumentDraftDrawerProps {
   onDocumentSaved?: () => void;
   filePath?: string;
   fileName?: string;
+  documentReference?: string;
 }
 
 export function DocumentDraftDrawer({
@@ -69,20 +74,47 @@ export function DocumentDraftDrawer({
   onDocumentSaved,
   filePath,
   fileName,
+  documentReference,
 }: DocumentDraftDrawerProps) {
   const [template, setTemplate] = useState<DocumentTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [existingDraftId, setExistingDraftId] = useState<string | null>(null);
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false);
   const [editorMounted, setEditorMounted] = useState(false);
+  const [docStatus, setDocStatus] = useState<string>('Not Started');
   const [editorKey, setEditorKey] = useState<string | null>(null);
   const { activeCompanyRole } = useCompanyRole();
   const { user } = useAuth();
   const activeRole = activeCompanyRole?.role;
   const canEdit = activeRole !== 'viewer';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isRecord, setIsRecord] = useState(false);
+  const [recordId, setRecordId] = useState<string | null>(null);
+  const [nextReviewDate, setNextReviewDate] = useState<string | null>(null);
+  const [documentNumber, setDocumentNumber] = useState<string | null>(null);
   const [showSendForReview, setShowSendForReview] = useState(false);
   const [existingReviewerGroupIds, setExistingReviewerGroupIds] = useState<string[]>([]);
+
+  const resolvedCompanyId = companyId || activeCompanyRole?.companyId;
+
+  const { createSuggestions } = useProductFieldSuggestions(productId, resolvedCompanyId);
+
+  const handlePushToDeviceFields = useCallback(() => {
+    if (!template || !productId) {
+      toast.error('No product context available');
+      return;
+    }
+    const extractions = extractFieldsFromSections(template.sections);
+    if (extractions.length === 0) {
+      toast.info('No field values found to push', { description: 'Add content with **Label:** Value format first.' });
+      return;
+    }
+    createSuggestions.mutate(extractions.map(e => ({
+      field_key: e.fieldKey,
+      field_label: e.fieldLabel,
+      suggested_value: e.suggestedValue,
+    })));
+  }, [template, productId, createSuggestions]);
 
   // Fetch existing reviewer group assignments
   useEffect(() => {
@@ -141,7 +173,20 @@ export function DocumentDraftDrawer({
     ? documentId.replace('template-', '')
     : documentId;
 
-  const resolvedCompanyId = companyId || activeCompanyRole?.companyId;
+
+  // Fetch document status for stepper
+  useEffect(() => {
+    if (!open || !normalizedDocId) return;
+    const fetchStatus = async () => {
+      const { data } = await supabase
+        .from('phase_assigned_document_template')
+        .select('status')
+        .eq('id', normalizedDocId)
+        .maybeSingle();
+      if (data?.status) setDocStatus(data.status);
+    };
+    fetchStatus();
+  }, [open, normalizedDocId]);
 
   // Initialize template when drawer opens - check for existing draft first
   useEffect(() => {
@@ -156,15 +201,25 @@ export function DocumentDraftDrawer({
     const loadOrCreateTemplate = async () => {
       setIsLoading(true);
       try {
-        // Look up existing draft by template_id = CI document ID
-        const { data: existingDraft } = await supabase
-          .from('document_studio_templates')
-          .select('*')
-          .eq('company_id', resolvedCompanyId)
-          .eq('template_id', normalizedDocId)
-          .order('updated_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const templateIds = [normalizedDocId];
+        if (documentReference) {
+          templateIds.push(documentReference);
+        }
+        if (productId) {
+          templateIds.push(`DEVICE-DEF-FULL-${productId}`);
+        }
+
+        const bestDraftResult = await DocumentStudioPersistenceService.loadBestTemplateForTemplateIds(
+          resolvedCompanyId,
+          templateIds,
+          productId
+        );
+
+        if (!bestDraftResult.success) {
+          throw new Error(bestDraftResult.error || 'Failed to load document draft');
+        }
+
+        const existingDraft = bestDraftResult.data || null;
 
         if (existingDraft) {
           // Load existing draft
@@ -402,8 +457,57 @@ export function DocumentDraftDrawer({
         </Box>
       </Box>
 
+      {/* Document Lifecycle Stepper */}
+      {(() => {
+        const steps = [
+          { label: 'Draft', icon: FilePen },
+          { label: 'Review', icon: Eye },
+          { label: 'Approve', icon: ShieldCheck },
+          { label: 'Completed', icon: CircleCheckBig },
+        ];
+        const statusLower = docStatus?.toLowerCase() || '';
+        let activeStep = 0;
+        if (statusLower === 'draft' || statusLower === 'not started') activeStep = 0;
+        else if (statusLower === 'under review' || statusLower === 'in review' || statusLower === 'changes requested' || statusLower === 'changes_requested') activeStep = 1;
+        else if (statusLower === 'pending approval') activeStep = 2;
+        else if (statusLower === 'approved' || statusLower === 'signed' || statusLower === 'esigned' || statusLower === 'completed' || statusLower === 'closed') activeStep = 4;
+
+        return (
+          <Box sx={{ px: 3, py: 1.5, borderBottom: '1px solid', borderColor: 'divider', backgroundColor: '#fafbfc' }}>
+            {/* Step icons and connectors */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
+              {steps.map((step, index) => {
+                const isCompleted = index < activeStep;
+                const isActive = index === activeStep;
+                const StepIcon = step.icon;
+                return (
+                  <React.Fragment key={step.label}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 90 }}>
+                      <Box sx={{
+                        width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: isCompleted ? '#16a34a' : isActive ? '#2563eb' : '#fff',
+                        border: isCompleted ? '2px solid #16a34a' : isActive ? '2px solid #2563eb' : '2px solid #d1d5db',
+                        color: isCompleted || isActive ? '#fff' : '#9ca3af',
+                      }}>
+                        {isCompleted ? <Check style={{ width: 18, height: 18 }} /> : isActive ? <Hourglass style={{ width: 18, height: 18 }} /> : <StepIcon style={{ width: 18, height: 18 }} />}
+                      </Box>
+                      <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: isCompleted || isActive ? '#111827' : '#9ca3af', lineHeight: 1.2, mt: 0.5 }}>
+                        {step.label}
+                      </Typography>
+                    </Box>
+                    {index < steps.length - 1 && (
+                      <Box sx={{ width: 48, height: 2, backgroundColor: isCompleted ? '#16a34a' : '#d1d5db', borderRadius: 1, mt: -3 }} />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </Box>
+          </Box>
+        );
+      })()}
+
       {/* Body */}
-      <Box sx={{ flex: 1, overflow: 'hidden', height: 'calc(100vh - 64px)', display: 'flex', flexDirection: 'row' }}>
+      <Box sx={{ flex: 1, overflow: 'hidden', height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'row' }}>
         {/* Sidebar + toggle (hidden in advanced editor mode) */}
         {!showAdvancedEditor && (
           <DocumentEditorSidebar
@@ -412,6 +516,10 @@ export function DocumentDraftDrawer({
             ciDocumentId={normalizedDocId || null}
             ciCompanyId={resolvedCompanyId}
             productId={productId}
+            onIsRecordChange={setIsRecord}
+            onRecordIdChange={setRecordId}
+            onNextReviewDateChange={setNextReviewDate}
+            onDocumentNumberChange={setDocumentNumber}
             controlPanelProps={{
               productContext: template?.productContext,
               documentType: template?.type,
@@ -420,7 +528,7 @@ export function DocumentDraftDrawer({
               initialProductId: productId || undefined,
               template: template || undefined,
               disabled: !canEdit,
-              onDocumentControlChange: handleDocumentControlChange,
+              
             }}
           />
         )}
@@ -488,6 +596,11 @@ export function DocumentDraftDrawer({
               selectedScope={productId ? 'product' : 'company'}
               selectedProductId={productId}
               onDocumentControlChange={handleDocumentControlChange}
+              onPushToDeviceFields={productId ? handlePushToDeviceFields : undefined}
+              isRecord={isRecord}
+              recordId={recordId || undefined}
+              nextReviewDate={nextReviewDate || undefined}
+              documentNumber={documentNumber || undefined}
             />
           ) : null}
         </Box>

@@ -1,0 +1,1 @@
+ALTER TABLE public.phase_assigned_document_template ADD COLUMN document_number text;

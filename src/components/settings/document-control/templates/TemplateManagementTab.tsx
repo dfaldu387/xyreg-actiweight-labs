@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { stripDocPrefix } from '@/utils/templateNameUtils';
 import { Plus, FileText, Calendar, User, Download, Trash2, Brain, Eye, Edit, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -366,7 +367,7 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
                     <FileText className="h-4 w-4 text-muted-foreground" />
                   </TableCell>
                   <TableCell className="font-medium">
-                    {template.name}
+                    {stripDocPrefix(template.name)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {template.description || lang('templates.library.noDescription')}

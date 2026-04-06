@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, Download, Trash2, X, FileText, Loader2, Eye, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Upload, Download, Trash2, X, FileText, Loader2, Eye, FileEdit, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -270,7 +270,7 @@ export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocument
                         disabled={disabled}
                         title="Edit"
                       >
-                        <Pencil className="w-3.5 h-3.5" />
+                        <FileEdit className="w-3.5 h-3.5" />
                       </Button>
                       <Button
                         variant="ghost" size="icon" className="h-7 w-7"

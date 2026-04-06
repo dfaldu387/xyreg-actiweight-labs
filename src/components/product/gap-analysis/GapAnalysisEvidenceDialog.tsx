@@ -20,6 +20,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
+import { autoLinkMultipleToTechnicalFile } from '@/utils/technicalFileAutoLink';
 
 interface Document {
   id: string;
@@ -426,6 +427,11 @@ export function GapAnalysisEvidenceDialog({
         setIsLoading(false);
         return;
       }
+
+      // Auto-link to Technical File (best-effort)
+      autoLinkMultipleToTechnicalFile(itemId, unlinkedDocuments, productId).then(() =>
+        queryClient.invalidateQueries({ queryKey: ['technical-file-doc-links'] })
+      );
 
       // Invalidate and refetch queries
       await Promise.all([

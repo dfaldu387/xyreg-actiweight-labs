@@ -169,7 +169,11 @@ export function ProductOverviewSection({
               <div className="flex items-start gap-2 lg:col-span-2">
                 <Clipboard className="h-4 w-4 mt-1 text-muted-foreground flex-shrink-0" />
                 <span className="text-xs sm:text-sm font-medium">Intended Purpose:</span>
-                <span className="text-xs sm:text-sm break-words">{product.intended_use || "Not specified"}</span>
+                {product.intended_use ? (
+                  <span className="text-xs sm:text-sm break-words line-clamp-2 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: product.intended_use }} />
+                ) : (
+                  <span className="text-xs sm:text-sm">Not specified</span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Tag className="h-4 w-4 text-muted-foreground flex-shrink-0" />

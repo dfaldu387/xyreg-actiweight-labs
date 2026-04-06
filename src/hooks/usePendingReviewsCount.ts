@@ -35,7 +35,7 @@ export function usePendingReviewsCount() {
           .from('phase_assigned_document_template')
           .select('id, reviewer_group_ids, status, company_phases!inner(company_id)')
           .eq('company_phases.company_id', companyId)
-          .overlaps('reviewer_group_ids', groupIds)
+          .or(`reviewer_group_ids.ov.{${groupIds.join(',')}},reviewer_user_ids.cs.{${user.id}}`)
           .eq('is_excluded', false)
           .in('status', ACTIONABLE_STATUSES);
 

@@ -26,7 +26,9 @@ export function useCompanyAdoptedRelease(companyId: string) {
           xyreg_releases (version, release_date)
         `)
         .eq('company_id', companyId)
-        .eq('status', 'active')
+        .in('status', ['active', 'pending'])
+        .order('adopted_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (error || !data) return null;
@@ -60,6 +62,7 @@ export function useAdoptRelease(companyId: string) {
           company_id: companyId,
           release_id: releaseId,
           adopted_by: userId,
+          status: 'pending',
         });
       if (error) throw error;
 
@@ -70,19 +73,16 @@ export function useAdoptRelease(companyId: string) {
           .from('xyreg_releases')
           .select('version')
           .eq('id', releaseId)
-          .single();
+          .maybeSingle();
 
         // Get company name
         const { data: company } = await (supabase as any)
           .from('companies')
           .select('name')
           .eq('id', companyId)
-          .single();
+          .maybeSingle();
 
-        // Get super admin user IDs from user_company_access with admin roles
-        // Super admins are identified by auth metadata, so we query all users
-        // and filter — but since we can't query auth.users directly,
-        // we use the profiles table which mirrors auth metadata
+        // Get super admin user IDs
         const { data: superAdmins } = await (supabase as any)
           .from('profiles')
           .select('id')
@@ -111,6 +111,26 @@ export function useAdoptRelease(companyId: string) {
           await (supabase as any)
             .from('app_notifications')
             .insert(notifications);
+        }
+
+        // Send email notification to configured addresses (from DB)
+        const { data: emailSetting } = await (supabase as any)
+          .from('platform_settings')
+          .select('value')
+          .eq('key', 'adoption_notification_emails')
+          .maybeSingle();
+        const emailRecipients: string[] = emailSetting?.value || [];
+        if (emailRecipients.length > 0) {
+          const companyName = company?.name ?? 'Unknown company';
+          const releaseVersion = release?.version ?? 'unknown';
+          await supabase.functions.invoke('send-adoption-email', {
+            body: {
+              to: emailRecipients,
+              companyName,
+              releaseVersion,
+              adoptedAt: new Date().toISOString(),
+            },
+          });
         }
       } catch {
         // Non-critical: don't fail adoption if notification fails

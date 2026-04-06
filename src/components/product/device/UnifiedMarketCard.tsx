@@ -565,7 +565,7 @@ export function UnifiedMarketCard({
                     </DialogContent>
                   </Dialog>
                 )}
-                {belongsToFamily && companyId && productId && fieldExclusion && (
+                {companyId && productId && fieldExclusion && (
                   <InheritanceExclusionPopover
                     companyId={companyId}
                     currentProductId={productId}

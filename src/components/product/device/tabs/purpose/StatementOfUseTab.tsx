@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { debounce } from '@/utils/debounce';
+import { markdownToHtml } from '@/utils/markdownToHtml';
 import { AIFieldButton } from '../../ai-assistant/AIFieldButton';
 import { AIExplainerDialog } from '../../../ai-assistant/AIExplainerDialog';
 import { FieldSuggestion, productDefinitionAIService, ProductDefinitionAIService, DeviceContext, hasMinimumContext } from '@/services/productDefinitionAIService';
@@ -19,6 +20,8 @@ import { InvestorVisibleBadge } from '@/components/ui/investor-visible-badge';
 import { useInvestorFlow } from '@/hooks/useInvestorFlow';
 import { cn } from '@/lib/utils';
 import { AISuggestionReviewDialog } from '@/components/product/ai-assistant/AISuggestionReviewDialog';
+import { PendingFieldSuggestion } from '@/components/product/device/PendingFieldSuggestion';
+import { ProductFieldSuggestion } from '@/hooks/useProductFieldSuggestions';
 import { useTranslation } from '@/hooks/useTranslation';
 import { ContextWarningToast, getMissingFieldsWithNavigation, getContextSources } from '../../ai-assistant/ContextWarningToast';
 import { InheritanceExclusionPopover } from '@/components/shared/InheritanceExclusionPopover';
@@ -100,6 +103,9 @@ interface StatementOfUseTabProps {
   familyProductIds?: string[];
   familyProducts?: any[];
   onScopeChangeWithPropagation?: (fieldKey: string, oldScope: import('@/hooks/useInheritanceExclusion').ItemExclusionScope, newScope: import('@/hooks/useInheritanceExclusion').ItemExclusionScope) => Promise<void>;
+  fieldSuggestions?: ProductFieldSuggestion[];
+  onAcceptFieldSuggestion?: (suggestion: ProductFieldSuggestion, newValue: string) => void;
+  onRejectFieldSuggestion?: (suggestionId: string) => void;
 }
 
 export function StatementOfUseTab({
@@ -135,6 +141,9 @@ export function StatementOfUseTab({
   familyProductIds,
   familyProducts,
   onScopeChangeWithPropagation,
+  fieldSuggestions = [],
+  onAcceptFieldSuggestion,
+  onRejectFieldSuggestion,
 }: StatementOfUseTabProps) {
   const { lang } = useTranslation();
   const { isInInvestorFlow } = useInvestorFlow();
@@ -508,7 +517,7 @@ export function StatementOfUseTab({
               localKey: fieldInfo.localKey,
               fieldLabel: fieldConfig.name,
               original: fieldInfo.value,
-              suggested: suggestion,
+              suggested: markdownToHtml(suggestion),
             });
           }
         }
@@ -622,7 +631,7 @@ export function StatementOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -660,6 +669,20 @@ export function StatementOfUseTab({
               className="mt-2"
             />
           )}
+          {(() => {
+            const s = fieldSuggestions.find(fs => fs.field_key === 'intended_purpose_data.clinicalPurpose' || fs.field_key === 'intended_use');
+            return s ? (
+              <PendingFieldSuggestion
+                fieldLabel={s.field_label}
+                suggestedValue={s.suggested_value}
+                onAccept={() => {
+                  handleTextFieldChange('clinicalPurpose', s.suggested_value);
+                  onAcceptFieldSuggestion?.(s, s.suggested_value);
+                }}
+                onReject={() => onRejectFieldSuggestion?.(s.id)}
+              />
+            ) : null;
+          })()}
         </>
       </div>
 
@@ -680,7 +703,7 @@ export function StatementOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -746,7 +769,7 @@ export function StatementOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -784,10 +807,22 @@ export function StatementOfUseTab({
               className="mt-2"
             />
           )}
+          {(() => {
+            const s = fieldSuggestions.find(fs => fs.field_key === 'intended_purpose_data.indications');
+            return s ? (
+              <PendingFieldSuggestion
+                fieldLabel={s.field_label}
+                suggestedValue={s.suggested_value}
+                onAccept={() => {
+                  handleTextFieldChange('indications', s.suggested_value);
+                  onAcceptFieldSuggestion?.(s, s.suggested_value);
+                }}
+                onReject={() => onRejectFieldSuggestion?.(s.id)}
+              />
+            ) : null;
+          })()}
         </>
       </div>
-
-      {/* Mode of Action */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="modeOfAction" className="text-sm font-medium flex items-center gap-2">
@@ -820,7 +855,7 @@ export function StatementOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -846,6 +881,20 @@ export function StatementOfUseTab({
             disabled={isLoading}
             minHeight="80px"
           />
+          {(() => {
+            const s = fieldSuggestions.find(fs => fs.field_key === 'intended_purpose_data.modeOfAction');
+            return s ? (
+              <PendingFieldSuggestion
+                fieldLabel={s.field_label}
+                suggestedValue={s.suggested_value}
+                onAccept={() => {
+                  handleTextFieldChange('modeOfAction', s.suggested_value);
+                  onAcceptFieldSuggestion?.(s, s.suggested_value);
+                }}
+                onReject={() => onRejectFieldSuggestion?.(s.id)}
+              />
+            ) : null;
+          })()}
         </>
       </div>
 
@@ -883,7 +932,7 @@ export function StatementOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -920,7 +969,21 @@ export function StatementOfUseTab({
               }}
               className="mt-2"
             />
-          )}
+           )}
+          {(() => {
+            const s = fieldSuggestions.find(fs => fs.field_key === 'intended_purpose_data.valueProposition');
+            return s ? (
+              <PendingFieldSuggestion
+                fieldLabel={s.field_label}
+                suggestedValue={s.suggested_value}
+                onAccept={() => {
+                  handleTextFieldChange('valueProposition', s.suggested_value);
+                  onAcceptFieldSuggestion?.(s, s.suggested_value);
+                }}
+                onReject={() => onRejectFieldSuggestion?.(s.id)}
+              />
+            ) : null;
+          })()}
         </>
       </div>
 
@@ -957,7 +1020,7 @@ export function StatementOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}

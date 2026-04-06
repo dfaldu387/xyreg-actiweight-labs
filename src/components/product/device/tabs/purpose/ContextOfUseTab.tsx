@@ -18,6 +18,7 @@ import { InheritanceExclusionPopover } from '@/components/shared/InheritanceExcl
 import { Json } from '@/integrations/supabase/types';
 import { RichTextField } from '@/components/shared/RichTextField';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { PendingFieldSuggestion } from '@/components/product/device/PendingFieldSuggestion';
 import { FileText } from 'lucide-react';
 import { useFieldGovernance } from '@/hooks/useFieldGovernance';
 import { useMultiFieldGovernanceGuard } from '@/hooks/useMultiFieldGovernanceGuard';
@@ -87,6 +88,9 @@ interface ContextOfUseTabProps {
   familyProducts?: any[];
   /** Direct access to scope-change-with-propagation for value-matching mode */
   onScopeChangeWithPropagation?: (fieldKey: string, oldScope: import('@/hooks/useInheritanceExclusion').ItemExclusionScope, newScope: import('@/hooks/useInheritanceExclusion').ItemExclusionScope) => Promise<void>;
+  fieldSuggestions?: import('@/hooks/useProductFieldSuggestions').ProductFieldSuggestion[];
+  onAcceptFieldSuggestion?: (suggestion: import('@/hooks/useProductFieldSuggestions').ProductFieldSuggestion, newValue: string) => void;
+  onRejectFieldSuggestion?: (suggestionId: string) => void;
 }
 
 const predefinedUsers = [
@@ -186,6 +190,9 @@ export function ContextOfUseTab({
   familyProductIds,
   familyProducts,
   onScopeChangeWithPropagation,
+  fieldSuggestions = [],
+  onAcceptFieldSuggestion,
+  onRejectFieldSuggestion,
 }: ContextOfUseTabProps) {
   const { lang } = useTranslation();
   const [searchParams] = useSearchParams();
@@ -588,7 +595,7 @@ export function ContextOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -768,7 +775,7 @@ export function ContextOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -940,7 +947,7 @@ export function ContextOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -1057,7 +1064,7 @@ export function ContextOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -1240,7 +1247,7 @@ export function ContextOfUseTab({
             </TooltipProvider>
           </Label>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -1347,6 +1354,21 @@ export function ContextOfUseTab({
         </Collapsible>
       </div>
     </div>
+
+    {/* Document Studio Field Suggestions */}
+    {(['intended_purpose_data.targetPopulation', 'intended_purpose_data.userProfile', 'intended_purpose_data.useEnvironment', 'intended_purpose_data.durationOfUse'] as const).map(fieldKey => {
+      const s = fieldSuggestions.find(fs => fs.field_key === fieldKey);
+      if (!s) return null;
+      return (
+        <PendingFieldSuggestion
+          key={s.id}
+          fieldLabel={s.field_label}
+          suggestedValue={s.suggested_value}
+          onAccept={() => onAcceptFieldSuggestion?.(s, s.suggested_value)}
+          onReject={() => onRejectFieldSuggestion?.(s.id)}
+        />
+      );
+    })}
 
     {/* Governance Edit Warning Dialog */}
     <GovernanceEditConfirmDialog

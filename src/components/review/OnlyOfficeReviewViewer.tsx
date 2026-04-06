@@ -38,7 +38,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ReAuthDialog } from "@/components/esign/components/ReAuthDialog";
+import { ReAuthContent } from "@/components/esign/components/ReAuthContent";
 import { ESignService } from "@/components/esign/lib/esign.service";
 import { AuditTrailDrawer } from "@/components/esign/components/AuditTrailDrawer";
 import { useDocumentReviewAssignments } from "@/hooks/useDocumentReviewAssignments";
@@ -119,6 +119,7 @@ interface OnlyOfficeReviewViewerProps {
   documentName: string;
   companyId: string;
   reviewerGroupId: string;
+  userRole?: 'review' | 'author' | 'approver';
   documentFile?: {
     path: string;
     name: string;
@@ -134,6 +135,7 @@ export function OnlyOfficeReviewViewer({
   documentName,
   companyId,
   reviewerGroupId,
+  userRole,
   documentFile,
 }: OnlyOfficeReviewViewerProps) {
   const { user } = useAuth();
@@ -148,9 +150,17 @@ export function OnlyOfficeReviewViewer({
 
   // E-Signature state (for approve flow)
   const [fullLegalName, setFullLegalName] = useState("");
-  const [signatureMeaning, setSignatureMeaning] = useState("reviewer");
+  const getDefaultMeaning = (role?: string) => role === 'approver' ? 'approver' : role === 'author' ? 'author' : 'reviewer';
+  const [signatureMeaning, setSignatureMeaning] = useState(() => getDefaultMeaning(userRole));
+  const isMeaningLocked = userRole === 'review' || userRole === 'approver';
+
+  // Update meaning when userRole prop changes or when dialog opens
+  React.useEffect(() => {
+    if (open) {
+      setSignatureMeaning(getDefaultMeaning(userRole));
+    }
+  }, [open, userRole]);
   const [customMeaning, setCustomMeaning] = useState("");
-  const [showReAuth, setShowReAuth] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [signatureRecord, setSignatureRecord] = useState<ESignRecord | null>(null);
   const [authMethod, setAuthMethod] = useState<AuthMethod | null>(null);
@@ -295,7 +305,7 @@ export function OnlyOfficeReviewViewer({
       setReviewStep("decision");
       setReviewComments("");
       setFullLegalName("");
-      setSignatureMeaning("reviewer");
+      setSignatureMeaning(getDefaultMeaning(userRole));
       setCustomMeaning("");
       setSignatureRecord(null);
       setAuthMethod(null);
@@ -322,7 +332,10 @@ export function OnlyOfficeReviewViewer({
     const cleanDocId = documentId.startsWith("template-") ? documentId.replace("template-", "") : documentId;
     const payload: Record<string, any> = { status: newStatus, updated_at: new Date().toISOString() };
     if (newStatus === "Approved") payload.approval_date = new Date().toISOString();
-    if (clearReviewers) payload.reviewer_group_ids = [];
+    if (clearReviewers) {
+      payload.reviewer_group_ids = [];
+      payload.reviewer_user_ids = [];
+    }
     await supabase.from("phase_assigned_document_template").update(payload).eq("id", cleanDocId);
     await supabase.from("documents").update(payload).eq("id", cleanDocId);
   };
@@ -393,15 +406,14 @@ export function OnlyOfficeReviewViewer({
       toast.error("Please enter a custom meaning");
       return;
     }
-    setShowReAuth(true);
+    setReviewStep("reauth");
   };
 
   const handleAuthenticated = async (method: AuthMethod) => {
-    setShowReAuth(false);
     setIsSigning(true);
     setAuthMethod(method);
     try {
-      const documentHash = await ESignService.computeDocumentHash(documentId);
+      const documentHash = await ESignService.computeDocumentHash(filePath || documentId);
 
       // Log audit event
       await ESignService.logAuditEvent(
@@ -437,13 +449,36 @@ export function OnlyOfficeReviewViewer({
       await saveReviewerDecision("approved", reviewComments.trim() || "Approved and signed");
 
       // Update review assignment to completed
-      const assignment = assignments.find((a) => a.reviewer_group_id === reviewerGroupId);
+      // Check both group-based and individual user assignments
+      const assignment = assignments.find((a) => a.reviewer_group_id === reviewerGroupId)
+        || assignments.find((a) => (a as any).reviewer_user_id === user?.id);
       if (assignment) {
-        await updateAssignmentStatus(assignment.id, "completed", reviewerGroupId);
+        await updateAssignmentStatus(assignment.id, "completed", assignment.reviewer_group_id || '');
       }
 
-      // Update document status to Approved
-      await updateDocumentStatus("Approved");
+      // Determine new status based on who is signing
+      if (userRole === 'approver') {
+        // Approver signing — document is fully approved
+        await updateDocumentStatus("Approved");
+      } else {
+        // Reviewer signing — check if approvers are assigned for next step
+        const cleanId = documentId.startsWith("template-") ? documentId.replace("template-", "") : documentId;
+        const { data: docRecord } = await supabase
+          .from("phase_assigned_document_template")
+          .select("approved_by, approver_user_ids, approver_group_ids")
+          .eq("id", cleanId)
+          .maybeSingle();
+
+        const hasApprovers = docRecord?.approved_by
+          || ((docRecord as any)?.approver_user_ids?.length > 0)
+          || ((docRecord as any)?.approver_group_ids?.length > 0);
+
+        if (hasApprovers) {
+          await updateDocumentStatus("Pending Approval");
+        } else {
+          await updateDocumentStatus("Approved");
+        }
+      }
 
       // Save review note if comments were provided
       if (reviewComments.trim()) {
@@ -677,7 +712,7 @@ export function OnlyOfficeReviewViewer({
                       <Shield className="h-3 w-3" />
                       Meaning of Signature *
                     </Label>
-                    <Select value={signatureMeaning} onValueChange={setSignatureMeaning}>
+                    <Select value={signatureMeaning} onValueChange={setSignatureMeaning} disabled={isMeaningLocked}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -751,6 +786,18 @@ export function OnlyOfficeReviewViewer({
             </div>
           )}
 
+          {/* Step: Re-Authentication (inline) */}
+          {reviewStep === "reauth" && (
+            <div className="py-2">
+              <ReAuthContent
+                email={user?.email || ''}
+                onAuthenticated={handleAuthenticated}
+                onCancel={() => setReviewStep("sign")}
+                active={true}
+              />
+            </div>
+          )}
+
           {/* Step: Complete */}
           {reviewStep === "complete" && (
             <div className="space-y-6 py-2">
@@ -814,14 +861,6 @@ export function OnlyOfficeReviewViewer({
           )}
         </DialogContent>
       </Dialog>
-
-      {/* Re-Auth Dialog */}
-      <ReAuthDialog
-        open={showReAuth}
-        onOpenChange={setShowReAuth}
-        email={userEmail}
-        onAuthenticated={handleAuthenticated}
-      />
 
       {/* Audit Trail Drawer */}
       <AuditTrailDrawer

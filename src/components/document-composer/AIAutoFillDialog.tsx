@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { X, BookOpen, ChevronDown, Eye, Circle } from 'lucide-react';
+import { X, BookOpen, ChevronDown, Eye, Circle, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -8,9 +8,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sparkles, Wand2, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 import { DocumentTemplate } from '@/types/documentComposer';
 import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
 import { ReferenceDocumentService } from '@/services/referenceDocumentService';
+
+/** Standards that should always be pre-checked */
+const ALWAYS_PRECHECK = ['ISO 13485', 'ISO 14971', 'IEC 62366'];
 
 interface AIAutoFillDialogProps {
   open: boolean;
@@ -42,11 +46,67 @@ export function AIAutoFillDialog({
   const [isGenerating, setIsGenerating] = useState(false);
   const [sections, setSections] = useState<SectionState[]>(() => buildSections(template));
   const [isDone, setIsDone] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [selectedRefDocIds, setSelectedRefDocIds] = useState<string[]>([]);
   const [expandedSectionId, setExpandedSectionId] = useState<string | null>(null);
   const [currentGeneratingTitle, setCurrentGeneratingTitle] = useState('');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
+  const [selectedStandardIds, setSelectedStandardIds] = useState<Set<string>>(new Set());
+  const [standardsInitialized, setStandardsInitialized] = useState(false);
   const { documents: refDocuments } = useReferenceDocuments(companyId);
+
+  // ── Standards query (same pattern as AIContextSourcesPanel) ──
+  const { data: standards = [] } = useQuery({
+    queryKey: ['ai-autofill-standards', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('company_gap_templates')
+        .select('template_id, gap_analysis_templates!inner(id, framework, name, scope)')
+        .eq('company_id', companyId!)
+        .eq('is_enabled', true);
+      if (error) throw error;
+
+      const { data: alwaysData } = await supabase
+        .from('gap_analysis_templates')
+        .select('id, framework, name, scope')
+        .eq('auto_enable_condition', 'always')
+        .eq('is_active', true);
+
+      const seen = new Set<string>();
+      const results: { id: string; framework: string; name: string }[] = [];
+      const addFw = (fw: string, name: string, id: string) => {
+        if (!seen.has(fw)) {
+          seen.add(fw);
+          results.push({ id, framework: fw, name });
+        }
+      };
+      (data || []).forEach((t: any) => {
+        const tpl = t.gap_analysis_templates;
+        if (tpl?.framework) addFw(tpl.framework, tpl.name || tpl.framework, tpl.id);
+      });
+      (alwaysData || []).forEach((t: any) => {
+        if (t.framework) addFw(t.framework, t.name || t.framework, t.id);
+      });
+      return results;
+    },
+    enabled: !!companyId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Pre-check core standards once loaded
+  React.useEffect(() => {
+    if (standards.length > 0 && !standardsInitialized) {
+      const preChecked = new Set<string>();
+      standards.forEach((s) => {
+        const normalized = s.framework.replace(/_/g, ' ');
+        if (ALWAYS_PRECHECK.some((p) => normalized.includes(p))) {
+          preChecked.add(s.id);
+        }
+      });
+      setSelectedStandardIds(preChecked);
+      setStandardsInitialized(true);
+    }
+  }, [standards, standardsInitialized]);
 
   React.useEffect(() => {
     if (open) {
@@ -57,6 +117,9 @@ export function AIAutoFillDialog({
       setExpandedSectionId(null);
       setCurrentGeneratingTitle('');
       setAdditionalInstructions('');
+      setStandardsInitialized(false);
+      setSelectedStandardIds(new Set());
+      abortControllerRef.current = null;
     }
   }, [open, template]);
 
@@ -126,7 +189,10 @@ export function AIAutoFillDialog({
   };
 
   // Shared helper to generate a single section
-  const generateSection = async (section: SectionState, referenceContext: string): Promise<boolean> => {
+  const generateSection = async (section: SectionState, referenceContext: string): Promise<'done' | 'error' | 'aborted'> => {
+    // Check if already aborted before starting
+    if (abortControllerRef.current?.signal.aborted) return 'aborted';
+
     setSections((prev) =>
       prev.map((s) => (s.id === section.id ? { ...s, status: 'generating' } : s))
     );
@@ -134,6 +200,13 @@ export function AIAutoFillDialog({
 
     try {
       let prompt = `Generate comprehensive draft content for the "${section.title}" section following medical device industry best practices and regulatory standards (ISO 13485, FDA 21 CFR 820, EU MDR). Write professional, concise content appropriate for a ${template.type || 'QMS'} document titled "${template.name}".`;
+
+      // Include selected standards
+      const selectedStds = standards.filter((s) => selectedStandardIds.has(s.id));
+      if (selectedStds.length > 0) {
+        prompt += `\n\nEnsure compliance with the following standards and regulations: ${selectedStds.map((s) => s.name || s.framework).join(', ')}.`;
+      }
+
       if (additionalInstructions.trim()) {
         prompt += `\n\nAdditional instructions: ${additionalInstructions.trim()}`;
       }
@@ -141,14 +214,35 @@ export function AIAutoFillDialog({
         prompt += `\n\nUse the following reference documents as context to ground your output:\n\n${referenceContext}`;
       }
 
-      const { data, error } = await supabase.functions.invoke('ai-content-generator', {
-        body: {
-          prompt,
-          sectionTitle: section.title,
-          currentContent: '',
-          referenceContext: referenceContext || undefined,
-        },
+      const signal = abortControllerRef.current?.signal;
+
+      // Race the supabase call against the abort signal so it cancels instantly
+      const result = await new Promise<{ data: any; error: any }>((resolve, reject) => {
+        if (signal?.aborted) {
+          reject(new DOMException('Aborted', 'AbortError'));
+          return;
+        }
+
+        const onAbort = () => reject(new DOMException('Aborted', 'AbortError'));
+        signal?.addEventListener('abort', onAbort, { once: true });
+
+        supabase.functions.invoke('ai-content-generator', {
+          body: {
+            prompt,
+            sectionTitle: section.title,
+            currentContent: '',
+            referenceContext: referenceContext || undefined,
+          },
+        }).then((res) => {
+          signal?.removeEventListener('abort', onAbort);
+          resolve(res);
+        }).catch((err) => {
+          signal?.removeEventListener('abort', onAbort);
+          reject(err);
+        });
       });
+
+      const { data, error } = result;
 
       if (error || !data?.success || !data?.content) {
         throw new Error(data?.error || 'Failed to generate content');
@@ -161,13 +255,20 @@ export function AIAutoFillDialog({
             : s
         )
       );
-      return true;
-    } catch (err) {
+      return 'done';
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        // Reset section back to pending on abort
+        setSections((prev) =>
+          prev.map((s) => (s.id === section.id ? { ...s, status: 'pending' } : s))
+        );
+        return 'aborted';
+      }
       console.error(`Error generating content for ${section.title}:`, err);
       setSections((prev) =>
         prev.map((s) => (s.id === section.id ? { ...s, status: 'error' } : s))
       );
-      return false;
+      return 'error';
     }
   };
 
@@ -178,6 +279,8 @@ export function AIAutoFillDialog({
       return;
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setIsGenerating(true);
     setIsDone(false);
 
@@ -187,28 +290,44 @@ export function AIAutoFillDialog({
     let errorCount = 0;
 
     for (const section of toGenerate) {
-      const ok = await generateSection(section, referenceContext);
-      if (ok) successCount++;
+      const result = await generateSection(section, referenceContext);
+      if (result === 'aborted') break;
+      if (result === 'done') successCount++;
       else errorCount++;
     }
 
+    const stopped = controller.signal.aborted;
     setIsGenerating(false);
     setCurrentGeneratingTitle('');
-    setIsDone(true);
+    abortControllerRef.current = null;
 
-    if (successCount > 0 && errorCount === 0) {
-      toast.success(`AI content generated for all ${successCount} sections!`);
-    } else if (successCount > 0) {
-      toast.warning(`Generated ${successCount} sections, ${errorCount} failed.`);
+    if (stopped) {
+      if (successCount > 0) setIsDone(true);
+      toast.info(successCount > 0
+        ? `Generation stopped — ${successCount} section${successCount > 1 ? 's' : ''} completed successfully.`
+        : 'Generation stopped — no sections were completed.');
     } else {
-      toast.error('Failed to generate content for all sections.');
+      setIsDone(true);
+      if (successCount > 0 && errorCount === 0) {
+        toast.success(`AI content generated for all ${successCount} sections!`);
+      } else if (successCount > 0) {
+        toast.warning(`Generated ${successCount} sections, ${errorCount} failed.`);
+      } else {
+        toast.error('Failed to generate content for all sections.');
+      }
     }
+  };
+
+  const handleStopGeneration = () => {
+    abortControllerRef.current?.abort();
   };
 
   const handleRetryFailed = async () => {
     const failedSections = sections.filter((s) => s.status === 'error');
     if (failedSections.length === 0) return;
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setIsGenerating(true);
     setIsDone(false);
 
@@ -223,21 +342,31 @@ export function AIAutoFillDialog({
     let errorCount = 0;
 
     for (const section of failedSections) {
-      const ok = await generateSection(section, referenceContext);
-      if (ok) successCount++;
+      const result = await generateSection(section, referenceContext);
+      if (result === 'aborted') break;
+      if (result === 'done') successCount++;
       else errorCount++;
     }
 
+    const stopped = controller.signal.aborted;
     setIsGenerating(false);
     setCurrentGeneratingTitle('');
-    setIsDone(true);
+    abortControllerRef.current = null;
 
-    if (successCount > 0 && errorCount === 0) {
-      toast.success(`Retry successful for all ${successCount} sections!`);
-    } else if (successCount > 0) {
-      toast.warning(`Retried: ${successCount} succeeded, ${errorCount} still failing.`);
+    if (stopped) {
+      if (successCount > 0) setIsDone(true);
+      toast.info(successCount > 0
+        ? `Retry stopped — ${successCount} section${successCount > 1 ? 's' : ''} completed successfully.`
+        : 'Retry stopped — no sections were completed.');
     } else {
-      toast.error('Retry failed for all sections.');
+      setIsDone(true);
+      if (successCount > 0 && errorCount === 0) {
+        toast.success(`Retry successful for all ${successCount} sections!`);
+      } else if (successCount > 0) {
+        toast.warning(`Retried: ${successCount} succeeded, ${errorCount} still failing.`);
+      } else {
+        toast.error('Retry failed for all sections.');
+      }
     }
   };
 
@@ -321,8 +450,50 @@ export function AIAutoFillDialog({
                     <span className="text-muted-foreground">{selectedRefDocIds.length} document(s)</span>
                   </div>
                 )}
+                {selectedStandardIds.size > 0 && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                    <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                    <span className="font-medium">Standards</span>
+                    <span className="text-muted-foreground">{selectedStandardIds.size} selected</span>
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* Standards & Regulations Picker */}
+            {standards.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Standards & Regulations
+                </h3>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Selected standards will be included as context for AI generation
+                </p>
+                <div className="border rounded-lg max-h-[140px] overflow-y-auto p-2 space-y-1">
+                  {standards.map((std) => (
+                    <label
+                      key={std.id}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-sm"
+                    >
+                      <Checkbox
+                        checked={selectedStandardIds.has(std.id)}
+                        onCheckedChange={() => {
+                          setSelectedStandardIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(std.id)) next.delete(std.id);
+                            else next.add(std.id);
+                            return next;
+                          });
+                        }}
+                        disabled={isGenerating}
+                      />
+                      <span className="truncate flex-1">{std.name || std.framework}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Reference Documents Picker */}
             {refDocuments.length > 0 && (
@@ -571,24 +742,25 @@ export function AIAutoFillDialog({
                 Cancel
               </Button>
               {!isDone ? (
-                <Button
-                  onClick={handleGenerate}
-                  disabled={isGenerating || selectedCount === 0}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className="w-4 h-4 mr-2" />
-                      Generate All ({selectedCount})
-                    </>
-                  )}
-                </Button>
-              ) : (
+                isGenerating ? (
+                  <Button
+                    onClick={handleStopGeneration}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    <XCircle className="w-4 h-4 mr-2" />
+                    Stop Generating
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleGenerate}
+                    disabled={selectedCount === 0}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Wand2 className="w-4 h-4 mr-2" />
+                    Generate All ({selectedCount})
+                  </Button>
+                )
+                ) : (
                 <>
                   {failedCount > 0 && (
                     <Button

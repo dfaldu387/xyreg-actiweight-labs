@@ -11,6 +11,10 @@ interface SOPDocumentHeaderProps {
   companyId?: string;
   companyLogoUrl?: string;
   onFieldChange?: (field: string, value: string) => void;
+  isRecord?: boolean;
+  recordId?: string;
+  nextReviewDate?: string;
+  documentNumber?: string;
 }
 
 
@@ -52,7 +56,7 @@ function UserSelect({
   );
 }
 
-export function SOPDocumentHeader({ documentControl, companyName, className = '', companyId, companyLogoUrl, onFieldChange }: SOPDocumentHeaderProps) {
+export function SOPDocumentHeader({ documentControl, companyName, className = '', companyId, companyLogoUrl, onFieldChange, isRecord = false, recordId, nextReviewDate, documentNumber }: SOPDocumentHeaderProps) {
   const { authors } = useDocumentAuthors(companyId || '');
 
   if (!documentControl) {
@@ -77,9 +81,12 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
             </span>
           </div>
           <div className="text-right text-sm">
-            <div className="font-semibold">Document Control</div>
-            <div>SOP Number: {documentControl.sopNumber}</div>
-            {/* <div>Version: {documentControl.version}</div> */}
+            <div className="font-semibold">{isRecord ? 'Record' : 'Document Control'}</div>
+            <div>{isRecord ? 'Record ID' : (() => {
+              const dn = documentNumber || documentControl.sopNumber || '';
+              const prefix = dn.split('-')[0];
+              return prefix ? `${prefix} Number` : 'Document Number';
+            })()}: {isRecord ? (recordId || 'Not set') : (documentNumber || documentControl.sopNumber || 'Not set')}</div>
           </div>
         </div>
       </div>
@@ -87,164 +94,253 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
       {/* Document title */}
       <div className="p-4 text-center border-b border-gray-300">
         <h1 className="text-xl font-bold text-gray-800">
-          {documentControl.documentTitle}
+          {documentNumber ? `${documentNumber} ${(documentControl.documentTitle || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '')}` : (documentControl.documentTitle || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '')}
         </h1>
       </div>
 
       {/* Document information table */}
-      <div className="p-4">
-        <table className="w-full border-collapse border border-gray-300 text-sm">
-          <tbody>
-            <tr>
-              <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold w-1/4">
-                Effective Date:
-              </td>
-              <td className="border border-gray-300 px-3 py-2">
-                {safeFormat(documentControl.effectiveDate, 'dd MMMM yyyy')}
-              </td>
-              <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold w-1/4">
-                Next Review Date:
-              </td>
-              <td className="border border-gray-300 px-3 py-2">
-                {documentControl.nextReviewDate ? (
-                  <span>{safeFormat(documentControl.nextReviewDate, 'dd MMMM yyyy')}</span>
-                ) : (
-                  <span className="text-sm text-muted-foreground italic">Not set</span>
-                )}
-              </td>
-            </tr>
-            <tr>
-              <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold">
-                Document Owner:
-              </td>
-              <td className="border border-gray-300 px-3 py-2" colSpan={3}>
-                {documentControl.documentOwner ? (
-                  <div className="flex items-center gap-2">
-                    <span>{documentControl.documentOwner}</span>
-                    <button 
-                      type="button"
-                      className="text-xs text-muted-foreground hover:text-foreground underline"
-                      onClick={() => onFieldChange?.('documentOwner', '')}
-                    >
-                      Change
-                    </button>
-                  </div>
-                ) : (
-                  <UserSelect
-                    authors={authors}
-                    placeholder="Select document owner..."
-                    onSelect={(name) => onFieldChange?.('documentOwner', name)}
-                  />
-                )}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {isRecord ? (
+        <>
+          <div className="p-4">
+            <table className="w-full border-collapse border border-gray-300 text-sm">
+              <tbody>
+                <tr>
+                  <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold w-1/4">
+                    Date of Execution:
+                  </td>
+                  <td className="border border-gray-300 px-3 py-2">
+                    {safeFormat(documentControl.effectiveDate, 'dd MMMM yyyy')}
+                  </td>
+                  <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold w-1/4">
+                    Record ID:
+                  </td>
+                  <td className="border border-gray-300 px-3 py-2">
+                    {recordId || 'Not set'}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold">
+                    Executor / Author:
+                  </td>
+                  <td className="border border-gray-300 px-3 py-2" colSpan={3}>
+                    {documentControl.documentOwner ? (
+                      <div className="flex items-center gap-2">
+                        <span>{documentControl.documentOwner}</span>
+                        <button 
+                          type="button"
+                          className="text-xs text-muted-foreground hover:text-foreground underline"
+                          onClick={() => onFieldChange?.('documentOwner', '')}
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <UserSelect
+                        authors={authors}
+                        placeholder="Select executor / author..."
+                        onSelect={(name) => onFieldChange?.('documentOwner', name)}
+                      />
+                    )}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-      {/* Approval section */}
-      <div className="p-4 border-t border-gray-300">
-        <div className="grid grid-cols-3 gap-4">
-          {/* Issued By */}
-          <div className="text-center">
-            <div className="border border-gray-300 bg-gray-50 p-2 font-semibold text-sm">
-              Issued By
-            </div>
-            <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
-              <div className="text-xs">
-                {documentControl.preparedBy?.name ? (
-                  <div className="flex items-center justify-center gap-1">
-                    <span>{documentControl.preparedBy.name}</span>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground underline"
-                      onClick={() => onFieldChange?.('preparedBy.name', '')}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <UserSelect
-                    authors={authors}
-                    placeholder="Select..."
-                    onSelect={(name) => onFieldChange?.('preparedBy.name', name)}
-                  />
-                )}
-                <div className="text-gray-600">{documentControl.preparedBy?.title || '[Title]'}</div>
+          <div className="p-4 border-t border-gray-300">
+            <div className="max-w-xs mx-auto text-center">
+              <div className="border border-gray-300 bg-gray-50 p-2 font-semibold text-sm">
+                Completed By
               </div>
-              <div className="text-xs text-gray-600">
-                Date: {safeFormat(documentControl.preparedBy?.date, 'dd MMMM yyyy')}
+              <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
+                <div className="text-xs">
+                  {documentControl.preparedBy?.name ? (
+                    <div className="flex items-center justify-center gap-1">
+                      <span>{documentControl.preparedBy.name}</span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground underline"
+                        onClick={() => onFieldChange?.('preparedBy.name', '')}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <UserSelect
+                      authors={authors}
+                      placeholder="Select..."
+                      onSelect={(name) => onFieldChange?.('preparedBy.name', name)}
+                    />
+                  )}
+                  <div className="text-gray-600">{documentControl.preparedBy?.title || '[Title]'}</div>
+                </div>
+                <div className="text-xs text-gray-600">
+                  Date: {safeFormat(documentControl.preparedBy?.date, 'dd MMMM yyyy')}
+                </div>
               </div>
             </div>
           </div>
-          
-          {/* Reviewed By */}
-          <div className="text-center">
-            <div className="border border-gray-300 bg-gray-50 p-2 font-semibold text-sm">
-              Reviewed By
-            </div>
-            <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
-              <div className="text-xs">
-                {documentControl.reviewedBy?.name ? (
-                  <div className="flex items-center justify-center gap-1">
-                    <span>{documentControl.reviewedBy.name}</span>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground underline"
-                      onClick={() => onFieldChange?.('reviewedBy.name', '')}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <UserSelect
-                    authors={authors}
-                    placeholder="Select..."
-                    onSelect={(name) => onFieldChange?.('reviewedBy.name', name)}
-                  />
-                )}
-                <div className="text-gray-600">{documentControl.reviewedBy?.title || '[Title]'}</div>
+        </>
+      ) : (
+        <>
+        {/* Document information table */}
+        <div className="p-4">
+          <table className="w-full border-collapse border border-gray-300 text-sm">
+            <tbody>
+              <tr>
+                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold w-1/4">
+                  Effective Date:
+                </td>
+                <td className="border border-gray-300 px-3 py-2">
+                  {safeFormat(documentControl.effectiveDate, 'dd MMMM yyyy')}
+                </td>
+                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold w-1/4">
+                  Next Review Date:
+                </td>
+                <td className="border border-gray-300 px-3 py-2">
+                  {nextReviewDate ? (
+                    <span>{safeFormat(new Date(nextReviewDate), 'dd MMMM yyyy')}</span>
+                  ) : documentControl.nextReviewDate ? (
+                    <span>{safeFormat(documentControl.nextReviewDate, 'dd MMMM yyyy')}</span>
+                  ) : (
+                    <span className="text-sm text-muted-foreground italic">Not set</span>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold">
+                  Document Owner:
+                </td>
+                <td className="border border-gray-300 px-3 py-2" colSpan={3}>
+                  {documentControl.documentOwner ? (
+                    <div className="flex items-center gap-2">
+                      <span>{documentControl.documentOwner}</span>
+                      <button 
+                        type="button"
+                        className="text-xs text-muted-foreground hover:text-foreground underline"
+                        onClick={() => onFieldChange?.('documentOwner', '')}
+                      >
+                        Change
+                      </button>
+                    </div>
+                  ) : (
+                    <UserSelect
+                      authors={authors}
+                      placeholder="Select document owner..."
+                      onSelect={(name) => onFieldChange?.('documentOwner', name)}
+                    />
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Approval section */}
+        <div className="p-4 border-t border-gray-300">
+          <div className="grid grid-cols-3 gap-4">
+            {/* Issued By */}
+            <div className="text-center">
+              <div className="border border-gray-300 bg-gray-50 p-2 font-semibold text-sm">
+                Issued By
               </div>
-              <div className="text-xs text-gray-600">
-                Date: {safeFormat(documentControl.reviewedBy?.date, 'dd MMMM yyyy')}
+              <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
+                <div className="text-xs">
+                  {documentControl.preparedBy?.name ? (
+                    <div className="flex items-center justify-center gap-1">
+                      <span>{documentControl.preparedBy.name}</span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground underline"
+                        onClick={() => onFieldChange?.('preparedBy.name', '')}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <UserSelect
+                      authors={authors}
+                      placeholder="Select..."
+                      onSelect={(name) => onFieldChange?.('preparedBy.name', name)}
+                    />
+                  )}
+                  <div className="text-gray-600">{documentControl.preparedBy?.title || '[Title]'}</div>
+                </div>
+                <div className="text-xs text-gray-600">
+                  Date: {safeFormat(documentControl.preparedBy?.date, 'dd MMMM yyyy')}
+                </div>
               </div>
             </div>
-          </div>
-          
-          {/* Approved By */}
-          <div className="text-center">
-            <div className="border border-gray-300 bg-gray-50 p-2 font-semibold text-sm">
-              Approved By
-            </div>
-            <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
-              <div className="text-xs">
-                {documentControl.approvedBy?.name ? (
-                  <div className="flex items-center justify-center gap-1">
-                    <span>{documentControl.approvedBy.name}</span>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground underline"
-                      onClick={() => onFieldChange?.('approvedBy.name', '')}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <UserSelect
-                    authors={authors}
-                    placeholder="Select..."
-                    onSelect={(name) => onFieldChange?.('approvedBy.name', name)}
-                  />
-                )}
-                <div className="text-gray-600">{documentControl.approvedBy?.title || '[Title]'}</div>
+            
+            {/* Reviewed By */}
+            <div className="text-center">
+              <div className="border border-gray-300 bg-gray-50 p-2 font-semibold text-sm">
+                Reviewed By
               </div>
-              <div className="text-xs text-gray-600">
-                Date: {safeFormat(documentControl.approvedBy?.date, 'dd MMMM yyyy')}
+              <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
+                <div className="text-xs">
+                  {documentControl.reviewedBy?.name ? (
+                    <div className="flex items-center justify-center gap-1">
+                      <span>{documentControl.reviewedBy.name}</span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground underline"
+                        onClick={() => onFieldChange?.('reviewedBy.name', '')}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <UserSelect
+                      authors={authors}
+                      placeholder="Select..."
+                      onSelect={(name) => onFieldChange?.('reviewedBy.name', name)}
+                    />
+                  )}
+                  <div className="text-gray-600">{documentControl.reviewedBy?.title || '[Title]'}</div>
+                </div>
+                <div className="text-xs text-gray-600">
+                  Date: {safeFormat(documentControl.reviewedBy?.date, 'dd MMMM yyyy')}
+                </div>
+              </div>
+            </div>
+            
+            {/* Approved By */}
+            <div className="text-center">
+              <div className="border border-gray-300 bg-gray-50 p-2 font-semibold text-sm">
+                Approved By
+              </div>
+              <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
+                <div className="text-xs">
+                  {documentControl.approvedBy?.name ? (
+                    <div className="flex items-center justify-center gap-1">
+                      <span>{documentControl.approvedBy.name}</span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground underline"
+                        onClick={() => onFieldChange?.('approvedBy.name', '')}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <UserSelect
+                      authors={authors}
+                      placeholder="Select..."
+                      onSelect={(name) => onFieldChange?.('approvedBy.name', name)}
+                    />
+                  )}
+                  <div className="text-gray-600">{documentControl.approvedBy?.title || '[Title]'}</div>
+                </div>
+                <div className="text-xs text-gray-600">
+                  Date: {safeFormat(documentControl.approvedBy?.date, 'dd MMMM yyyy')}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </>
+      )}
     </div>
   );
 }

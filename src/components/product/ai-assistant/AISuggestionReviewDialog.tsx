@@ -140,10 +140,9 @@ export function AISuggestionReviewDialog({
             </div>
             <div
               ref={suggestedRef}
-              className="min-h-[100px] max-h-[25vh] overflow-y-auto rounded-md border border-primary/30 bg-primary/5 p-3 text-sm leading-relaxed select-text cursor-text"
-            >
-              {sugPlain || <span className="italic text-muted-foreground">Empty</span>}
-            </div>
+              className="min-h-[100px] max-h-[25vh] overflow-y-auto rounded-md border border-primary/30 bg-primary/5 p-3 text-sm leading-relaxed select-text cursor-text prose prose-sm max-w-none"
+              dangerouslySetInnerHTML={{ __html: suggestedContent || '<span class="italic text-muted-foreground">Empty</span>' }}
+            />
           </div>
         </div>
 

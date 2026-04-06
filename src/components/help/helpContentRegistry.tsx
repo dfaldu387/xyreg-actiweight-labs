@@ -2874,6 +2874,65 @@ const ExitStrategyHelp: React.FC = () => {
   );
 };
 
+// ============ TECHNICAL FILE ============
+const TechnicalFileHelp: React.FC = () => (
+  <div className="space-y-6">
+    <p className="text-sm text-muted-foreground">
+      The Technical File is your auditor-ready dossier structured per MDR Annex II and III. It contains all documentation proving your device meets EU MDR requirements.
+    </p>
+
+    <HelpSection title="Structure Overview">
+      <div className="space-y-2">
+        <InfoCard
+          title="TF-0: Administrative"
+          description="EU Declaration of Conformity, Notified Body certificates, Basic UDI-DI registration, economic operator details, and PRRC designation."
+        />
+        <InfoCard
+          title="TF-1 to TF-6: Technical Documentation (Annex II)"
+          description="Device description, labelling/IFU, design & manufacturing, GSPRs, risk management, and verification & validation evidence."
+        />
+        <InfoCard
+          title="TF-7 to TF-9: Supporting Evidence"
+          description="Risk management file (ISO 14971), clinical evaluation (Annex XIV), and post-market surveillance (Annex III)."
+        />
+      </div>
+    </HelpSection>
+
+    <HelpSection title="Auditor Expectations">
+      <div className="space-y-2 text-sm text-muted-foreground">
+        <p>• <strong>Traceability:</strong> Every GSPR must link to supporting evidence (test reports, clinical data, risk analysis).</p>
+        <p>• <strong>Completeness:</strong> All sections must be addressed — even if "not applicable", provide justification.</p>
+        <p>• <strong>Currency:</strong> Documents must reflect the current device design. Outdated evidence is a common finding.</p>
+        <p>• <strong>Cross-referencing:</strong> Gap Analysis completion feeds into compliance badges on each section.</p>
+      </div>
+    </HelpSection>
+
+    <HelpSection title="Tips for Success">
+      <div className="space-y-2 text-sm text-muted-foreground">
+        <p>• Start with TF-1 (Device Description) — it drives classification, clinical evaluation scope, and risk analysis.</p>
+        <p>• Complete the GSPR checklist (TF-4) early — it reveals which supporting evidence you need.</p>
+        <p>• Link documents as you create them — don't leave document linking to the end.</p>
+        <p>• Use the Gap Analysis module to track clause-level compliance per section.</p>
+      </div>
+    </HelpSection>
+
+    <TipCard>
+      Click any section to open its step-by-step workflow. Each sub-step shows the regulatory requirement, guidance, and a dedicated area to link supporting documents.
+    </TipCard>
+
+    <HelpSection title="Key MDR References">
+      <div className="space-y-2 text-sm text-muted-foreground">
+        <p>• <strong>MDR Annex II:</strong> Technical documentation structure (§1–§6)</p>
+        <p>• <strong>MDR Annex III:</strong> Post-market surveillance documentation</p>
+        <p>• <strong>MDR Annex XIV:</strong> Clinical evaluation and PMCF</p>
+        <p>• <strong>MDR Art. 10:</strong> General obligations of manufacturers</p>
+        <p>• <strong>MDR Art. 15:</strong> Person Responsible for Regulatory Compliance (PRRC)</p>
+        <p>• <strong>MDR Art. 19:</strong> EU Declaration of Conformity</p>
+      </div>
+    </HelpSection>
+  </div>
+);
+
 export interface HelpContentProps {
   targetMarkets?: string[];
   onNavigateToDetail?: (detailId: string) => void;
@@ -2974,6 +3033,8 @@ export const helpContentRegistry: Record<string, React.FC<HelpContentProps>> = {
   'company-market-access': GlobalMarketAccessHelp,
   // Gap Analysis contextual help
   'gap-analysis-detail': GapAnalysisContextualHelp,
+  // Technical File help
+  'technical-file': TechnicalFileHelp,
 };
 
 export function getHelpContent(topicKey: string): React.FC<HelpContentProps> {

@@ -8,8 +8,9 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, X, Sparkles, Loader2, FileEdit } from "lucide-react";
+import { Search, Filter, X, Sparkles, Loader2 } from "lucide-react";
 import { toast } from 'sonner';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -479,21 +480,25 @@ Use formal medical device industry language suitable for a Technical File or Des
           </p>
           {/* Family Description - Rich Text */}
           <div className="mt-3">
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-1.5 mb-1">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Family Description
               </label>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setAiPreviewContent(''); setShowAIDialog(true); }}
-                  className="h-7 gap-1.5 text-xs"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  AI Generate
-                </Button>
-              </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => { setAiPreviewContent(''); setShowAIDialog(true); }}
+                      className="h-5 w-5"
+                    >
+                      <Sparkles className="h-3.5 w-3.5 text-yellow-500" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>AI Generate</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             <RichTextField
               value={localDescription}

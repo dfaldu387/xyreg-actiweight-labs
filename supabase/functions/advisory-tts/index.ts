@@ -74,13 +74,57 @@ serve(async (req) => {
     }
 
     const fallbackEnvKey = Deno.env.get("ELEVENLABS_API_KEY") || null;
-    const candidateKeys = [companyElevenLabsKey, fallbackEnvKey].filter(
+    console.log("ENV ELEVENLABS_API_KEY exists:", !!fallbackEnvKey);
+    if (fallbackEnvKey) console.log("ENV key prefix:", fallbackEnvKey.substring(0, 6));
+
+    // Prioritize env key over potentially broken company key
+    const candidateKeys = [fallbackEnvKey, companyElevenLabsKey].filter(
       (key, index, array): key is string => Boolean(key) && array.indexOf(key) === index
     );
 
-    const voice = voiceId || "JBFqnCBsd6RMkjVDRZzb"; // George
+    const DEFAULT_VOICE = "ErXwobaYiN019PkySvjV"; // Antoni — clean, clear male voice
+    const voice = voiceId || DEFAULT_VOICE;
 
-    for (const elevenLabsKey of candidateKeys) {
+    console.log("=== TTS REQUEST ===");
+    console.log("voiceId from request:", voiceId);
+    console.log("Using voice:", voice);
+    console.log("Text length:", text.length);
+    console.log("Text preview:", text.slice(0, 100));
+    console.log("companyId:", companyId);
+    console.log("Candidate keys count:", candidateKeys.length);
+
+    // Pre-process text for natural speech pauses
+    const processedText = text
+      .replace(/\. /g, '.\n\n')     // Add pause after sentences
+      .replace(/\? /g, '?\n\n')     // Add pause after questions
+      .replace(/! /g, '!\n\n')      // Add pause after exclamations
+      .replace(/: /g, ':\n')        // Slight pause after colons
+      .slice(0, 5000);
+
+    if (candidateKeys.length === 0) {
+      console.error("NO API KEYS AVAILABLE — falling back to browser TTS");
+      return new Response(JSON.stringify({ fallback: true, reason: "no_api_keys" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    for (let i = 0; i < candidateKeys.length; i++) {
+      const elevenLabsKey = candidateKeys[i];
+      console.log(`Trying key ${i + 1}/${candidateKeys.length}, prefix: ${elevenLabsKey.substring(0, 6)}...`);
+
+      const requestBody = {
+        text: processedText,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: {
+          stability: 0.45,
+          similarity_boost: 0.8,
+          style: 0.35,
+          use_speaker_boost: true,
+        },
+      };
+      console.log("ElevenLabs request — model:", requestBody.model_id, "voice:", voice, "settings:", JSON.stringify(requestBody.voice_settings));
+
       const response = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${voice}?output_format=mp3_44100_128`,
         {
@@ -89,31 +133,28 @@ serve(async (req) => {
             "xi-api-key": elevenLabsKey,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            text: text.slice(0, 5000),
-            model_id: "eleven_turbo_v2_5",
-            voice_settings: {
-              stability: 0.6,
-              similarity_boost: 0.75,
-              style: 0.3,
-              use_speaker_boost: true,
-            },
-          }),
+          body: JSON.stringify(requestBody),
         }
       );
 
+      console.log("ElevenLabs response status:", response.status);
+      console.log("ElevenLabs response content-type:", response.headers.get("content-type"));
+
       if (response.ok) {
         const audioBuffer = await response.arrayBuffer();
+        console.log("SUCCESS — audio size:", audioBuffer.byteLength, "bytes");
         return new Response(audioBuffer, {
           headers: { ...corsHeaders, "Content-Type": "audio/mpeg" },
         });
       }
 
-      console.error("ElevenLabs TTS error:", response.status, await response.text());
+      const errorText = await response.text();
+      console.error(`ElevenLabs TTS error (key ${i + 1}):`, response.status, errorText);
     }
 
     // No working key — signal browser TTS fallback
-    return new Response(JSON.stringify({ fallback: true }), {
+    console.error("ALL KEYS FAILED — falling back to browser TTS");
+    return new Response(JSON.stringify({ fallback: true, reason: "all_keys_failed" }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

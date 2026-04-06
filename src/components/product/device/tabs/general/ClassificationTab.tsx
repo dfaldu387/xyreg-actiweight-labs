@@ -279,7 +279,7 @@ export function ClassificationTab({
 
   const renderScopeAndGov = (fieldKey: string, currentValue?: any) => (
     <div className="flex items-center gap-0.5 ml-auto">
-      {belongsToFamily && companyId && classificationExclusion && productId ? (
+      {companyId && classificationExclusion && productId ? (
         <InheritanceExclusionPopover
           companyId={companyId}
           currentProductId={productId}

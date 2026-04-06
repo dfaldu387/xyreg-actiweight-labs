@@ -82,7 +82,8 @@ export function ValidationTestStepChecklist({
                           className="h-6 px-2 text-xs text-blue-600 border-blue-200 hover:bg-blue-50 shrink-0"
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(steps[idx].navigateTo!);
+                            const target = steps[idx].navigateTo!;
+                            navigate(target + (target.includes('?') ? '&' : '?') + 'from=infrastructure');
                           }}
                           title={`Navigate to: ${steps[idx].navigateTo}`}
                         >

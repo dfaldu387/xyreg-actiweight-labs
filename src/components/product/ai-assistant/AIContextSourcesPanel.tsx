@@ -224,10 +224,11 @@ export function AIContextSourcesPanel({
   ];
 
   const shouldPrecheckStandard = (framework: string): boolean => {
-    if (ALWAYS_PRECHECK.some(s => framework.includes(s))) return true;
-    if (isActive && ACTIVE_DEVICE_STANDARDS.some(s => framework.includes(s))) return true;
-    if (isSoftware && SOFTWARE_STANDARDS.some(s => framework.includes(s))) return true;
-    if (!isPureSoftware && NON_SOFTWARE_STANDARDS.some(s => framework.includes(s))) return true;
+    const normalized = framework.replace(/_/g, ' ');
+    if (ALWAYS_PRECHECK.some(s => normalized.includes(s))) return true;
+    if (isActive && ACTIVE_DEVICE_STANDARDS.some(s => normalized.includes(s))) return true;
+    if (isSoftware && SOFTWARE_STANDARDS.some(s => normalized.includes(s))) return true;
+    if (!isPureSoftware && NON_SOFTWARE_STANDARDS.some(s => normalized.includes(s))) return true;
     return false;
   };
 

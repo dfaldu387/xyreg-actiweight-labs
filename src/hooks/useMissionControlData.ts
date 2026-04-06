@@ -492,7 +492,7 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
               .from('phase_assigned_document_template')
               .select('id, name, status, due_date, deadline, company_phases!inner(company_id)')
               .eq('company_phases.company_id', targetCompanyId)
-              .overlaps('reviewer_group_ids', reviewerGroupIds)
+              .or(`reviewer_group_ids.ov.{${reviewerGroupIds.join(',')}},reviewer_user_ids.cs.{${user.id}}`)
               .eq('is_excluded', false)
               .in('status', ACTIONABLE_STATUSES)
               .limit(20);

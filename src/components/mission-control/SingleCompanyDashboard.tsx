@@ -20,8 +20,6 @@ import { SortableWidgetColumn } from "./SortableWidgetColumn";
 import { ConsistentPageHeader } from "@/components/layout/ConsistentPageHeader";
 import { buildCompanyBreadcrumbs } from "@/utils/breadcrumbUtils";
 import { useNavigate, useLocation } from "react-router-dom";
-import { queryClient } from "@/lib/query-client";
-import { useCompanyId } from "@/hooks/useCompanyId";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useDashboardWidgets } from "@/hooks/useDashboardWidgets";
 
@@ -31,7 +29,7 @@ export function SingleCompanyDashboard() {
   const { selectedCompanyId, selectedCompanyName, setSelectedCompany } = useMissionControl();
   const navigate = useNavigate();
   const location = useLocation();
-  const compantId = useCompanyId();
+  
   const { lang } = useTranslation();
   const { enabledWidgets, enabledWidgetIds, toggleWidget, removeWidget, reorderWidgets } = useDashboardWidgets();
 

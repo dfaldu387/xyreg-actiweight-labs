@@ -520,6 +520,13 @@ const helpTopics: Record<string, HelpTopic> = {
     icon: ClipboardList,
   },
 
+  // Technical File
+  'technical-file': {
+    key: 'technical-file',
+    title: 'Technical File (MDR Dossier)',
+    icon: FileText,
+  },
+
   // Default/General
   'general': {
     key: 'general',
@@ -582,6 +589,10 @@ const routeMappings: RouteHelpMapping[] = [
   {
     pattern: /\/product\/[^/]+\/documents/,
     topic: helpTopics['documents'],
+  },
+  {
+    pattern: /\/product\/[^/]+\/technical-file/,
+    topic: helpTopics['technical-file'],
   },
   {
     pattern: /\/product\/[^/]+\/regulatory/,

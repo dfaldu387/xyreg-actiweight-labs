@@ -367,7 +367,7 @@ export function TechnicalSpecsTab({
 
   const renderScopeAndGov = (fieldKey: string, currentValue?: any) => (
     <div className="flex items-center gap-0.5 ml-auto">
-      {belongsToFamily && companyId && productId && classificationExclusion ? (
+      {companyId && productId && classificationExclusion ? (
         <InheritanceExclusionPopover
           companyId={companyId}
           currentProductId={productId}

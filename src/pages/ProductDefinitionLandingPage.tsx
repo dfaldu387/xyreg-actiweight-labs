@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ConsistentPageHeader } from '@/components/layout/ConsistentPageHeader';
 import { HelpTooltip } from '@/components/product/device/sections/HelpTooltip';
@@ -10,15 +10,42 @@ import { CircularProgress } from '@/components/common/CircularProgress';
 import { Info, Target, Settings, QrCode, Shield, Eye } from 'lucide-react';
 import { ProductTypeEditor } from '@/components/product/definition/ProductTypeEditor';
 import { detectProductType } from '@/utils/productTypeDetection';
+import { toast } from 'sonner';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
+import { buildFullDeviceInfoSections } from '@/utils/deviceInfoDocumentBuilder';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function ProductDefinitionLandingPage() {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
   const { data: product, isLoading, refetch } = useProductDetails(productId || undefined);
   const progressData = useProductDefinitionProgress(productId);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
+  const [isCreatingDoc, setIsCreatingDoc] = useState(false);
 
   const currentProductType = product ? detectProductType(product) : 'new_product';
   const currentProjectTypes = product?.project_types || [];
+
+  // Fetch document status for the Create Document icon color
+  const { data: docStatus } = useQuery({
+    queryKey: ['device-doc-status', productId, product?.company_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('phase_assigned_document_template')
+        .select('status')
+        .eq('document_reference', `DEVICE-DEF-FULL-${productId}`)
+        .eq('company_id', product!.company_id!)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (!data || data.length === 0) return 'none' as const;
+      const s = (data[0].status || '').toLowerCase();
+      if (s === 'approved') return 'approved' as const;
+      return 'draft' as const;
+    },
+    enabled: !!productId && !!product?.company_id,
+  });
 
   const handleNavigateToClients = () => {
     navigate('/app/clients');
@@ -33,6 +60,106 @@ export default function ProductDefinitionLandingPage() {
   const handleNavigateToProduct = () => {
     if (productId) {
       navigate(`/app/product/${productId}`);
+    }
+  };
+
+  const handleCreateDocument = async () => {
+    if (!product || !productId || isCreatingDoc) return;
+    setIsCreatingDoc(true);
+    try {
+      const templateIdKey = `DEVICE-DEF-FULL-${productId}`;
+      const docName = `Device Description & Specification — ${product.name || 'Device'}`;
+      const ciLookup = await DocumentStudioPersistenceService.getDocumentCIsByReference(
+        product.company_id!,
+        templateIdKey,
+        productId
+      );
+
+      if (!ciLookup.success) {
+        throw new Error(ciLookup.error || 'Failed to check existing document records');
+      }
+
+      const ciIds = (ciLookup.data || []).map((ci) => ci.id);
+      const draftLookup = await DocumentStudioPersistenceService.loadBestTemplateForTemplateIds(
+        product.company_id!,
+        [...ciIds, templateIdKey],
+        productId
+      );
+
+      if (!draftLookup.success) {
+        throw new Error(draftLookup.error || 'Failed to load existing draft');
+      }
+
+      const selectedDraft = draftLookup.data;
+      const selectedDraftHasSavedContent = DocumentStudioPersistenceService.hasMeaningfulSavedContent(selectedDraft);
+      const selectedCIId = ciIds.includes(selectedDraft?.template_id || '')
+        ? selectedDraft?.template_id
+        : ciIds[0];
+      const reusableDraftId = selectedDraft?.id;
+
+      if (selectedDraft && selectedDraftHasSavedContent) {
+        if (selectedCIId && selectedDraft.template_id !== selectedCIId) {
+          await DocumentStudioPersistenceService.saveTemplate({
+            ...selectedDraft,
+            id: selectedDraft.id,
+            template_id: selectedCIId,
+          });
+        }
+
+        setDraftDrawerDoc({ id: selectedCIId || selectedDraft.template_id, name: docName, type: 'Technical' });
+        return;
+      }
+
+      if (selectedCIId) {
+        const savedDraft = await DocumentStudioPersistenceService.loadTemplate(
+          product.company_id!, selectedCIId, productId
+        );
+        if (DocumentStudioPersistenceService.hasMeaningfulSavedContent(savedDraft.data)) {
+          setDraftDrawerDoc({ id: selectedCIId, name: docName, type: 'Technical' });
+          return;
+        }
+      }
+
+      // 3. No meaningful saved draft — build fresh sections from device data
+      const sections = buildFullDeviceInfoSections(product);
+      const studioData = {
+        id: reusableDraftId,
+        company_id: product.company_id!,
+        product_id: productId,
+        template_id: selectedCIId || selectedDraft?.template_id || templateIdKey,
+        name: docName,
+        type: 'Technical',
+        sections,
+        metadata: { source: 'device-definition-full' },
+      };
+      const saveResult = await DocumentStudioPersistenceService.saveTemplate(studioData);
+      if (!saveResult.success || !saveResult.id) {
+        throw new Error(saveResult.error || 'Failed to save studio template');
+      }
+      const syncResult = await DocumentStudioPersistenceService.syncToDocumentCI({
+        companyId: product.company_id!,
+        productId: productId,
+        name: docName,
+        documentReference: templateIdKey,
+        documentScope: 'product_document',
+      });
+      if (!syncResult.success) {
+        throw new Error(syncResult.error || 'Failed to create Document CI record');
+      }
+
+      // Re-save template with CI record ID so the drawer lookup finds it
+      await DocumentStudioPersistenceService.saveTemplate({
+        ...studioData,
+        id: saveResult.id,
+        template_id: syncResult.id!,
+      });
+
+      setDraftDrawerDoc({ id: syncResult.id!, name: docName, type: 'Technical' });
+    } catch (err: any) {
+      console.error('Create document failed:', err);
+      toast.error(`Failed to create document: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsCreatingDoc(false);
     }
   };
 
@@ -148,6 +275,8 @@ export default function ProductDefinitionLandingPage() {
         breadcrumbs={breadcrumbs}
         title={`${product?.name || 'Product'} Product Definition`}
         subtitle="Comprehensive device specification and characterization"
+        onCreateDocument={handleCreateDocument}
+        documentStatus={docStatus || 'none'}
       />
       
       <div className="px-2 space-y-6">
@@ -200,6 +329,16 @@ export default function ProductDefinitionLandingPage() {
             </TabsContent>
           </Tabs>
       </div>
+
+      <DocumentDraftDrawer
+        open={!!draftDrawerDoc}
+        onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+        documentId={draftDrawerDoc?.id || ''}
+        documentName={draftDrawerDoc?.name || ''}
+        documentType={draftDrawerDoc?.type || ''}
+        productId={productId}
+        companyId={product?.company_id || ''}
+      />
     </div>
   );
 }

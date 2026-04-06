@@ -46,7 +46,7 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     testSteps: {
       iq: [
         { step: 'Navigate to Document Studio from the main menu', expectedResult: 'Document Studio loads without errors', navigateTo: '/app/company/:companyName/document-studio' },
-        { step: 'Verify Templates section is accessible', expectedResult: 'Template list is displayed with available templates', navigateTo: '/app/company/:companyName/document-studio' },
+        { step: 'Verify Templates section is accessible', expectedResult: 'Template list is displayed with available templates' },
         { step: 'Check that eSignature module is present in document workflows', expectedResult: 'Signature options appear in document actions' },
       ],
       oq: [
@@ -80,8 +80,8 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to V-Model view for a product', expectedResult: 'V-Model diagram loads showing design phases', navigateTo: '/app/company/:companyName/products' },
-        { step: 'Open the Traceability Matrix', expectedResult: 'Matrix displays with rows and columns for design artifacts', navigateTo: '/app/company/:companyName/products' },
+        { step: 'Navigate to V-Model view for a product', expectedResult: 'V-Model diagram loads showing design phases' },
+        { step: 'Open the Traceability Matrix', expectedResult: 'Matrix displays with rows and columns for design artifacts' },
         { step: 'Access the DHF section', expectedResult: 'Design History File structure is visible with document categories' },
       ],
       oq: [
@@ -115,7 +115,7 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to Risk Management module', expectedResult: 'Risk Matrix, Hazard Log, and FMEA views are accessible', navigateTo: '/app/company/:companyName/products' },
+        { step: 'Navigate to Risk Management module', expectedResult: 'Risk Matrix, Hazard Log, and FMEA views are accessible' },
         { step: 'Verify Risk Controls section is present', expectedResult: 'Risk controls list is displayed' },
       ],
       oq: [
@@ -187,8 +187,8 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to CAPA Module', expectedResult: 'CAPA list loads with status filters', navigateTo: '/app/company/:companyName/capa' },
-        { step: 'Open Complaints section', expectedResult: 'Complaint intake form is accessible', navigateTo: '/app/company/:companyName/capa' },
+        { step: 'Navigate to CAPA Module', expectedResult: 'CAPA list loads with status filters' },
+        { step: 'Open Complaints section', expectedResult: 'Complaint intake form is accessible' },
         { step: 'Check Non-Conformances module', expectedResult: 'NC records are listed with disposition status' },
       ],
       oq: [
@@ -323,7 +323,7 @@ export const XYREG_MODULE_GROUPS: XyregModuleGroup[] = [
     },
     testSteps: {
       iq: [
-        { step: 'Navigate to Internal Audit module', expectedResult: 'Audit schedule and list are accessible', navigateTo: '/app/company/:companyName/audit' },
+        { step: 'Navigate to Internal Audit module', expectedResult: 'Audit schedule and list are accessible', navigateTo: '/app/company/:companyName/audits' },
         { step: 'Open Management Review section', expectedResult: 'Management review records are listed' },
         { step: 'Access Gap Analysis tool', expectedResult: 'Gap analysis questionnaire loads with applicable standards', navigateTo: '/app/company/:companyName/gap-analysis' },
       ],

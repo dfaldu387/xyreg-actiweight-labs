@@ -8,7 +8,8 @@ export const mdrAnnexIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-1"
   },
   {
     id: "ci-td.1.2",
@@ -18,7 +19,8 @@ export const mdrAnnexIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-1"
   },
   {
     id: "ci-td.2.1",
@@ -28,7 +30,8 @@ export const mdrAnnexIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-2"
   },
   {
     id: "ci-td.3.1",
@@ -38,7 +41,8 @@ export const mdrAnnexIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-3"
   },
   {
     id: "ci-td.4.1",
@@ -48,7 +52,8 @@ export const mdrAnnexIIChecklist = [
     category: "compliance",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-4"
   },
   {
     id: "ci-td.5.1",
@@ -58,7 +63,8 @@ export const mdrAnnexIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-5"
   },
   {
     id: "ci-td.6.1",
@@ -68,7 +74,8 @@ export const mdrAnnexIIChecklist = [
     category: "verification",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-6"
   },
   {
     id: "ci-td.6.2",
@@ -78,7 +85,8 @@ export const mdrAnnexIIChecklist = [
     category: "verification",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-6"
   },
   {
     id: "ci-td.7.1",
@@ -88,7 +96,8 @@ export const mdrAnnexIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-9"
   },
   {
     id: "ci-td.8.1",
@@ -98,6 +107,7 @@ export const mdrAnnexIIChecklist = [
     category: "documentation",
     priority: "medium",
     framework: "MDR Annex II",
-    chapter: "Technical Documentation"
+    chapter: "Technical Documentation",
+    technicalFileSection: "TF-9"
   }
 ];

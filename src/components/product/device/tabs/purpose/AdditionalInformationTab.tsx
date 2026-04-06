@@ -424,7 +424,7 @@ export function AdditionalInformationTab({
               {lang('devicePurpose.additional.howToUseTab')}
             </Label>
             <div className="flex items-center gap-1">
-              {belongsToFamily && companyId && productId && fieldExclusion ? (
+              {companyId && productId && fieldExclusion ? (
                 <InheritanceExclusionPopover
                   companyId={companyId}
                   currentProductId={productId}
@@ -459,7 +459,7 @@ export function AdditionalInformationTab({
               {lang('devicePurpose.additional.chargingTab')}
             </Label>
             <div className="flex items-center gap-1">
-              {belongsToFamily && companyId && productId && fieldExclusion ? (
+              {companyId && productId && fieldExclusion ? (
                 <InheritanceExclusionPopover
                   companyId={companyId}
                   currentProductId={productId}
@@ -494,7 +494,7 @@ export function AdditionalInformationTab({
               {lang('devicePurpose.additional.maintenanceTab')}
             </Label>
             <div className="flex items-center gap-1">
-              {belongsToFamily && companyId && productId && fieldExclusion ? (
+              {companyId && productId && fieldExclusion ? (
                 <InheritanceExclusionPopover
                   companyId={companyId}
                   currentProductId={productId}
@@ -549,7 +549,7 @@ export function AdditionalInformationTab({
                   </div>
                 
                 <div className="flex items-center gap-1">
-                  {belongsToFamily && companyId && productId && fieldExclusion ? (
+                  {companyId && productId && fieldExclusion ? (
                     <InheritanceExclusionPopover
                       companyId={companyId}
                       currentProductId={productId}

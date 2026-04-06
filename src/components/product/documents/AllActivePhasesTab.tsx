@@ -326,14 +326,16 @@ const DocumentCICardComponent = ({
         return { bg: '!bg-green-50 border-green-300 hover:!bg-green-100', icon: 'text-green-700' };
       case 'in review':
       case 'under review':
-        return { bg: '!bg-amber-50 border-amber-300 hover:!bg-amber-100', icon: 'text-amber-700' };
       case 'changes requested':
       case 'changes_requested':
-        return { bg: '!bg-orange-50 border-orange-300 hover:!bg-orange-100', icon: 'text-orange-700' };
+      case 'pending approval':
+        return { bg: '!bg-amber-50 border-amber-300 hover:!bg-amber-100', icon: 'text-amber-700' };
+      case 'draft':
+        return { bg: '!bg-gray-50 border-gray-400 hover:!bg-gray-100', icon: 'text-gray-900' };
       case 'rejected':
         return { bg: '!bg-red-50 border-red-300 hover:!bg-red-100', icon: 'text-red-700' };
       default:
-        return { bg: '!bg-white', icon: 'text-primary' };
+        return { bg: '!bg-gray-50 border-gray-400 hover:!bg-gray-100', icon: 'text-gray-900' };
     }
   };
 
@@ -543,10 +545,10 @@ const DocumentCICardComponent = ({
           size="sm"
           onClick={() => handleCreateDocument()}
           disabled={isProcessing || disabled}
-          className="h-8 px-3 !bg-white"
+          className={`h-8 px-3 ${actionStyles.bg}`}
           title={document.document_reference?.startsWith('DS-') ? "Edit Document" : "Create Document"}
         >
-          <FileEdit className="h-4 w-4" />
+          <FileEdit className={`h-4 w-4 ${actionStyles.icon}`} />
         </Button>
         {/* View button */}
         {document.file_path && onView && (

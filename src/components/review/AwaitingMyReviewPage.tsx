@@ -171,12 +171,17 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         .eq('is_excluded', false)
         .in('status', ['Not Started', 'In Progress', 'Under Review', 'Pending', 'Changes Requested','Approved','Closed','close', 'Rejected','Changes Requested','In Review','Draft']);
 
-      // Apply filtering based on user groups
+      // Apply filtering based on user groups OR individual user assignment
+      // Note: `documents` table does NOT have `reviewer_user_ids` — only `phase_assigned_document_template` does
       if (userGroups.length > 0) {
         documentsQuery = documentsQuery.overlaps('reviewer_group_ids', userGroups);
-        phaseTemplateQuery = phaseTemplateQuery.overlaps('reviewer_group_ids', userGroups);
+        const padtFilter = `reviewer_group_ids.ov.{${userGroups.join(',')}},reviewer_user_ids.cs.{${user.id}}`;
+        phaseTemplateQuery = phaseTemplateQuery.or(padtFilter);
+      } else if (user?.id) {
+        // No groups — documents table can't match, only check PADT for individual assignment
+        documentsQuery = documentsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
+        phaseTemplateQuery = phaseTemplateQuery.contains('reviewer_user_ids', [user.id]);
       } else {
-        // No groups - return empty result
         documentsQuery = documentsQuery.eq('id', '00000000-0000-0000-0000-000000000000');
         phaseTemplateQuery = phaseTemplateQuery.eq('id', '00000000-0000-0000-0000-000000000000');
       }
@@ -188,6 +193,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
 
       if (documentsResult.error) throw documentsResult.error;
       if (phaseTemplateResult.error) throw phaseTemplateResult.error;
+
 
       // Fetch phase information separately (no foreign key relationship)
       const phaseIds = new Set<string>();
@@ -412,7 +418,56 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
           } : null
         }));
 
-      const allDocuments = [...mappedDocuments, ...mappedPhaseDocuments, ...authorPhaseDocsMaped, ...authorRegularDocsMapped];
+      // Also fetch documents where user is assigned as approver (Pending Approval)
+      const approverExistingIds = new Set([
+        ...mappedDocuments.map(d => d.id),
+        ...mappedPhaseDocuments.map(d => d.id),
+        ...authorPhaseDocsMaped.map(d => d.id),
+        ...authorRegularDocsMapped.map(d => d.id),
+      ]);
+
+      // Build approver filter: approved_by OR approver_user_ids OR approver_group_ids
+      const approverOrParts = [`approved_by.eq.${user.id}`, `approver_user_ids.cs.{${user.id}}`];
+      if (userGroups.length > 0) {
+        approverOrParts.push(`approver_group_ids.ov.{${userGroups.join(',')}}`);
+      }
+
+      const { data: approverDocs } = await supabase
+        .from('phase_assigned_document_template')
+        .select('id, name, status, due_date, deadline, created_at, phase_id, product_id, company_id, file_path, file_name, file_size, file_type, document_type, document_scope, approver_due_date')
+        .eq('company_id', companyId)
+        .eq('is_excluded', false)
+        .eq('status', 'Pending Approval')
+        .or(approverOrParts.join(','));
+
+      const approverDocsMapped: AssignedDocument[] = (approverDocs || [])
+        .filter(doc => !approverExistingIds.has(`template-${doc.id}`))
+        .map(doc => {
+          const phaseInfo = doc.phase_id ? phasesMap.get(doc.phase_id) : null;
+          const isCompanyDoc = (doc as any).document_scope === 'company_document';
+          return {
+            id: `template-${doc.id}`,
+            name: doc.name,
+            status: doc.status || 'Pending Approval',
+            phase: phaseInfo?.name || 'N/A',
+            assignedDate: doc.created_at,
+            dueDate: (doc as any).approver_due_date || doc.due_date || doc.deadline,
+            reviewerGroupName: 'Approver',
+            reviewerGroupId: '',
+            role: 'author' as const,
+            deviceName: isCompanyDoc ? undefined : ((doc as any).product_id
+              ? productNameMap.get((doc as any).product_id)
+              : (doc.phase_id ? phaseProductMap.get(doc.phase_id) : undefined)),
+            documentFile: doc.file_path ? {
+              path: doc.file_path,
+              name: doc.file_name || doc.name,
+              size: doc.file_size || 0,
+              type: doc.file_type || 'application/pdf'
+            } : null
+          };
+        });
+
+      const allDocuments = [...mappedDocuments, ...mappedPhaseDocuments, ...authorPhaseDocsMaped, ...authorRegularDocsMapped, ...approverDocsMapped];
 
       // Fetch current user's individual decisions to show per-user status
       if (user?.id && allDocuments.length > 0) {
@@ -429,22 +484,26 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
             const cleanId = doc.id.replace('template-', '');
             const myDecision = decisionMap.get(cleanId);
             if (myDecision) {
-              // Show the user's own decision instead of the document-level status
+              // Only override status for non-approved decisions —
+              // "approved" at user level shouldn't hide the doc when the document is still in review
               const decisionStatusMap: Record<string, string> = {
-                'approved': 'Approved',
                 'rejected': 'Rejected',
                 'changes_requested': 'Changes Requested',
                 'in_review': 'In Review',
                 'not_started': 'Not Started',
                 'pending': 'Pending',
               };
-              doc.status = decisionStatusMap[myDecision] || doc.status;
+              if (decisionStatusMap[myDecision]) {
+                doc.status = decisionStatusMap[myDecision];
+              }
             }
           });
         }
       }
 
-      setDocuments(allDocuments);
+      // Filter out approved documents — they no longer need review
+      const pendingDocuments = allDocuments.filter(doc => doc.status?.toLowerCase() !== 'approved');
+      setDocuments(pendingDocuments);
     } catch (err) {
       console.error('Error fetching assigned documents:', err);
       setError(lang('reviewDashboard.errors.failedToLoadDocuments'));
@@ -697,6 +756,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
           documentFile={viewingDocument.documentFile}
           companyId={companyId}
           reviewerGroupId={viewingDocument.reviewerGroupId || userGroups[0]}
+          userRole={viewingDocument.status === 'Pending Approval' || viewingDocument.reviewerGroupName === 'Approver' ? 'approver' : viewingDocument.role === 'review' ? 'review' : 'author'}
         />
       )}
 

@@ -133,7 +133,7 @@ export function MediaTab({
 
   const renderScopeAndGov = (fieldKey: string, currentValue?: any) => (
     <div className="flex items-center gap-0.5 ml-auto">
-      {belongsToFamily && company_id && productId && classificationExclusion ? (
+      {company_id && productId && classificationExclusion ? (
         <InheritanceExclusionPopover
           companyId={company_id}
           currentProductId={productId}

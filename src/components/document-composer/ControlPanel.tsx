@@ -14,12 +14,11 @@ import { SmartSuggestionsPanel } from './SmartSuggestionsPanel';
 
 import { AIStatusIndicator } from './AIStatusIndicator';
 import { TemplateBrowserModal } from './TemplateBrowserModal';
-import { SidebarReferenceDocuments } from './SidebarReferenceDocuments';
+
 import { SOPDocumentContentService } from '../../services/sopDocumentContentService';
 import { DocFileUpload } from './DocFileUpload';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { useTranslation } from '@/hooks/useTranslation';
-import { SidebarDocumentControl } from './SidebarDocumentControl';
 import { VVPlanSidebarCard } from './VVPlanSidebarCard';
 
 export interface ControlPanelProps {
@@ -49,7 +48,7 @@ export interface ControlPanelProps {
   onRoleMappingsUpdated?: (mappings: any[]) => void;
   onContentEnhancement?: (suggestion: any) => void;
   onViewReferenceDocument?: (url: string, fileName: string) => void;
-  onDocumentControlChange?: (field: string, value: string) => void;
+  
   selectedReferenceIds?: string[];
   onReferenceSelectionChange?: (ids: string[]) => void;
   disabled?: boolean;
@@ -73,7 +72,7 @@ export function ControlPanel({
   onRoleMappingsUpdated,
   onContentEnhancement,
   onViewReferenceDocument,
-  onDocumentControlChange,
+  
   selectedReferenceIds,
   onReferenceSelectionChange,
   disabled = false
@@ -259,14 +258,7 @@ export function ControlPanel({
           {lang('draftStudio.controlPanel.documentConfiguration')}
         </div>
 
-        {/* Document Control (SOP Header fields) */}
-        {template?.documentControl && onDocumentControlChange && (
-          <SidebarDocumentControl
-            documentControl={template.documentControl}
-            onFieldChange={onDocumentControlChange}
-            companyId={companyId}
-          />
-        )}
+        {/* Document Control removed — now in CIPropertyPanel */}
 
         {/* Selection Controls (when not locked) */}
         {!isLocked && (
@@ -387,13 +379,6 @@ export function ControlPanel({
           <VVPlanSidebarCard metadata={template.metadata} />
         )}
 
-        {/* Reference Documents */}
-        <SidebarReferenceDocuments
-          companyId={companyId}
-          onViewDocument={onViewReferenceDocument}
-          selectedIds={selectedReferenceIds}
-          onSelectionChange={onReferenceSelectionChange}
-        />
 
         {/* AI Status Indicator - Always visible */}
         <AIStatusIndicator />

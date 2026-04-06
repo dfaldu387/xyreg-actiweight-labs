@@ -23,6 +23,7 @@ import { DeviceCharacteristics } from '@/types/client.d';
 import { DeviceComponentsSection } from '../DeviceComponentsSection';
 import { Device3DModel } from '@/types';
 import { detectProductType, type ProductType } from '@/utils/productTypeDetection';
+import { markdownToHtml } from '@/utils/markdownToHtml';
 import { DeviceCategorySelector } from '../../DeviceCategorySelector';
 import { ProductModelSelector } from '../../ProductModelSelector';
 import { DeviceMediaUpload } from '../DeviceMediaUpload';
@@ -765,7 +766,7 @@ function DeviceOverviewSectionComponent({
                               fieldLabel: 'Device Name',
                               fieldKey: 'product_name',
                               original: productName || '',
-                              suggested: response.suggestions[0].suggestion,
+                              suggested: markdownToHtml(response.suggestions[0].suggestion),
                             });
                           }
                         } catch (error) {
@@ -814,7 +815,7 @@ function DeviceOverviewSectionComponent({
                               fieldLabel: 'Trade Name',
                               fieldKey: 'trade_name',
                               original: tradeName || '',
-                              suggested: response.suggestions[0].suggestion,
+                              suggested: markdownToHtml(response.suggestions[0].suggestion),
                             });
                           }
                         } catch (error) {
@@ -1406,7 +1407,7 @@ function DeviceOverviewSectionComponent({
                               fieldLabel: 'Device Description',
                               fieldKey: 'product_description',
                               original: description || '',
-                              suggested: suggestion,
+                              suggested: markdownToHtml(suggestion),
                             });
                           }
                         } catch (error) {

@@ -84,6 +84,7 @@ import { MobileDeviceBanner } from "@/components/ui/MobileDeviceBanner";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { ThreadSheetProvider } from "@/context/ThreadSheetContext";
+import { ReturnToValidationButton } from "@/components/infrastructure/ReturnToValidationButton";
 
 
 export default function AppLayout() {
@@ -953,6 +954,8 @@ export default function AppLayout() {
       <ReturnToGenesisButton />
       {/* Floating Step Navigation Bar - shows when returnTo param is present */}
       <FloatingReturnButton />
+      {/* Return to Validation - shows when from=infrastructure param is present */}
+      <ReturnToValidationButton />
 
       {/* Mobile Device Banner - suggests desktop for better experience */}
       <MobileDeviceBanner />

@@ -26,7 +26,7 @@ import { MissionControlRedirect } from "@/components/mission-control/MissionCont
 // Lazy load heavy components
 const MissionControlDashboard = lazy(() => import("@/pages/MissionControlDashboard"));
 const AdvisoryBoard = lazy(() => import("@/pages/AdvisoryBoard"));
-const SingleCompanyDashboard = lazy(() => import("@/components/mission-control/SingleCompanyDashboard").then(m => ({ default: m.SingleCompanyDashboard })));
+import { SingleCompanyDashboard } from "@/components/mission-control/SingleCompanyDashboard";
 const Archives = lazy(() => import("@/pages/Archives"));
 const SupplierDetailPage = lazy(() => import("@/pages/SupplierDetailPage"));
 const EditSupplierPage = lazy(() => import("@/pages/EditSupplierPage"));

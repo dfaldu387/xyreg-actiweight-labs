@@ -319,7 +319,11 @@ export function DocumentPreview({
                           {getFileIcon(doc.type, doc.name)}
                         </div>
                         <span className="text-sm font-medium text-foreground truncate">
-                          {doc.name}
+                          {(() => {
+                            const docNumber = (doc as any).document_number || (doc as any).document_control?.sopNumber;
+                            const cleanName = doc.name?.replace(/^[A-Z]{2,6}-\d{3}\s+/, '') || doc.name;
+                            return docNumber ? `${docNumber} ${cleanName}` : cleanName;
+                          })()}
                         </span>
                         {expandedDocId === doc.id && (versions[doc.id!] || []).length > 0 && (
                           <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-600 hover:bg-green-600 flex-shrink-0">Current Version</Badge>

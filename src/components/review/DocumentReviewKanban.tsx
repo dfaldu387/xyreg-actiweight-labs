@@ -252,7 +252,7 @@ export function DocumentReviewKanban({ companyId, userGroups, companyName }: Doc
         if (userGroups.length > 0) {
           // console.log('Filtering documents by user groups:', userGroups);
           documentsQuery = documentsQuery.overlaps('reviewer_group_ids', userGroups);
-          phaseTemplateQuery = phaseTemplateQuery.overlaps('reviewer_group_ids', userGroups);
+          phaseTemplateQuery = phaseTemplateQuery.or(`reviewer_group_ids.ov.{${userGroups.join(',')}},reviewer_user_ids.cs.{${user?.id}}`);
         } else {
           // console.log('No user groups - returning empty results');
           documentsQuery = documentsQuery.eq('id', '00000000-0000-0000-0000-000000000000');

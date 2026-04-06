@@ -32,6 +32,21 @@ export function getDefaultSectionsForType(docType: string) {
     ];
   }
 
+  if (docType?.toLowerCase().includes('device-information') || docType?.toLowerCase().includes('device definition')) {
+    return [
+      makeSection('scope', '1. Scope & Purpose', 0),
+      makeSection('device-description', '2. Device Description', 1),
+      makeSection('intended-purpose', '3. Intended Purpose & Clinical Benefits', 2),
+      makeSection('classification', '4. Device Classification & Characteristics', 3),
+      makeSection('architecture', '5. Device Architecture & Components', 4),
+      makeSection('udi', '6. Device Identification (UDI/EUDAMED)', 5),
+      makeSection('reg-markets', '7. Regulatory & Market Information', 6),
+      makeSection('manufacturer', '8. Manufacturer & Authorized Representative', 7),
+      makeSection('variants-config', '9. Product Variants & Configurations', 8),
+      makeSection('references', '10. References', 9),
+    ];
+  }
+
   // Standard / default
   return [
     makeSection('purpose', 'Purpose', 0),

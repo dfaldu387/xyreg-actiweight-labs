@@ -13,7 +13,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Rocket, FileText, Pencil, Trash2, Send, Building2, CheckCircle2, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, Rocket, FileText, Pencil, Trash2, Send, Building2, CheckCircle2, Loader2, Settings, X, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { XYREG_MODULE_GROUPS } from '@/data/xyregModuleGroups';
@@ -48,6 +49,8 @@ export default function SuperAdminReleases() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('releases');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
   const [editingRelease, setEditingRelease] = useState<XyregRelease | null>(null);
   const [version, setVersion] = useState('');
   const [releaseDate, setReleaseDate] = useState('');
@@ -114,6 +117,72 @@ export default function SuperAdminReleases() {
     },
     enabled: companies.length > 0 && releases.length > 0,
   });
+
+  // Fetch notification emails from DB
+  const { data: notifEmails = [] } = useQuery({
+    queryKey: ['adoption-notification-emails'],
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await (supabase as any)
+        .from('platform_settings')
+        .select('value')
+        .eq('key', 'adoption_notification_emails')
+        .single();
+      if (error || !data) return [];
+      return (data.value as string[]) || [];
+    },
+  });
+
+  const saveEmailsMutation = useMutation({
+    mutationFn: async (emails: string[]) => {
+      const { data: userData } = await supabase.auth.getUser();
+      const { error } = await (supabase as any)
+        .from('platform_settings')
+        .update({ value: emails, updated_at: new Date().toISOString(), updated_by: userData?.user?.id })
+        .eq('key', 'adoption_notification_emails');
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adoption-notification-emails'] });
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  const updateAdoptionStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const { error } = await (supabase as any)
+        .from('company_release_adoptions')
+        .update({ status })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_, { status }) => {
+      queryClient.invalidateQueries({ queryKey: ['company-adoptions-admin'] });
+      toast.success(`Status updated to ${status}`);
+    },
+    onError: (err: any) => toast.error(err.message),
+  });
+
+  const handleAddEmail = () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+    if (notifEmails.includes(email)) {
+      toast.error('Email already added');
+      return;
+    }
+    saveEmailsMutation.mutate([...notifEmails, email], {
+      onSuccess: () => {
+        setNewEmail('');
+        toast.success(`${email} added`);
+      },
+    });
+  };
+
+  const handleRemoveEmail = (email: string) => {
+    saveEmailsMutation.mutate(notifEmails.filter(e => e !== email));
+  };
 
   const resetForm = () => {
     setVersion('');
@@ -328,10 +397,69 @@ export default function SuperAdminReleases() {
           <h1 className="text-2xl font-bold">XYREG Releases</h1>
           <p className="text-muted-foreground">Manage software versions that customers validate against</p>
         </div>
-        {activeTab === 'releases' && (
-          <Button onClick={openCreateDialog}><Plus className="h-4 w-4 mr-2" />New Release</Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+            <Settings className="h-4 w-4 mr-1.5" />Email Notifications
+            {notifEmails.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">{notifEmails.length}</Badge>
+            )}
+          </Button>
+          {activeTab === 'releases' && (
+            <Button onClick={openCreateDialog}><Plus className="h-4 w-4 mr-2" />New Release</Button>
+          )}
+        </div>
       </div>
+
+      {/* Email Notification Settings Dialog */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              Adoption Email Notifications
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              When a company adopts a release, an email notification will be sent to these addresses.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="admin@example.com"
+                value={newEmail}
+                onChange={e => setNewEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddEmail()}
+                className="flex-1"
+              />
+              <Button onClick={handleAddEmail} size="sm">Add</Button>
+            </div>
+            {notifEmails.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4 border rounded-md">
+                No email addresses configured yet. Add one above.
+              </p>
+            ) : (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                {notifEmails.map(email => (
+                  <div key={email} className="flex items-center justify-between px-3 py-2 border rounded-md bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-sm">{email}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemoveEmail(email)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -686,9 +814,24 @@ export default function SuperAdminReleases() {
                         <TableCell className="font-mono font-semibold">v{a.release_version}</TableCell>
                         <TableCell>{format(new Date(a.adopted_at), 'MMM d, yyyy hh:mm a')}</TableCell>
                         <TableCell>
-                          <Badge variant={a.status === 'active' ? 'default' : 'secondary'}>
-                            {a.status === 'active' ? 'Active' : a.status}
-                          </Badge>
+                          <Select
+                            value={a.status}
+                            onValueChange={(value) => updateAdoptionStatus.mutate({ id: a.id, status: value })}
+                          >
+                            <SelectTrigger className={`w-[130px] h-8 text-xs font-medium ${
+                              a.status === 'pending' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+                              a.status === 'active' ? 'bg-green-50 border-green-200 text-green-800' :
+                              a.status === 'completed' ? 'bg-blue-50 border-blue-200 text-blue-800' :
+                              ''
+                            }`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="active">Active</SelectItem>
+                              <SelectItem value="completed">Completed</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                       </TableRow>
                     ))}

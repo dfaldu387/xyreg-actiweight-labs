@@ -20,6 +20,7 @@ interface ConsistentPageHeaderProps {
   subtitle?: string | React.ReactNode;
   actions?: React.ReactNode;
   onCreateDocument?: () => void;
+  documentStatus?: 'none' | 'draft' | 'approved';
 }
 
 // Page name keys for matching - order matters, check longer strings first
@@ -103,7 +104,8 @@ export function ConsistentPageHeader({
   title,
   subtitle,
   actions,
-  onCreateDocument
+  onCreateDocument,
+  documentStatus = 'none'
 }: ConsistentPageHeaderProps) {
   const { lang } = useTranslation();
   const { planName, isSubscriptionLoading } = useSubscriptionContext();
@@ -188,7 +190,7 @@ export function ConsistentPageHeader({
                           className="h-7 w-7"
                           onClick={onCreateDocument}
                         >
-                          <FileEdit className="h-4 w-4" />
+                          <FileEdit className={`h-4 w-4 ${documentStatus === 'approved' ? 'text-green-500' : documentStatus === 'draft' ? 'text-yellow-500' : ''}`} />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>Create Document</TooltipContent>

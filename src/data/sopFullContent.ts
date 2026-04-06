@@ -21,10 +21,20 @@ export const SOP_FULL_CONTENT: Record<string, SOPFullContent> = {
 };
 
 /**
- * Look up SOP content by extracting the SOP number from a document name.
+ * Look up SOP content by extracting the SOP number from a document name or document_number.
  * Matches patterns like "SOP-001", "SOP-001 Quality Management System", etc.
+ * Also accepts a documentNumber parameter (e.g., "SOP-001") as a direct lookup key.
  */
-export function getSOPContentByName(docName: string): SOPFullContent | null {
+export function getSOPContentByName(docName: string, documentNumber?: string): SOPFullContent | null {
+  // Try documentNumber first (e.g., "SOP-001")
+  if (documentNumber) {
+    const numMatch = documentNumber.match(/SOP-(\d{3})/);
+    if (numMatch) {
+      const sopKey = `SOP-${numMatch[1]}`;
+      if (SOP_FULL_CONTENT[sopKey]) return SOP_FULL_CONTENT[sopKey];
+    }
+  }
+  // Fallback: extract from doc name
   const match = docName.match(/SOP-(\d{3})/);
   if (!match) return null;
   const sopKey = `SOP-${match[1]}`;

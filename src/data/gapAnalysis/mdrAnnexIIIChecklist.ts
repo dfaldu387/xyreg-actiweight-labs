@@ -8,7 +8,8 @@ export const mdrAnnexIIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex III",
-    chapter: "Post-Market Surveillance"
+    chapter: "Post-Market Surveillance",
+    technicalFileSection: "TF-9"
   },
   {
     id: "ci-pms.1.2",
@@ -18,7 +19,8 @@ export const mdrAnnexIIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex III",
-    chapter: "Post-Market Surveillance"
+    chapter: "Post-Market Surveillance",
+    technicalFileSection: "TF-9"
   },
   {
     id: "ci-pms.1.3",
@@ -28,7 +30,8 @@ export const mdrAnnexIIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex III",
-    chapter: "Post-Market Surveillance"
+    chapter: "Post-Market Surveillance",
+    technicalFileSection: "TF-9"
   },
   {
     id: "ci-pms.1.4",
@@ -38,7 +41,8 @@ export const mdrAnnexIIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex III",
-    chapter: "Post-Market Surveillance"
+    chapter: "Post-Market Surveillance",
+    technicalFileSection: "TF-9"
   },
   {
     id: "ci-pms.1.5",
@@ -48,7 +52,8 @@ export const mdrAnnexIIIChecklist = [
     category: "documentation",
     priority: "high",
     framework: "MDR Annex III",
-    chapter: "Post-Market Surveillance"
+    chapter: "Post-Market Surveillance",
+    technicalFileSection: "TF-9"
   },
   {
     id: "ci-pms.2.1",
@@ -58,7 +63,8 @@ export const mdrAnnexIIIChecklist = [
     category: "compliance",
     priority: "medium",
     framework: "MDR Annex III",
-    chapter: "Post-Market Surveillance"
+    chapter: "Post-Market Surveillance",
+    technicalFileSection: "TF-9"
   },
   {
     id: "ci-pms.2.2",
@@ -68,7 +74,8 @@ export const mdrAnnexIIIChecklist = [
     category: "compliance",
     priority: "high",
     framework: "MDR Annex III",
-    chapter: "Post-Market Surveillance"
+    chapter: "Post-Market Surveillance",
+    technicalFileSection: "TF-9"
   },
   {
     id: "ci-pms.2.3",
@@ -78,6 +85,7 @@ export const mdrAnnexIIIChecklist = [
     category: "compliance",
     priority: "high",
     framework: "MDR Annex III",
-    chapter: "Post-Market Surveillance"
+    chapter: "Post-Market Surveillance",
+    technicalFileSection: "TF-9"
   }
 ];

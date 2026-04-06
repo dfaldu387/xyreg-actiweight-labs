@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { stripDocPrefix } from '@/utils/templateNameUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -191,7 +192,7 @@ function TemplateGrid({
                   </Badge>
                   {getTemplateStatusIcon(template.id)}
                 </div>
-                <CardTitle className="text-lg leading-snug">{template.name}</CardTitle>
+                <CardTitle className="text-lg leading-snug">{stripDocPrefix(template.name)}</CardTitle>
               </div>
             </div>
             <CardDescription className="text-sm line-clamp-3">

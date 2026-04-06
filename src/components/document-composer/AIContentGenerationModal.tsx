@@ -3,12 +3,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, Wand2, Lightbulb, FileText, Check, X, BookOpen } from 'lucide-react';
+import { Sparkles, Wand2, Lightbulb, FileText, Check, X, BookOpen, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
 import { ReferenceDocumentService } from '@/services/referenceDocumentService';
 import { Checkbox } from '@/components/ui/checkbox';
+
+const ALWAYS_PRECHECK = ['ISO 13485', 'ISO 14971', 'IEC 62366'];
 
 interface AIContentGenerationModalProps {
   isOpen: boolean;
@@ -45,7 +48,54 @@ export function AIContentGenerationModal({
   const [isAccepted, setIsAccepted] = useState(false);
   const [isRejected, setIsRejected] = useState(false);
   const [selectedRefDocIds, setSelectedRefDocIds] = useState<string[]>([]);
+  const [selectedStandardIds, setSelectedStandardIds] = useState<Set<string>>(new Set());
+  const [standardsInitialized, setStandardsInitialized] = useState(false);
   const { documents: refDocuments } = useReferenceDocuments(companyId);
+
+  // Standards query
+  const { data: standards = [] } = useQuery({
+    queryKey: ['ai-section-standards', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('company_gap_templates')
+        .select('template_id, gap_analysis_templates!inner(id, framework, name, scope)')
+        .eq('company_id', companyId!)
+        .eq('is_enabled', true);
+      if (error) throw error;
+      const { data: alwaysData } = await supabase
+        .from('gap_analysis_templates')
+        .select('id, framework, name, scope')
+        .eq('auto_enable_condition', 'always')
+        .eq('is_active', true);
+      const seen = new Set<string>();
+      const results: { id: string; framework: string; name: string }[] = [];
+      const addFw = (fw: string, name: string, id: string) => {
+        if (!seen.has(fw)) { seen.add(fw); results.push({ id, framework: fw, name }); }
+      };
+      (data || []).forEach((t: any) => {
+        const tpl = t.gap_analysis_templates;
+        if (tpl?.framework) addFw(tpl.framework, tpl.name || tpl.framework, tpl.id);
+      });
+      (alwaysData || []).forEach((t: any) => {
+        if (t.framework) addFw(t.framework, t.name || t.framework, t.id);
+      });
+      return results;
+    },
+    enabled: !!companyId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  React.useEffect(() => {
+    if (standards.length > 0 && !standardsInitialized) {
+      const preChecked = new Set<string>();
+      standards.forEach((s) => {
+        const normalized = s.framework.replace(/_/g, ' ');
+        if (ALWAYS_PRECHECK.some((p) => normalized.includes(p))) preChecked.add(s.id);
+      });
+      setSelectedStandardIds(preChecked);
+      setStandardsInitialized(true);
+    }
+  }, [standards, standardsInitialized]);
 
   const toggleRefDoc = (id: string) => {
     setSelectedRefDocIds((prev) =>
@@ -197,10 +247,17 @@ export function AIContentGenerationModal({
         referenceContext = textParts.join('\n\n');
       }
 
+      // Include selected standards in prompt
+      let enhancedPrompt = customPrompt;
+      const selectedStds = standards.filter((s) => selectedStandardIds.has(s.id));
+      if (selectedStds.length > 0) {
+        enhancedPrompt += `\n\nEnsure compliance with the following standards and regulations: ${selectedStds.map((s) => s.name || s.framework).join(', ')}.`;
+      }
+
       // Call the AI content generator edge function
       const { data, error } = await supabase.functions.invoke('ai-content-generator', {
         body: {
-          prompt: customPrompt,
+          prompt: enhancedPrompt,
           sectionTitle,
           currentContent,
           referenceContext: referenceContext || undefined,
@@ -251,6 +308,8 @@ export function AIContentGenerationModal({
     setCustomPrompt("");
     setSelectedSuggestion(null);
     setSelectedRefDocIds([]);
+    setStandardsInitialized(false);
+    setSelectedStandardIds(new Set());
   };
 
   return (
@@ -290,8 +349,47 @@ export function AIContentGenerationModal({
                   <span className="text-muted-foreground">{selectedRefDocIds.length} document(s)</span>
                 </div>
               )}
+              {selectedStandardIds.size > 0 && (
+                <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                  <Check className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                  <span className="font-medium">Standards</span>
+                  <span className="text-muted-foreground">{selectedStandardIds.size} selected</span>
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Standards & Regulations Picker */}
+          {standards.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2">
+                <Shield className="w-4 h-4" />
+                Standards & Regulations
+              </h3>
+              <p className="text-xs text-muted-foreground mb-2">
+                Selected standards will be included as context for AI generation
+              </p>
+              <div className="border rounded-lg max-h-[120px] overflow-y-auto p-2 space-y-1">
+                {standards.map((std) => (
+                  <label key={std.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted cursor-pointer text-sm">
+                    <Checkbox
+                      checked={selectedStandardIds.has(std.id)}
+                      onCheckedChange={() => {
+                        setSelectedStandardIds((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(std.id)) next.delete(std.id);
+                          else next.add(std.id);
+                          return next;
+                        });
+                      }}
+                      disabled={isGenerating}
+                    />
+                    <span className="truncate flex-1">{std.name || std.framework}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Reference Documents Picker */}
           {refDocuments.length > 0 && (
             <div>

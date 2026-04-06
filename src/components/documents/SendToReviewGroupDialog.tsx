@@ -8,21 +8,21 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useReviewerGroups } from '@/hooks/useReviewerGroups';
 import { useDocumentReviewAssignments } from '@/hooks/useDocumentReviewAssignments';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Send, Users, Calendar } from 'lucide-react';
+import { Send, Users, Calendar, UserCheck } from 'lucide-react';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { AppNotificationService } from '@/services/appNotificationService';
-import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
 import { DocumentExportService } from '@/services/documentExportService';
-import type { DocumentTemplate, DocumentSection, ProductContext, DocumentControl, RevisionHistory, AssociatedDocument } from '@/types/documentComposer';
+import { DocumentTemplate } from '@/types/documentComposer';
+import { useDocumentAuthors } from '@/hooks/useDocumentAuthors';
+import { UserAndGroupSelector } from '@/components/shared/UserAndGroupSelector';
+import { ESignatureFlow } from '@/components/shared/ESignatureFlow';
 
 const appNotificationService = new AppNotificationService();
 
@@ -50,32 +50,113 @@ export function SendToReviewGroupDialog({
   const { user } = useAuth();
   const { reviewerGroups, isLoading: groupsLoading } = useReviewerGroups(companyId);
   const { createAssignment } = useDocumentReviewAssignments(documentId);
-  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
-  const [dueDate, setDueDate] = useState('');
-  const [isSending, setIsSending] = useState(false);
+  const { authors, isLoading: authorsLoading } = useDocumentAuthors(companyId);
 
-  const toggleGroup = (groupId: string) => {
-    setSelectedGroupIds((prev) =>
-      prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
-    );
+  // Reviewer state
+  const [reviewerGroupIds, setReviewerGroupIds] = useState<string[]>([]);
+  const [reviewerUserIds, setReviewerUserIds] = useState<string[]>([]);
+
+  // Approver state
+  const [approverGroupIds, setApproverGroupIds] = useState<string[]>([]);
+  const [approverUserIds, setApproverUserIds] = useState<string[]>([]);
+
+  const [reviewerDueDate, setReviewerDueDate] = useState('');
+  const [approverDueDate, setApproverDueDate] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isLoadingExisting, setIsLoadingExisting] = useState(false);
+  const [dialogStep, setDialogStep] = useState<'form' | 'sign'>('form');
+
+  // Load existing reviewer/approver data when dialog opens
+  React.useEffect(() => {
+    if (!open || !documentId) return;
+    setIsLoadingExisting(true);
+    const cleanId = documentId.replace(/^template-/, '');
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('phase_assigned_document_template')
+          .select('approved_by, reviewer_group_ids, reviewer_user_ids, approver_user_ids, approver_group_ids, approver_due_date, due_date')
+          .eq('id', cleanId)
+          .maybeSingle();
+        if (data) {
+          const existingReviewerUsers = Array.isArray((data as any).reviewer_user_ids) ? (data as any).reviewer_user_ids : [];
+          const groupMemberIds = new Set<string>(existingReviewerUsers);
+          const allGroupIds = Array.isArray(data.reviewer_group_ids) ? data.reviewer_group_ids : [];
+          if (allGroupIds.length > 0) {
+            setReviewerGroupIds(allGroupIds);
+          }
+          for (const gid of allGroupIds) {
+            const group = reviewerGroups.find(g => g.id === gid);
+            if (group?.members) {
+              group.members.forEach((m: any) => {
+                if (m.is_active !== false) groupMemberIds.add(m.user_id);
+              });
+            }
+          }
+          setReviewerUserIds(Array.from(groupMemberIds));
+          const existingApproverUsers = Array.isArray((data as any).approver_user_ids) ? (data as any).approver_user_ids : [];
+          if (existingApproverUsers.length > 0) {
+            setApproverUserIds(existingApproverUsers);
+          } else if (data.approved_by) {
+            setApproverUserIds([data.approved_by]);
+          }
+          const existingApproverGroups = Array.isArray((data as any).approver_group_ids) ? (data as any).approver_group_ids : [];
+          if (existingApproverGroups.length > 0) {
+            setApproverGroupIds(existingApproverGroups);
+            const approverMemberIds = new Set<string>(existingApproverUsers.length > 0 ? existingApproverUsers : (data.approved_by ? [data.approved_by] : []));
+            for (const gid of existingApproverGroups) {
+              const group = reviewerGroups.find(g => g.id === gid);
+              if (group?.members) {
+                group.members.forEach((m: any) => {
+                  if (m.is_active !== false) approverMemberIds.add(m.user_id);
+                });
+              }
+            }
+            setApproverUserIds(Array.from(approverMemberIds));
+          }
+          if ((data as any).due_date) {
+            setReviewerDueDate((data as any).due_date.split('T')[0]);
+          }
+          if ((data as any).approver_due_date) {
+            setApproverDueDate((data as any).approver_due_date.split('T')[0]);
+          }
+        }
+      } finally {
+        setIsLoadingExisting(false);
+      }
+    })();
+  }, [open, documentId, reviewerGroups]);
+
+  const hasReviewers = reviewerGroupIds.length > 0 || reviewerUserIds.length > 0;
+  const hasApprovers = approverGroupIds.length > 0 || approverUserIds.length > 0;
+
+  // Validate and move to signing step
+  const handleProceedToSign = () => {
+    if (!hasReviewers) {
+      toast.error('Please select at least one reviewer');
+      return;
+    }
+    if (!hasApprovers) {
+      toast.error('Please select at least one approver');
+      return;
+    }
+    setDialogStep('sign');
+  };
+
+  // Called after author signature is complete
+  const handleSignComplete = () => {
+    handleSend();
   };
 
   const handleSend = async () => {
-    if (selectedGroupIds.length === 0) {
-      toast.error('Please select at least one reviewer group');
-      return;
-    }
 
     setIsSending(true);
     try {
-      // Strip 'template-' prefix for DB operations (columns are UUID type)
       const cleanDocumentId = documentId.replace(/^template-/, '');
 
       // 0. Export draft to .docx and upload (if a draft exists)
       try {
-        // Find draft by company_id + template_id only (not productId),
-        // because documents can be shared across products
-        const { data: draftRow, error: draftError } = await supabase
+        const { data: draftRow } = await supabase
           .from('document_studio_templates')
           .select('*')
           .eq('company_id', companyId)
@@ -83,7 +164,6 @@ export function SendToReviewGroupDialog({
           .order('updated_at', { ascending: false })
           .limit(1)
           .maybeSingle();
-
 
         const draftData = draftRow && Array.isArray(draftRow.sections) && draftRow.sections.length > 0
           ? {
@@ -98,7 +178,6 @@ export function SendToReviewGroupDialog({
           : null;
 
         if (!draftData) {
-          // No draft — check if there's already a file attached
           const { data: existingDoc } = await supabase
             .from('phase_assigned_document_template')
             .select('file_path')
@@ -113,16 +192,15 @@ export function SendToReviewGroupDialog({
         }
 
         if (draftData) {
-          // Convert to DocumentTemplate
           const template: DocumentTemplate = {
             id: draftData.template_id,
             name: draftData.name,
             type: draftData.type,
-            sections: draftData.sections as unknown as DocumentSection[],
-            productContext: (draftData.product_context || { productName: '', productType: '' }) as unknown as ProductContext,
-            documentControl: draftData.document_control as unknown as DocumentControl,
-            revisionHistory: (draftData.revision_history || []) as unknown as RevisionHistory[],
-            associatedDocuments: (draftData.associated_documents || []) as unknown as AssociatedDocument[],
+            sections: draftData.sections as unknown as DocumentTemplate['sections'],
+            productContext: (draftData.product_context || { productName: '', productType: '' }) as unknown as DocumentTemplate['productContext'],
+            documentControl: draftData.document_control as unknown as DocumentTemplate['documentControl'],
+            revisionHistory: (draftData.revision_history || []) as unknown as DocumentTemplate['revisionHistory'],
+            associatedDocuments: (draftData.associated_documents || []) as unknown as DocumentTemplate['associatedDocuments'],
             metadata: (draftData.metadata || {
               version: '1.0',
               lastUpdated: new Date(),
@@ -130,10 +208,7 @@ export function SendToReviewGroupDialog({
             }) as unknown as DocumentTemplate['metadata'],
           };
 
-          // Generate .docx blob
           const docxBlob = await DocumentExportService.generateDocxBlob(template);
-
-          // Upload to Supabase storage
           const timestamp = Date.now();
           const storagePath = `${companyId}/${cleanDocumentId}/review-draft-${timestamp}.docx`;
           const fileName = `${draftData.name || documentName}.docx`;
@@ -141,50 +216,31 @@ export function SendToReviewGroupDialog({
           const { error: uploadError } = await supabase.storage
             .from('document-templates')
             .upload(storagePath, docxBlob, {
-              contentType:
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
               upsert: false,
             });
 
-          if (uploadError) {
-            console.error('Failed to upload draft .docx:', uploadError);
-            throw new Error(`Failed to upload draft document: ${uploadError.message}`);
-          }
+          if (uploadError) throw new Error(`Failed to upload draft document: ${uploadError.message}`);
 
-          // Update file info on the document record
           const { error: fileUpdateError } = await supabase
             .from('phase_assigned_document_template')
             .update({
               file_path: storagePath,
               file_name: fileName,
               file_size: docxBlob.size,
-              file_type:
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              file_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             })
             .eq('id', cleanDocumentId);
 
-          if (fileUpdateError) {
-            console.error('Failed to update document file info:', fileUpdateError);
-            throw new Error(`Failed to update document file info: ${fileUpdateError.message}`);
-          }
+          if (fileUpdateError) throw new Error(`Failed to update document file info: ${fileUpdateError.message}`);
 
-          // Invalidate OnlyOffice editor cache by replacing the editor session key.
-          // OnlyOffice caches documents by key — same key = same cached file, even if the URL changed.
-          // Delete old session then insert new one (no unique constraint on document_id, so upsert won't work).
           const newEditorKey = `collab-${cleanDocumentId}-v${timestamp}`;
-          await supabase
-            .from('document_editor_sessions')
-            .delete()
-            .eq('document_id', cleanDocumentId);
-          await supabase
-            .from('document_editor_sessions')
-            .insert({
-              document_id: cleanDocumentId,
-              editor_key: newEditorKey,
-              version: timestamp,
-            });
-
-          console.log('Draft exported and uploaded:', storagePath);
+          await supabase.from('document_editor_sessions').delete().eq('document_id', cleanDocumentId);
+          await supabase.from('document_editor_sessions').insert({
+            document_id: cleanDocumentId,
+            editor_key: newEditorKey,
+            version: timestamp,
+          });
         }
       } catch (exportErr) {
         console.error('Draft export failed:', exportErr);
@@ -193,121 +249,135 @@ export function SendToReviewGroupDialog({
         return;
       }
 
-      // 1. Update reviewer_group_ids on the document
-      const allGroupIds = [...new Set([...existingGroupIds, ...selectedGroupIds])];
+      // 1. Update document with reviewer + approver assignments
+      const allReviewerGroupIds = [...new Set(reviewerGroupIds)];
+      const updatePayload: Record<string, any> = {
+        reviewer_group_ids: allReviewerGroupIds,
+        reviewer_user_ids: reviewerUserIds,
+        approver_user_ids: approverUserIds,
+        approver_group_ids: approverGroupIds,
+        approver_due_date: approverDueDate || null,
+        due_date: reviewerDueDate || null,
+        status: 'In Review',
+        updated_at: new Date().toISOString(),
+      };
+      // Set approved_by to first approver user for backward compat
+      if (approverUserIds.length > 0) {
+        updatePayload.approved_by = approverUserIds[0];
+      }
+
       const { error: updateError } = await supabase
         .from('phase_assigned_document_template')
-        .update({
-          reviewer_group_ids: allGroupIds,
-          status: 'In Review',
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', cleanDocumentId);
 
-      if (updateError) {
-        console.error('Failed to update document for review:', updateError);
-        throw updateError;
+      if (updateError) throw updateError;
+
+      // 2. Create review assignments for groups
+      for (const groupId of reviewerGroupIds) {
+        await createAssignment(companyId, cleanDocumentId, groupId, reviewerDueDate || undefined);
       }
 
-      // 2. Create review assignments for each selected group
-      for (const groupId of selectedGroupIds) {
-        await createAssignment(companyId, cleanDocumentId, groupId, dueDate || undefined);
+      // 3. Create individual reviewer assignments
+      for (const userId of reviewerUserIds) {
+        // Check if user is already assigned via a group — skip if so
+        const isInGroup = allReviewerGroupIds.some(gid => {
+          const group = reviewerGroups.find(g => g.id === gid);
+          return group?.members?.some((m: any) => m.user_id === userId && m.is_active !== false);
+        });
+        if (!isInGroup) {
+          await supabase.from('document_review_assignments').insert({
+            company_id: companyId,
+            document_id: cleanDocumentId,
+            reviewer_user_id: userId,
+            due_date: reviewerDueDate || null,
+            status: 'pending',
+          });
+        }
       }
 
-      // 3. Send in-app notifications to all members of selected groups
+      // 4. Send notifications (deduplicated)
       try {
         const actorName = user?.user_metadata?.first_name && user?.user_metadata?.last_name
           ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
           : user?.email || 'Someone';
 
-        // Fetch company name for the review page URL
         let companyNameForUrl = '';
         const { data: companyData } = await supabase
           .from('companies')
           .select('name')
           .eq('id', companyId)
           .single();
-        if (companyData?.name) {
-          companyNameForUrl = encodeURIComponent(companyData.name);
-        }
+        if (companyData?.name) companyNameForUrl = encodeURIComponent(companyData.name);
 
-        for (const groupId of selectedGroupIds) {
-          const group = reviewerGroups.find((g) => g.id === groupId);
-          if (!group) continue;
+        // Collect all recipient IDs (deduplicated)
+        const allRecipientIds = new Set<string>();
 
-          // Fetch active members of this reviewer group
+        // From reviewer groups
+        for (const groupId of reviewerGroupIds) {
           const { data: members } = await supabase
             .from('reviewer_group_members_new')
             .select('user_id')
             .eq('group_id', groupId)
             .eq('is_active', true);
+          members?.forEach(m => allRecipientIds.add(m.user_id));
+        }
 
-          if (!members?.length) continue;
+        // Individual reviewers
+        reviewerUserIds.forEach(id => allRecipientIds.add(id));
 
-          // Filter out the current user (don't notify yourself)
-          const recipientIds = members
-            .map((m) => m.user_id)
-            .filter((uid) => uid !== user?.id);
+        // Individual approvers
+        approverUserIds.forEach(id => allRecipientIds.add(id));
 
-          if (recipientIds.length === 0) continue;
+        // From approver groups
+        for (const groupId of approverGroupIds) {
+          const { data: members } = await supabase
+            .from('reviewer_group_members_new')
+            .select('user_id')
+            .eq('group_id', groupId)
+            .eq('is_active', true);
+          members?.forEach(m => allRecipientIds.add(m.user_id));
+        }
 
-          // Bulk create notifications for all group members
-          const notifications = recipientIds.map((userId) => ({
+        // Remove current user
+        allRecipientIds.delete(user?.id || '');
+
+        if (allRecipientIds.size > 0) {
+          const notifications = Array.from(allRecipientIds).map(userId => ({
             user_id: userId,
             actor_id: user?.id,
             actor_name: actorName,
             company_id: companyId,
             product_id: productId,
             category: 'review' as const,
-            action: 'review_assigned',
+            action: 'review_assigned' as const,
             title: `Review requested: ${documentName}`,
-            message: `${actorName} assigned you to review "${documentName}" via ${group.name}`,
+            message: `${actorName} assigned you to review/approve "${documentName}"`,
             priority: 'normal' as const,
             entity_type: 'document',
             entity_id: cleanDocumentId,
             entity_name: documentName,
-            action_url: companyNameForUrl
-              ? `/app/company/${companyNameForUrl}/review`
-              : undefined,
-            metadata: {
-              reviewer_group_id: groupId,
-              reviewer_group_name: group.name,
-              due_date: dueDate || null,
-            },
+            action_url: companyNameForUrl ? `/app/company/${companyNameForUrl}/review` : undefined,
+            metadata: { reviewer_due_date: reviewerDueDate || null, approver_due_date: approverDueDate || null },
           }));
-
           await appNotificationService.createBulkNotifications(notifications);
         }
       } catch (notifErr) {
-        // Notifications are best-effort — don't block the main flow
-        console.error('Failed to send in-app notifications:', notifErr);
+        console.error('Failed to send notifications:', notifErr);
       }
 
-      // 4. Try to send email notifications (best-effort)
-      try {
-        for (const groupId of selectedGroupIds) {
-          const group = reviewerGroups.find((g) => g.id === groupId);
-          if (!group) continue;
+      const reviewerCount = new Set([...reviewerUserIds, ...reviewerGroupIds]).size;
+      const approverCount = new Set([...approverUserIds, ...approverGroupIds]).size;
+      toast.success(`Document sent for review (${reviewerCount} reviewer(s), ${approverCount} approver(s))`);
 
-          await supabase.functions.invoke('send-reviewer-assignment-email', {
-            body: {
-              reviewerEmail: '', // Edge function handles member lookup
-              reviewerName: 'Reviewer',
-              documentName,
-              reviewerGroupName: group.name,
-              companyName: companyId,
-              dueDate: dueDate || undefined,
-              senderName: 'System',
-            },
-          });
-        }
-      } catch {
-        // Email is best-effort
-      }
-
-      toast.success(`Document sent to ${selectedGroupIds.length} reviewer group(s)`);
-      setSelectedGroupIds([]);
-      setDueDate('');
+      // Reset state
+      setDialogStep('form');
+      setReviewerGroupIds([]);
+      setReviewerUserIds([]);
+      setApproverGroupIds([]);
+      setApproverUserIds([]);
+      setReviewerDueDate('');
+      setApproverDueDate('');
       onOpenChange(false);
       onSent?.();
     } catch (err) {
@@ -320,87 +390,95 @@ export function SendToReviewGroupDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md z-[9999]">
+      <DialogContent className="sm:max-w-lg z-[9999] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Send className="h-5 w-5 text-primary" />
-            Send for Review
+            Send for Review & Approval
           </DialogTitle>
           <DialogDescription>
-            Assign <strong>{documentName}</strong> to reviewer groups.
+            Assign <strong>{documentName}</strong> to reviewers and approvers.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* Reviewer Groups */}
-          <div>
-            <Label className="flex items-center gap-1 mb-2">
-              <Users className="h-4 w-4" />
-              Select Reviewer Groups
-            </Label>
-            {groupsLoading ? (
-              <LoadingSpinner size="sm" />
-            ) : reviewerGroups.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No reviewer groups configured for this company.</p>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-auto border rounded-md p-2">
-                {reviewerGroups.map((group) => {
-                  const alreadyAssigned = existingGroupIds.includes(group.id);
-                  return (
-                    <label
-                      key={group.id}
-                      className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={selectedGroupIds.includes(group.id) || alreadyAssigned}
-                        disabled={alreadyAssigned}
-                        onCheckedChange={() => toggleGroup(group.id)}
-                      />
-                      <span className="text-sm font-medium">{group.name}</span>
-                      {alreadyAssigned && (
-                        <Badge variant="outline" className="text-xs ml-auto">
-                          Already assigned
-                        </Badge>
-                      )}
-                    </label>
-                  );
-                })}
+        {dialogStep === 'form' ? (
+          <>
+            {(groupsLoading || authorsLoading || isLoadingExisting) ? (
+              <div className="flex items-center justify-center py-12">
+                <LoadingSpinner size="md" />
               </div>
-            )}
-          </div>
-
-          {/* Due Date */}
-          <div>
-            <Label className="flex items-center gap-1 mb-2">
-              <Calendar className="h-4 w-4" />
-              Due Date (optional)
-            </Label>
-            <Input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSending}>
-            Cancel
-          </Button>
-          <Button onClick={handleSend} disabled={isSending || selectedGroupIds.length === 0}>
-            {isSending ? (
-              <>
-                <LoadingSpinner size="sm" className="mr-2" />
-                Sending...
-              </>
             ) : (
-              <>
-                <Send className="h-4 w-4 mr-2" />
-                Send to {selectedGroupIds.length || ''} Group{selectedGroupIds.length !== 1 ? 's' : ''}
-              </>
+            <div className="space-y-4 py-2">
+              {/* Reviewers */}
+              <UserAndGroupSelector
+                companyId={companyId}
+                label="Reviewers"
+                icon={<Users className="h-4 w-4" />}
+                selectedGroupIds={reviewerGroupIds}
+                onGroupIdsChange={setReviewerGroupIds}
+                selectedUserIds={reviewerUserIds}
+                onUserIdsChange={setReviewerUserIds}
+              />
+
+              {/* Approvers */}
+              <UserAndGroupSelector
+                companyId={companyId}
+                label="Approvers"
+                icon={<UserCheck className="h-4 w-4" />}
+                selectedGroupIds={approverGroupIds}
+                onGroupIdsChange={setApproverGroupIds}
+                selectedUserIds={approverUserIds}
+                onUserIdsChange={setApproverUserIds}
+              />
+
+              {/* Due Dates */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="flex items-center gap-1 mb-2 text-xs">
+                    <Calendar className="h-3.5 w-3.5" />
+                    Review Due Date
+                  </Label>
+                  <Input
+                    type="date"
+                    value={reviewerDueDate}
+                    onChange={(e) => setReviewerDueDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="flex items-center gap-1 mb-2 text-xs">
+                    <Calendar className="h-3.5 w-3.5" />
+                    Approval Due Date
+                  </Label>
+                  <Input
+                    type="date"
+                    value={approverDueDate}
+                    onChange={(e) => setApproverDueDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
             )}
-          </Button>
-        </DialogFooter>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSending}>
+                Cancel
+              </Button>
+              <Button onClick={handleProceedToSign} disabled={isSending || !hasReviewers || !hasApprovers}>
+                <Send className="h-4 w-4 mr-2" />
+                Send
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <ESignatureFlow
+            documentId={documentId}
+            documentName={documentName}
+            meaning="author"
+            lockMeaning={true}
+            onComplete={handleSignComplete}
+            onBack={() => setDialogStep('form')}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );

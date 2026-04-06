@@ -25,9 +25,7 @@ import { InvestorVisibleBadge } from '@/components/ui/investor-visible-badge';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useProductUDI } from '@/hooks/useProductUDI';
 import { useCompanyInfo } from '@/hooks/useCompanyInfo';
-import { FileEdit } from 'lucide-react';
-import { SaveDeviceDefinitionAsDocCIDialog, DeviceDefinitionExportData } from './SaveDeviceDefinitionAsDocCIDialog';
-import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { DeviceDefinitionExportData } from './SaveDeviceDefinitionAsDocCIDialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type OverviewFieldKey =
@@ -121,9 +119,7 @@ export function DeviceOverviewTab({
   deviceDefinitionData,
   companyName,
 }: DeviceOverviewTabProps) {
-  // Dialog state for Create Document
-  const [showDocCIDialog, setShowDocCIDialog] = useState(false);
-  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
+  // Legacy dialog state removed — Create Document is handled at page level
   
   // Get product ID from URL params to fetch effective markets
   const { productId } = useParams<{ productId: string }>();
@@ -664,29 +660,7 @@ export function DeviceOverviewTab({
         </Card> */}
       </div>
 
-      {deviceDefinitionData && companyId && companyName && productId && (
-        <>
-          <SaveDeviceDefinitionAsDocCIDialog
-            open={showDocCIDialog}
-            onOpenChange={setShowDocCIDialog}
-            productId={productId}
-            productName={productName}
-            companyId={companyId}
-            companyName={companyName}
-            deviceData={deviceDefinitionData}
-            onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
-          />
-          <DocumentDraftDrawer
-            open={!!draftDrawerDoc}
-            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
-            documentId={draftDrawerDoc?.id || ''}
-            documentName={draftDrawerDoc?.name || ''}
-            documentType={draftDrawerDoc?.type || ''}
-            productId={productId}
-            companyId={companyId}
-          />
-        </>
-      )}
+      {/* Create Document is now handled at page level via ProductDeviceInformationPage */}
     </div >
   );
 }

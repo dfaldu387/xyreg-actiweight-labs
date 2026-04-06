@@ -18,6 +18,7 @@ import { EnhancedMarketsSection } from './EnhancedMarketsSection';
 import { RegulatoryCardsSection } from './RegulatoryCardsSection';
 import { UnifiedMarketsRegulatorySection } from './UnifiedMarketsRegulatorySection';
 import { NPVAnalysisSection } from './sections/NPVAnalysisSection';
+import { useProductFieldSuggestions } from '@/hooks/useProductFieldSuggestions';
 import { DeviceCharacteristics, EnhancedProductMarket, IntendedPurposeData } from "@/types/client";
 import { StrategicPartners } from './StrategicPartnersSection';
 import { Device3DModel } from '@/types';
@@ -461,7 +462,15 @@ export function ComprehensiveDeviceInformation({
   const { user } = useAuth();
   const companyRole = user?.user_metadata?.role;
 
-  // Plan-based menu access
+  // Product field suggestions from Document Studio
+  const { suggestions: fieldSuggestionsData, acceptSuggestion, rejectSuggestion } = useProductFieldSuggestions(productId, companyId);
+  const handleAcceptFieldSuggestion = (suggestion: any, newValue: string) => {
+    acceptSuggestion.mutate(suggestion.id);
+  };
+  const handleRejectFieldSuggestion = (suggestionId: string) => {
+    rejectSuggestion.mutate(suggestionId);
+  };
+
   const { isMenuAccessKeyEnabled, planName, isLoading: isLoadingPlanAccess } = usePlanMenuAccess();
 
   // Check if a tab is enabled based on plan's menu_access
@@ -1119,9 +1128,12 @@ export function ComprehensiveDeviceInformation({
                     onAddHazard={onAddHazard}
                     is_master_device={variantInheritance?.isMaster}
                     variantInheritance={variantInheritance}
-                />
-              </div>
-            );
+                    fieldSuggestions={fieldSuggestionsData}
+                    onAcceptFieldSuggestion={handleAcceptFieldSuggestion}
+                    onRejectFieldSuggestion={handleRejectFieldSuggestion}
+                 />
+               </div>
+             );
 
             // Show loading state while checking plan access
             if (isLoadingPlanAccess) {
@@ -1230,6 +1242,9 @@ export function ComprehensiveDeviceInformation({
                     onAddHazard={onAddHazard}
                     is_master_device={variantInheritance?.isMaster}
                     variantInheritance={variantInheritance}
+                    fieldSuggestions={fieldSuggestionsData}
+                    onAcceptFieldSuggestion={handleAcceptFieldSuggestion}
+                    onRejectFieldSuggestion={handleRejectFieldSuggestion}
                   />
                 </div>
               </RestrictedFeatureProvider>
@@ -1340,6 +1355,9 @@ export function ComprehensiveDeviceInformation({
                   storageSterilityHandling={storageSterilityHandling}
                   deviceCharacteristics={keyTechnologyCharacteristics}
                   onStorageSterilityHandlingChange={onStorageSterilityHandlingChange}
+                  fieldSuggestions={fieldSuggestionsData}
+                  onAcceptFieldSuggestion={handleAcceptFieldSuggestion}
+                  onRejectFieldSuggestion={handleRejectFieldSuggestion}
                 />
               </RestrictedFeatureProvider>
             );

@@ -436,7 +436,7 @@ export function SafetyUsageTab({
             )}
           </CardTitle>
           <div className="flex items-center gap-2">
-            {belongsToFamily && companyId && productId && fieldExclusion ? (
+            {companyId && productId && fieldExclusion ? (
               <InheritanceExclusionPopover
                 companyId={companyId}
                 currentProductId={productId}
@@ -645,7 +645,7 @@ export function SafetyUsageTab({
               </TooltipProvider>
             </CardTitle>
             <div className="flex items-center gap-2">
-              {belongsToFamily && companyId && productId && fieldExclusion ? (
+              {companyId && productId && fieldExclusion ? (
                 <InheritanceExclusionPopover
                   companyId={companyId}
                   currentProductId={productId}

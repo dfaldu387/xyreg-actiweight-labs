@@ -1563,7 +1563,7 @@ export function DocumentViewer({
                   E-Signature
                 </Button> */}
                 <Button variant="outline" onClick={() => setCloseStatusDialogOpen(true)} className="px-3">
-                  Close
+                  Done
                 </Button>
               </div>
             </div>

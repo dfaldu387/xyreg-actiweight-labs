@@ -40,6 +40,8 @@ import { toast } from 'sonner';
 import { AISuggestionService } from '@/services/aiSuggestionService';
 import { getDefaultSectionsForType } from '@/utils/documentTemplateUtils';
 import { getSOPContentByName, sopContentToSections } from '@/data/sopFullContent';
+import { extractFieldsFromSections } from '@/utils/documentToFieldExtractor';
+import { useProductFieldSuggestions } from '@/hooks/useProductFieldSuggestions';
 
 interface DocumentComposerProps {
   disabled?: boolean;
@@ -75,6 +77,10 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
   const [isUploadedDocument, setIsUploadedDocument] = useState(false);
   const [uploadedDocumentSaved, setUploadedDocumentSaved] = useState(false);
   const [documentControlData, setDocumentControlData] = useState<any>(null);
+  const [isRecord, setIsRecord] = useState(false);
+  const [recordId, setRecordId] = useState<string | null>(null);
+  const [nextReviewDate, setNextReviewDate] = useState<string | null>(null);
+  const [documentNumber, setDocumentNumber] = useState<string | null>(null);
   const [showAddDocumentDialog, setShowAddDocumentDialog] = useState(false);
   const [showCIDocumentSearch, setShowCIDocumentSearch] = useState(false);
   const [ciDocuments, setCIDocuments] = useState<any[]>([]);
@@ -103,7 +109,37 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
   const docName = searchParams.get('docName');
   const docType = searchParams.get('docType');
 
-  // Resolve company context - prefer URL company name over active role
+  // Product field suggestions hook
+  const { createSuggestions } = useProductFieldSuggestions(
+    productId || selectedProductId || undefined,
+    activeCompanyRole?.companyId
+  );
+
+  const handlePushToDeviceFields = () => {
+    const currentTemplate = generatedTemplate || template;
+    if (!currentTemplate?.sections) {
+      toast.error('No document content to push');
+      return;
+    }
+    const effectiveProductId = productId || selectedProductId;
+    if (!effectiveProductId) {
+      toast.error('No product selected. Push to Device Fields requires a product-scoped document.');
+      return;
+    }
+    const extractions = extractFieldsFromSections(currentTemplate.sections);
+    if (extractions.length === 0) {
+      toast.info('No field values found in the document to push');
+      return;
+    }
+    createSuggestions.mutate(
+      extractions.map(e => ({
+        field_key: e.fieldKey,
+        field_label: e.fieldLabel,
+        suggested_value: e.suggestedValue,
+      }))
+    );
+  };
+
   const decodedCompanyName = urlCompanyName ? decodeURIComponent(urlCompanyName) : null;
   const displayCompanyName = decodedCompanyName || activeCompanyRole?.companyName || 'Company';
 
@@ -173,8 +209,8 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
 
         if (result.success && result.data) {
           const defaultDocControl = {
-            sopNumber: result.data.name?.match(/SOP-\d{3}/)?.[0] || '',
-            documentTitle: result.data.name || '',
+            sopNumber: (result.data as any).document_number || result.data.name?.match(/^[A-Z]{2,6}-\d{3}/)?.[0] || '',
+            documentTitle: (result.data.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, ''),
             version: 'v1.0',
             effectiveDate: new Date(),
             documentOwner: '',
@@ -278,8 +314,8 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
           type: resolvedType,
           sections,
         documentControl: {
-            sopNumber: docName?.match(/SOP-\d{3}/)?.[0] || '',
-            documentTitle: docName || '',
+            sopNumber: docName?.match(/^[A-Z]{2,6}-\d{3}/)?.[0] || '',
+            documentTitle: (docName || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, ''),
             version: 'v1.0',
             status: 'Draft',
             effectiveDate: new Date(),
@@ -300,6 +336,23 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
 
   // Note: Removed auto-trigger to prevent automatic saving to database when template is selected
   // Documents should only be saved when user explicitly clicks "Save Draft"
+
+  // Sync documentNumber changes into generatedTemplate.documentControl reactively
+  React.useEffect(() => {
+    if (!documentNumber || !generatedTemplate?.documentControl) return;
+    const dc = generatedTemplate.documentControl;
+    if (dc.sopNumber !== documentNumber) {
+      const cleanTitle = (dc.documentTitle || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '');
+      setGeneratedTemplate(prev => prev ? {
+        ...prev,
+        documentControl: {
+          ...prev.documentControl!,
+          sopNumber: documentNumber,
+          documentTitle: cleanTitle,
+        }
+      } : prev);
+    }
+  }, [documentNumber]);
 
   // Only show loading if we're in locked mode and actually loading
   if (isLocked && isLoading) {
@@ -618,8 +671,8 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
   const handleEditDocument = (document: DocumentStudioData) => {
     // Convert to template format and load in stepper
     const defaultDocControl = {
-      sopNumber: document.name?.match(/SOP-\d{3}/)?.[0] || '',
-      documentTitle: document.name || '',
+      sopNumber: (document as any).document_number || document.name?.match(/^[A-Z]{2,6}-\d{3}/)?.[0] || '',
+      documentTitle: (document.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, ''),
       version: 'v1.0',
       effectiveDate: new Date(),
       documentOwner: '',
@@ -1090,6 +1143,10 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
               ciCompanyId={activeCompanyRole?.companyId}
               productId={productId || undefined}
               showCIProperties={isEditingExistingDocument}
+              onIsRecordChange={setIsRecord}
+              onRecordIdChange={setRecordId}
+              onNextReviewDateChange={setNextReviewDate}
+              onDocumentNumberChange={setDocumentNumber}
               controlPanelProps={{
                 productContext: template?.productContext,
                 documentType: template?.type,
@@ -1107,7 +1164,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
                 onRoleMappingsUpdated: handleRoleMappingsUpdated,
                 onContentEnhancement: handleContentEnhancement,
                 disabled,
-                onDocumentControlChange: handleDocumentControlChange,
+                
                 onViewReferenceDocument: (url, fileName) => setViewingRefDoc({ url, fileName }),
               }}
             />
@@ -1182,6 +1239,11 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
                         selectedProductId={selectedProductId}
                         onDocumentControlChange={handleDocumentControlChange}
                         companyLogoUrl={companyLogoUrl}
+                        onPushToDeviceFields={handlePushToDeviceFields}
+                        isRecord={isRecord}
+                        recordId={recordId || undefined}
+                        nextReviewDate={nextReviewDate || undefined}
+                        documentNumber={documentNumber || undefined}
                       />
                     ) : (
                       <div className="flex items-center justify-center h-full text-muted-foreground">

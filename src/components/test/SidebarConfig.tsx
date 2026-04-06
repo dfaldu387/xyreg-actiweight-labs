@@ -21,6 +21,7 @@ import {
   CheckSquare,
   Lightbulb,
   Briefcase,
+  FileSearch,
   Target,
   MapPin,
   User,
@@ -288,6 +289,12 @@ export const defaultSidebarConfig: SidebarConfig = {
           icon: <Briefcase className="w-5 h-5" />,
           route: '/app/company/:companyName/marketplace-preview',
           companyAdminOnly: true
+        },
+        {
+          id: 'mc-review-panel',
+          name: 'Awaiting My Review',
+          icon: <FileSearch className="w-5 h-5" />,
+          route: '/app/company/:companyName/review'
         },
       ]
     },
@@ -869,6 +876,8 @@ export const getCurrentModuleFromRoute = (pathname: string): string | null => {
   // Check review routes first before checking /company/ routes to avoid conflicts
   if (pathname.includes('/profile')) return 'user-profile';
   if (pathname === '/app/review' || pathname.match(/\/app\/review\/?$/)) return 'review';
+  // /company/:name/review belongs to mission-control (Review Panel in MC L2)
+  if (pathname.match(/\/company\/[^/]+\/review/)) return 'mission-control';
   if (pathname.includes('/review')) return 'review';
 
   // Check company settings routes before general company routes to avoid conflicts

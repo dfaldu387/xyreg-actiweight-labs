@@ -31,21 +31,45 @@ const BORDER_COLORS: Record<string, string> = {
   purple: 'border-[#8B5CF6]',
 };
 
+/** Strip markdown for spoken output. */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/#{1,6}\s/g, '')           // headings
+    .replace(/\*\*(.*?)\*\*/g, '$1')    // bold
+    .replace(/\*(.*?)\*/g, '$1')        // italic
+    .replace(/`{1,3}[^`]*`{1,3}/g, '')  // code
+    .replace(/[>\-|[\]()]/g, '')        // markdown symbols
+    .replace(/\n{2,}/g, '... ')         // paragraph breaks → natural pauses
+    .replace(/\n/g, '. ')               // line breaks → sentence pauses
+    .replace(/\s{2,}/g, ' ')            // collapse whitespace
+    .trim();
+}
+
 /** Speak text using browser SpeechSynthesis (fallback). */
 function speakBrowser(text: string) {
   if (!('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
-  const stripped = text.replace(/[#*_`>\-|[\]()]/g, '').replace(/\n+/g, '. ');
+  const stripped = stripMarkdown(text);
   const utterance = new SpeechSynthesisUtterance(stripped);
-  utterance.rate = 1.05;
+  utterance.rate = 0.95;
   utterance.pitch = 1;
   window.speechSynthesis.speak(utterance);
 }
 
+/** Active audio element for cancellation. */
+let activeAudio: HTMLAudioElement | null = null;
+
 /** Speak text via ElevenLabs TTS edge function, falling back to browser. */
 async function speakElevenLabs(text: string) {
+  // Cancel any currently playing audio
+  if (activeAudio) {
+    activeAudio.pause();
+    activeAudio = null;
+  }
+  window.speechSynthesis?.cancel();
+
   try {
-    const stripped = text.replace(/[#*_`>\-|[\]()]/g, '').replace(/\n+/g, '. ').slice(0, 4000);
+    const stripped = stripMarkdown(text).slice(0, 4000);
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/advisory-tts`,
       {
@@ -58,15 +82,23 @@ async function speakElevenLabs(text: string) {
         body: JSON.stringify({ text: stripped, companyId: CompanyContextService.get()?.companyId }),
       }
     );
+    console.log('[TTS] Response status:', response.status);
+    console.log('[TTS] Response content-type:', response.headers.get('content-type'));
     if (!response.ok) throw new Error(`TTS failed: ${response.status}`);
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('audio')) {
       const blob = await response.blob();
+      console.log('[TTS] Got ElevenLabs audio, size:', blob.size, 'bytes');
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      audio.preload = 'auto';
+      activeAudio = audio;
+      audio.addEventListener('ended', () => { activeAudio = null; URL.revokeObjectURL(url); });
       await audio.play();
+      console.log('[TTS] Playing ElevenLabs audio');
     } else {
-      // Server returned JSON fallback signal — use browser TTS
+      const data = await response.json();
+      console.log('[TTS] FALLBACK to browser TTS, reason:', data?.reason || 'unknown');
       speakBrowser(text);
     }
   } catch (err) {
@@ -171,12 +203,13 @@ export function FloatingAdvisoryBot() {
         return;
       }
       const content = data?.content || 'I apologize, I was unable to generate a response.';
-      setMessages(prev => [...prev, { role: 'assistant', content }]);
 
-      // Voice output
+      // Fire TTS immediately (don't await) so voice starts while text renders
       if (voiceEnabled) {
         speakElevenLabs(content);
       }
+
+      setMessages(prev => [...prev, { role: 'assistant', content }]);
     } catch (err) {
       console.error('Advisory chat error:', err);
       toast({ title: 'Error', description: 'Failed to get a response.', variant: 'destructive' });

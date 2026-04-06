@@ -49,36 +49,36 @@ export const DEFAULT_QMS_NODE_SOPS: Array<{
   defaultDescription?: string;
 }> = [
   // Rung 1 - Company Foundation
-  { nodeId: 'mgmt-resp', sopName: 'SOP-001 Quality Management System', sopType: 'SOP', defaultDescription: 'QMS framework, quality policy, and process interactions' },
-  { nodeId: 'resource-strategy', sopName: 'SOP-006 Training and Competence', sopType: 'SOP', defaultDescription: 'Training identification, delivery, and effectiveness evaluation' },
-  { nodeId: 'infra-training', sopName: 'SOP-018 Control of Monitoring and Measuring Equipment', sopType: 'SOP', defaultDescription: 'Calibration and maintenance procedures' },
+  { nodeId: 'mgmt-resp', sopName: 'Quality Management System', sopType: 'SOP', defaultDescription: 'QMS framework, quality policy, and process interactions' },
+  { nodeId: 'resource-strategy', sopName: 'Training and Competence', sopType: 'SOP', defaultDescription: 'Training identification, delivery, and effectiveness evaluation' },
+  { nodeId: 'infra-training', sopName: 'Control of Monitoring and Measuring Equipment', sopType: 'SOP', defaultDescription: 'Calibration and maintenance procedures' },
   
   // Rung 2 - Device Upstream
-  { nodeId: 'reg-planning', sopName: 'SOP-034 Regulatory Submission Management', sopType: 'SOP', defaultDescription: 'Regulatory submission planning and lifecycle management' },
-  { nodeId: 'design-inputs', sopName: 'SOP-008 Design and Development', sopType: 'SOP', defaultDescription: 'Design planning, inputs, outputs, reviews, and transfer' },
-  { nodeId: 'supplier-selection', sopName: 'SOP-009 Supplier Management', sopType: 'SOP', defaultDescription: 'Supplier evaluation, qualification, and monitoring' },
+  { nodeId: 'reg-planning', sopName: 'Regulatory Submission Management', sopType: 'SOP', defaultDescription: 'Regulatory submission planning and lifecycle management' },
+  { nodeId: 'design-inputs', sopName: 'Design and Development', sopType: 'SOP', defaultDescription: 'Design planning, inputs, outputs, reviews, and transfer' },
+  { nodeId: 'supplier-selection', sopName: 'Supplier Management', sopType: 'SOP', defaultDescription: 'Supplier evaluation, qualification, and monitoring' },
   
   // Rung 3 - Device Execution
-  { nodeId: 'risk-mgmt', sopName: 'SOP-007 Risk Management', sopType: 'SOP', defaultDescription: 'Risk management per ISO 14971' },
-  { nodeId: 'design-dev', sopName: 'SOP-008 Design and Development', sopType: 'SOP', defaultDescription: 'Design output, review, and transfer activities' },
-  { nodeId: 'supplier-controls', sopName: 'SOP-009 Supplier Management', sopType: 'SOP', defaultDescription: 'Purchasing information, verification, and supplier monitoring' },
+  { nodeId: 'risk-mgmt', sopName: 'Risk Management', sopType: 'SOP', defaultDescription: 'Risk management per ISO 14971' },
+  { nodeId: 'design-dev', sopName: 'Design and Development', sopType: 'SOP', defaultDescription: 'Design output, review, and transfer activities' },
+  { nodeId: 'supplier-controls', sopName: 'Supplier Management', sopType: 'SOP', defaultDescription: 'Purchasing information, verification, and supplier monitoring' },
   
   // Rung 4 - Device Verification
-  { nodeId: 'vv-testing', sopName: 'SOP-015 Clinical Evaluation', sopType: 'SOP', defaultDescription: 'Clinical evaluation, literature review, and CER generation' },
-  { nodeId: 'process-validation', sopName: 'SOP-030 Process Validation', sopType: 'SOP', defaultDescription: 'IQ/OQ/PQ protocols and process capability assessment' },
-  { nodeId: 'production-monitoring', sopName: 'SOP-010 Production and Process Controls', sopType: 'SOP', defaultDescription: 'Production planning, controls, and monitoring' },
+  { nodeId: 'vv-testing', sopName: 'Clinical Evaluation', sopType: 'SOP', defaultDescription: 'Clinical evaluation, literature review, and CER generation' },
+  { nodeId: 'process-validation', sopName: 'Process Validation', sopType: 'SOP', defaultDescription: 'IQ/OQ/PQ protocols and process capability assessment' },
+  { nodeId: 'production-monitoring', sopName: 'Production and Process Controls', sopType: 'SOP', defaultDescription: 'Production planning, controls, and monitoring' },
   
   // Rung 5 - Feedback
-  { nodeId: 'pms', sopName: 'SOP-013 Complaint Handling', sopType: 'SOP', defaultDescription: 'Complaint intake, investigation, and regulatory reporting' },
-  { nodeId: 'capa-loop', sopName: 'SOP-012 Corrective and Preventive Action (CAPA)', sopType: 'SOP', defaultDescription: 'CAPA process including root cause analysis and verification' },
-  { nodeId: 'device-pms', sopName: 'SOP-014 Post-Market Surveillance (PMS)', sopType: 'SOP', defaultDescription: 'PMS activities, trend analysis, and PSUR generation' },
-  { nodeId: 'device-capa', sopName: 'SOP-012 Corrective and Preventive Action (CAPA)', sopType: 'SOP', defaultDescription: 'Product-specific CAPA procedures' },
+  { nodeId: 'pms', sopName: 'Complaint Handling', sopType: 'SOP', defaultDescription: 'Complaint intake, investigation, and regulatory reporting' },
+  { nodeId: 'capa-loop', sopName: 'Corrective and Preventive Action (CAPA)', sopType: 'SOP', defaultDescription: 'CAPA process including root cause analysis and verification' },
+  { nodeId: 'device-pms', sopName: 'Post-Market Surveillance (PMS)', sopType: 'SOP', defaultDescription: 'PMS activities, trend analysis, and PSUR generation' },
+  { nodeId: 'device-capa', sopName: 'Corrective and Preventive Action (CAPA)', sopType: 'SOP', defaultDescription: 'Product-specific CAPA procedures' },
   
   // Additional key nodes
-  { nodeId: 'doc-control', sopName: 'SOP-002 Document Control', sopType: 'SOP', defaultDescription: 'Document creation, review, approval, and distribution' },
-  { nodeId: 'mgmt-review', sopName: 'SOP-004 Management Review', sopType: 'SOP', defaultDescription: 'Management review process and action tracking' },
-  { nodeId: 'internal-audit', sopName: 'SOP-005 Internal Audits', sopType: 'SOP', defaultDescription: 'Internal audit program, scheduling, and CAPA linkage' },
-  { nodeId: 'vigilance', sopName: 'SOP-022 Vigilance and Field Safety', sopType: 'SOP', defaultDescription: 'Vigilance reporting and field safety corrective actions' },
+  { nodeId: 'doc-control', sopName: 'Document Control', sopType: 'SOP', defaultDescription: 'Document creation, review, approval, and distribution' },
+  { nodeId: 'mgmt-review', sopName: 'Management Review', sopType: 'SOP', defaultDescription: 'Management review process and action tracking' },
+  { nodeId: 'internal-audit', sopName: 'Internal Audits', sopType: 'SOP', defaultDescription: 'Internal audit program, scheduling, and CAPA linkage' },
+  { nodeId: 'vigilance', sopName: 'Vigilance and Field Safety', sopType: 'SOP', defaultDescription: 'Vigilance reporting and field safety corrective actions' },
 ];
 
 export class QmsNodeProcessService {

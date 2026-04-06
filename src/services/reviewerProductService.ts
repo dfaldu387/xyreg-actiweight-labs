@@ -32,7 +32,7 @@ export async function getReviewerAssignedProducts(
     const { data: documents, error: documentsError } = await supabase
       .from('phase_assigned_document_template')
       .select('product_id, company_id')
-      .overlaps('reviewer_group_ids', reviewerGroupIds)
+      .or(`reviewer_group_ids.ov.{${reviewerGroupIds.join(',')}},reviewer_user_ids.cs.{${userId}}`)
       .not('product_id', 'is', null);
     console.log("documents", documents);
     if (documentsError) {

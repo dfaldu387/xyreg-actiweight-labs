@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import { CreateDocFromGapDialog, type GapContext } from './CreateDocFromGapDialog';
+import { autoLinkToTechnicalFile } from '@/utils/technicalFileAutoLink';
 
 interface ClauseEvidencePanelProps {
   itemId: string;
@@ -125,6 +126,10 @@ export function ClauseEvidencePanel({ itemId, productId, companyId, gapContext, 
           });
         if (error) throw error;
         toast.success('Document linked');
+        // Auto-link to Technical File (best-effort)
+        autoLinkToTechnicalFile(itemId, docId, productId).then(() =>
+          queryClient.invalidateQueries({ queryKey: ['technical-file-doc-links'] })
+        );
       }
       await queryClient.invalidateQueries({ queryKey: ['clause-evidence-doc-links', itemId] });
       await queryClient.invalidateQueries({ queryKey: ['clause-evidence-linked-docs', itemId] });
@@ -382,6 +387,10 @@ export function ClauseEvidencePanel({ itemId, productId, companyId, gapContext, 
               });
               await queryClient.invalidateQueries({ queryKey: ['clause-evidence-doc-links', itemId] });
               await queryClient.invalidateQueries({ queryKey: ['clause-evidence-linked-docs', itemId] });
+              // Auto-link to Technical File (best-effort)
+              autoLinkToTechnicalFile(itemId, docId, productId).then(() =>
+                queryClient.invalidateQueries({ queryKey: ['technical-file-doc-links'] })
+              );
             } catch (e) {
               console.error('Auto-link failed:', e);
             }

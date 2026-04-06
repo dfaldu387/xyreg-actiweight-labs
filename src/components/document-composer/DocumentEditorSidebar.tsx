@@ -15,6 +15,12 @@ interface DocumentEditorSidebarProps {
   productId?: string;
   showCIProperties?: boolean;
 
+  // Expose is_record, record_id, and next_review_date state to parent
+  onIsRecordChange?: (isRecord: boolean) => void;
+  onRecordIdChange?: (recordId: string | null) => void;
+  onNextReviewDateChange?: (nextReviewDate: string | null) => void;
+  onDocumentNumberChange?: (documentNumber: string | null) => void;
+
   // All ControlPanel props except reference doc ones (managed internally)
   controlPanelProps: Omit<ControlPanelProps, 'selectedReferenceIds' | 'onReferenceSelectionChange'>;
 }
@@ -26,6 +32,10 @@ export function DocumentEditorSidebar({
   ciCompanyId,
   productId,
   showCIProperties = true,
+  onIsRecordChange,
+  onRecordIdChange,
+  onNextReviewDateChange,
+  onDocumentNumberChange,
   controlPanelProps,
 }: DocumentEditorSidebarProps) {
   const { metadata: ciMetadata, updateField: updateCIField } = useCIDocumentMetadata(
@@ -41,6 +51,34 @@ export function DocumentEditorSidebar({
       setSelectedReferenceDocIds(ciMetadata.reference_document_ids);
     }
   }, [ciMetadata?.reference_document_ids]);
+
+  // Notify parent of is_record changes
+  useEffect(() => {
+    if (ciMetadata && onIsRecordChange) {
+      onIsRecordChange(ciMetadata.is_record ?? false);
+    }
+  }, [ciMetadata?.is_record, onIsRecordChange]);
+
+  // Notify parent of record_id changes
+  useEffect(() => {
+    if (ciMetadata && onRecordIdChange) {
+      onRecordIdChange(ciMetadata.record_id ?? null);
+    }
+  }, [ciMetadata?.record_id, onRecordIdChange]);
+
+  // Notify parent of next_review_date changes
+  useEffect(() => {
+    if (ciMetadata && onNextReviewDateChange) {
+      onNextReviewDateChange(ciMetadata.next_review_date ?? null);
+    }
+  }, [ciMetadata?.next_review_date, onNextReviewDateChange]);
+
+  // Notify parent of document_number changes
+  useEffect(() => {
+    if (ciMetadata && onDocumentNumberChange) {
+      onDocumentNumberChange(ciMetadata.document_number ?? null);
+    }
+  }, [ciMetadata?.document_number, onDocumentNumberChange]);
 
   return (
     <>
@@ -71,6 +109,16 @@ export function DocumentEditorSidebar({
               sectionId={ciMetadata.section_ids?.[0] || undefined}
               authorsIds={ciMetadata.authors_ids || []}
               referenceDocumentIds={ciMetadata.reference_document_ids || []}
+              version={ciMetadata.version || undefined}
+              tags={ciMetadata.tags || []}
+              isRecord={ciMetadata.is_record ?? undefined}
+              date={ciMetadata.date || undefined}
+              isCurrentEffectiveVersion={ciMetadata.is_current_effective_version ?? undefined}
+              needTemplateUpdate={ciMetadata.need_template_update ?? undefined}
+              reviewerGroupIds={ciMetadata.reviewer_group_ids || []}
+              recordId={ciMetadata.record_id || undefined}
+              nextReviewDate={ciMetadata.next_review_date || undefined}
+              documentNumber={ciMetadata.document_number || undefined}
               onFieldChange={updateCIField}
               disabled={controlPanelProps.disabled}
             />

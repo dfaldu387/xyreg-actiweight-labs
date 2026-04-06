@@ -33,6 +33,7 @@ interface ProductPageHeaderProps {
   marketStatus?: any;
   displayNameOverride?: string;
   onCreateDocument?: () => void;
+  documentStatus?: 'none' | 'draft' | 'approved';
 }
 export function ProductPageHeader({
   product,
@@ -41,7 +42,8 @@ export function ProductPageHeader({
   isRefreshing = false,
   onSuggestionsGenerated,
   displayNameOverride,
-  onCreateDocument
+  onCreateDocument,
+  documentStatus
 }: ProductPageHeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -313,7 +315,7 @@ export function ProductPageHeader({
   </>;
   return (
     <>
-      <ConsistentPageHeader breadcrumbs={breadcrumbs} title={title} subtitle={subtitle} actions={headerActions} onCreateDocument={onCreateDocument} />
+      <ConsistentPageHeader breadcrumbs={breadcrumbs} title={title} subtitle={subtitle} actions={headerActions} onCreateDocument={onCreateDocument} documentStatus={documentStatus} />
 
       {/* Variant Indicator Banner */}
       {/* {isVariant && mainProductId && (

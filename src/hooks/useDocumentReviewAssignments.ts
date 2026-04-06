@@ -6,7 +6,8 @@ export interface DocumentReviewAssignment {
   id: string;
   company_id: string;
   document_id: string;
-  reviewer_group_id: string;
+  reviewer_group_id: string | null;
+  reviewer_user_id?: string | null;
   assigned_by?: string;
   assigned_at: string;
   due_date?: string;
@@ -98,11 +99,18 @@ export function useDocumentReviewAssignments(documentId?: string) {
         updateData.completed_at = new Date().toISOString();
       }
 
-      const { error: updateError } = await supabase
+      let query = supabase
         .from('document_review_assignments')
         .update(updateData)
-        .eq('reviewer_group_id', reviewerGroupId)
         .eq('id', assignmentId);
+
+      // For group-based assignments, also filter by group ID
+      // For individual assignments (no group), skip the group filter
+      if (reviewerGroupId) {
+        query = query.eq('reviewer_group_id', reviewerGroupId);
+      }
+
+      const { error: updateError } = await query;
 
       if (updateError) throw updateError;
 

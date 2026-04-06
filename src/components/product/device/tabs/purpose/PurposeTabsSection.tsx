@@ -15,9 +15,7 @@ import { DeviceCharacteristics } from '@/types/client.d';
 import { useProductDefinition } from '@/hooks/useProductDefinition';
 import { InheritanceIndicator } from '@/components/product/definition/InheritanceIndicator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Info, Users, FileEdit } from 'lucide-react';
-import { SavePurposeAsDocCIDialog } from './SavePurposeAsDocCIDialog';
-import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { Info, Users } from 'lucide-react';
 import { InvestorVisibleIcon } from '@/components/ui/investor-visible-badge';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useFieldScopeState } from '@/hooks/useFieldScopeState';
@@ -30,6 +28,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Json } from '@/integrations/supabase/types';
 import { Button } from '@/components/ui/button';
 import { InheritableField } from '@/hooks/useVariantInheritance';
+import { ProductFieldSuggestion } from '@/hooks/useProductFieldSuggestions';
 
 interface IntendedPurposeData {
   clinicalPurpose?: string;
@@ -82,6 +81,9 @@ interface PurposeTabsSectionProps {
   storageSterilityHandling?: StorageSterilityHandlingData;
   deviceCharacteristics?: DeviceCharacteristics;
   onStorageSterilityHandlingChange?: (data: StorageSterilityHandlingData) => void;
+  fieldSuggestions?: ProductFieldSuggestion[];
+  onAcceptFieldSuggestion?: (suggestion: ProductFieldSuggestion, newValue: string) => void;
+  onRejectFieldSuggestion?: (suggestionId: string) => void;
 }
 
 export function PurposeTabsSection({
@@ -110,6 +112,9 @@ export function PurposeTabsSection({
   storageSterilityHandling,
   deviceCharacteristics,
   onStorageSterilityHandlingChange,
+  fieldSuggestions = [],
+  onAcceptFieldSuggestion,
+  onRejectFieldSuggestion,
 }: PurposeTabsSectionProps) {
   const { activeCompanyRole } = useCompanyRole();
   const { lang } = useTranslation();
@@ -118,8 +123,7 @@ export function PurposeTabsSection({
   const [aiLoadingStates, setAiLoadingStates] = useState<Set<string>>(new Set());
   const [activeAiButton, setActiveAiButton] = useState<string | null>(null);
   const [familyEditorOpen, setFamilyEditorOpen] = useState(false);
-  const [showSavePurposeDocDialog, setShowSavePurposeDocDialog] = useState(false);
-  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
+  // Legacy purpose-only doc dialog removed — Create Document handled at page level
 
   // Fetch product definition to check for inheritance
   const { data: definition } = useProductDefinition(productId);
@@ -178,7 +182,6 @@ export function PurposeTabsSection({
 
   // Wrap fieldExclusion to propagate values when scope changes
   const fieldExclusionWithPropagation = useMemo(() => {
-    if (!belongsToFamily) return undefined;
     return {
       ...fieldExclusion,
       // Override getExclusionScope to return live computed scope
@@ -417,6 +420,9 @@ export function PurposeTabsSection({
                 familyProductIds={familyProductIds}
                 familyProducts={purposeFamilyProducts}
                 onScopeChangeWithPropagation={handleScopeChangeWithPropagation}
+                fieldSuggestions={fieldSuggestions}
+                onAcceptFieldSuggestion={onAcceptFieldSuggestion}
+                onRejectFieldSuggestion={onRejectFieldSuggestion}
               />
           </TabsContent>
 
@@ -452,6 +458,9 @@ export function PurposeTabsSection({
                 familyProductIds={familyProductIds}
                 familyProducts={purposeFamilyProducts}
                 onScopeChangeWithPropagation={handleScopeChangeWithPropagation}
+                fieldSuggestions={fieldSuggestions}
+                onAcceptFieldSuggestion={onAcceptFieldSuggestion}
+                onRejectFieldSuggestion={onRejectFieldSuggestion}
               />
           </TabsContent>
 
@@ -544,34 +553,7 @@ export function PurposeTabsSection({
       />
     )}
 
-    {productId && companyId && (
-      <>
-        <SavePurposeAsDocCIDialog
-          open={showSavePurposeDocDialog}
-          onOpenChange={setShowSavePurposeDocDialog}
-          productId={productId}
-          productName={productName || 'Product'}
-          companyId={companyId}
-          companyName={activeCompanyRole?.companyName || ''}
-          intendedPurposeData={intendedPurposeData}
-          contraindications={contraindications}
-          intendedUsers={intendedUsers}
-          clinicalBenefits={clinicalBenefits}
-          userInstructions={userInstructions}
-          storageSterilityHandling={storageSterilityHandling}
-          onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
-        />
-        <DocumentDraftDrawer
-          open={!!draftDrawerDoc}
-          onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
-          documentId={draftDrawerDoc?.id || ''}
-          documentName={draftDrawerDoc?.name || ''}
-          documentType={draftDrawerDoc?.type || ''}
-          productId={productId}
-          companyId={companyId}
-        />
-      </>
-    )}
+    {/* Create Document is now handled at page level via ProductDeviceInformationPage */}
     </>
   );
 }

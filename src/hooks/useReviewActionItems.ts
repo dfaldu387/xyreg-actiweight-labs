@@ -54,7 +54,7 @@ export function useReviewActionItems(companyId?: string) {
           .eq("company_id", companyId)
           .eq("is_excluded", false)
           .in("status", ALL_STATUSES)
-          .overlaps("reviewer_group_ids", groupIds);
+          .or(`reviewer_group_ids.ov.{${groupIds.join(',')}},reviewer_user_ids.cs.{${user.id}}`);
 
         reviewerDocs = (phaseDocs || []).map((doc) => {
           const matchedGroup = (doc.reviewer_group_ids || []).find((gid: string) => groupIds.includes(gid));

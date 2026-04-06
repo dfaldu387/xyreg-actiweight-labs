@@ -10,6 +10,9 @@ import { FieldSuggestion } from "@/services/productDefinitionAIService";
 import { InvestorShareFlowWrapper } from "@/components/funnel/InvestorShareFlowWrapper";
 import { DocumentDraftDrawer } from "@/components/product/documents/DocumentDraftDrawer";
 import { DocumentStudioPersistenceService } from "@/services/documentStudioPersistenceService";
+import { buildFullDeviceInfoSections } from "@/utils/deviceInfoDocumentBuilder";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function ProductDeviceInformationPage() {
   const { productId } = useParams<{ productId: string }>();
@@ -26,6 +29,25 @@ export default function ProductDeviceInformationPage() {
 
   // Validate user has access to product's company (auto-switches context if needed)
   const { isValidating } = useProductCompanyGuard(product, isLoadingProduct);
+
+  // Fetch document status for the Create Document icon color
+  const { data: docStatus } = useQuery({
+    queryKey: ['device-doc-status', productId, product?.company_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('phase_assigned_document_template')
+        .select('status')
+        .eq('document_reference', `DEVICE-DEF-FULL-${productId}`)
+        .eq('company_id', product!.company_id!)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (!data || data.length === 0) return 'none' as const;
+      const s = (data[0].status || '').toLowerCase();
+      if (s === 'approved') return 'approved' as const;
+      return 'draft' as const;
+    },
+    enabled: !!productId && !!product?.company_id,
+  });
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -54,28 +76,67 @@ export default function ProductDeviceInformationPage() {
     if (!product || !productId || isCreatingDoc) return;
     setIsCreatingDoc(true);
     try {
-      const templateIdKey = `DEVICE-DEF-${productId}`;
-      const docName = `Device Information — ${product.name || 'Device'}`;
-
-      // Create or update studio template
-      const existing = await DocumentStudioPersistenceService.loadTemplate(
-        product.company_id!, templateIdKey, productId
+      const templateIdKey = `DEVICE-DEF-FULL-${productId}`;
+      const docName = `Device Description & Specification — ${product.name || 'Device'}`;
+      const ciLookup = await DocumentStudioPersistenceService.getDocumentCIsByReference(
+        product.company_id!,
+        templateIdKey,
+        productId
       );
 
-      const sections = [
-        {
-          id: 'device-definition-content',
-          title: 'Device Information',
-          content: [{ id: 'device-def-1', type: 'paragraph', content: '' }],
-          order: 0,
-        },
-      ];
+      if (!ciLookup.success) {
+        throw new Error(ciLookup.error || 'Failed to check existing document records');
+      }
+
+      const ciIds = (ciLookup.data || []).map((ci) => ci.id);
+      const draftLookup = await DocumentStudioPersistenceService.loadBestTemplateForTemplateIds(
+        product.company_id!,
+        [...ciIds, templateIdKey],
+        productId
+      );
+
+      if (!draftLookup.success) {
+        throw new Error(draftLookup.error || 'Failed to load existing draft');
+      }
+
+      const selectedDraft = draftLookup.data;
+      const selectedDraftHasSavedContent = DocumentStudioPersistenceService.hasMeaningfulSavedContent(selectedDraft);
+      const selectedCIId = ciIds.includes(selectedDraft?.template_id || '')
+        ? selectedDraft?.template_id
+        : ciIds[0];
+      const reusableDraftId = selectedDraft?.id;
+
+      if (selectedDraft && selectedDraftHasSavedContent) {
+        if (selectedCIId && selectedDraft.template_id !== selectedCIId) {
+          await DocumentStudioPersistenceService.saveTemplate({
+            ...selectedDraft,
+            id: selectedDraft.id,
+            template_id: selectedCIId,
+          });
+        }
+
+        setDraftDrawerDoc({ id: selectedCIId || selectedDraft.template_id, name: docName, type: 'Technical' });
+        return;
+      }
+
+      if (selectedCIId) {
+        const savedDraft = await DocumentStudioPersistenceService.loadTemplate(
+          product.company_id!, selectedCIId, productId
+        );
+        if (DocumentStudioPersistenceService.hasMeaningfulSavedContent(savedDraft.data)) {
+          setDraftDrawerDoc({ id: selectedCIId, name: docName, type: 'Technical' });
+          return;
+        }
+      }
+
+      // 3. No meaningful saved draft — build fresh sections from device data
+      const sections = buildFullDeviceInfoSections(product);
 
       const studioData = {
-        ...(existing.data?.id ? { id: existing.data.id } : {}),
+        id: reusableDraftId,
         company_id: product.company_id!,
         product_id: productId,
-        template_id: templateIdKey,
+        template_id: selectedCIId || selectedDraft?.template_id || templateIdKey,
         name: docName,
         type: 'Technical',
         sections,
@@ -99,7 +160,14 @@ export default function ProductDeviceInformationPage() {
         throw new Error(syncResult.error || 'Failed to create Document CI record');
       }
 
-      // Open the drawer immediately
+      // Re-save template with CI record ID so the drawer lookup finds it
+      await DocumentStudioPersistenceService.saveTemplate({
+        ...studioData,
+        id: saveResult.id,
+        template_id: syncResult.id!,
+      });
+
+      // Open the drawer
       setDraftDrawerDoc({
         id: syncResult.id!,
         name: docName,
@@ -182,6 +250,7 @@ export default function ProductDeviceInformationPage() {
             onSuggestionsGenerated={handleSuggestionsGenerated}
             marketStatus={marketStatus}
             onCreateDocument={handleCreateDocument}
+            documentStatus={docStatus || 'none'}
           />
 
           <DocumentDraftDrawer

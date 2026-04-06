@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Download, Share, Save, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal } from 'lucide-react';
+import { FileText, Download, Share, Save, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -46,9 +46,14 @@ interface LiveEditorProps {
   uploadedFileInfo?: { filePath: string; fileName: string; fileSize?: number } | null;
   onDocumentControlChange?: (field: string, value: string) => void;
   companyLogoUrl?: string;
+  onPushToDeviceFields?: () => void;
+  isRecord?: boolean;
+  recordId?: string;
+  nextReviewDate?: string;
+  documentNumber?: string;
 }
 
-export function LiveEditor({ template, className = '', onContentUpdate, companyId, onDocumentSaved, isEditingExistingDocument = false, editingDocumentId = null, onAIGenerate, onAddAutoNote, currentNotes = [], isUploadedDocument = false, uploadedDocumentSaved = false, onUploadedDocumentSaved, disabled = false, selectedScope = 'company', selectedProductId, uploadedFileInfo, onDocumentControlChange, companyLogoUrl }: LiveEditorProps) {
+export function LiveEditor({ template, className = '', onContentUpdate, companyId, onDocumentSaved, isEditingExistingDocument = false, editingDocumentId = null, onAIGenerate, onAddAutoNote, currentNotes = [], isUploadedDocument = false, uploadedDocumentSaved = false, onUploadedDocumentSaved, disabled = false, selectedScope = 'company', selectedProductId, uploadedFileInfo, onDocumentControlChange, companyLogoUrl, onPushToDeviceFields, isRecord = false, recordId, nextReviewDate, documentNumber }: LiveEditorProps) {
   const { activeCompanyRole } = useCompanyRole();
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [showSaveVersionDialog, setShowSaveVersionDialog] = useState(false);
@@ -81,8 +86,9 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
     };
 
     checkExistingDocument();
-    setEditedTitle(template?.name || '');
-  }, [template?.id, template?.name, activeCompanyRole?.companyId]);
+    const cleanName = (template?.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '');
+    setEditedTitle(cleanName);
+  }, [template?.id, template?.name, activeCompanyRole?.companyId, documentNumber]);
 
   const handleTitleSave = () => {
     if (editedTitle.trim() && editedTitle !== template?.name) {
@@ -92,7 +98,8 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   };
 
   const handleTitleCancel = () => {
-    setEditedTitle(template?.name || '');
+    const cleanName = (template?.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '');
+    setEditedTitle(cleanName);
     setIsEditingTitle(false);
   };
 
@@ -169,7 +176,7 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       toast.error('No document selected. Please save a draft first.');
       return;
     }
-    setShowSaveVersionDialog(true);
+    setTimeout(() => setShowSaveVersionDialog(true), 0);
   };
 
   const handleVersionSaved = () => {
@@ -186,7 +193,7 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       toast.error('No document selected. Please save a draft first.');
       return;
     }
-    setShowVersionModal(true);
+    setTimeout(() => setShowVersionModal(true), 0);
   };
 
   const handleVersionRestore = () => {
@@ -304,7 +311,9 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
     try {
       const { DocumentExportService } = await import('@/services/documentExportService');
       
-      const filename = `${template.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.docx`;
+      const cleanName = (template.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '');
+      const composedName = documentNumber ? `${documentNumber} ${cleanName}` : cleanName;
+      const filename = `${composedName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.docx`;
       
       await DocumentExportService.exportDocument(template, {
         format: 'docx',
@@ -368,7 +377,10 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                   onClick={() => setIsEditingTitle(true)}
                   title="Click to edit title"
                 >
-                  {template?.name || 'Untitled Document'}
+                  {(() => {
+                    const cleanName = (template?.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '');
+                    return cleanName || 'Untitled Document';
+                  })()}
                 </h1>
               )}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -387,7 +399,7 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                     onClick={() => setShowAutoFillDialog(true)}
                     className="border-blue-300 text-blue-600 hover:bg-blue-50 h-8 w-8"
                   >
-                    <Wand2 className="w-4 h-4" />
+                    <Sparkles className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>AI Auto-Fill</TooltipContent>
@@ -409,6 +421,23 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                 <TooltipContent>Export</TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            {!!onPushToDeviceFields && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={onPushToDeviceFields}
+                      className="border-green-300 text-green-600 hover:bg-green-50 h-8 w-8"
+                    >
+                      <ArrowUpFromLine className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Push to Device Fields</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm">
@@ -444,6 +473,10 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
             companyId={companyId}
             companyLogoUrl={companyLogoUrl}
             onFieldChange={onDocumentControlChange}
+            isRecord={isRecord}
+            recordId={recordId}
+            nextReviewDate={nextReviewDate}
+            documentNumber={documentNumber}
             className="mx-8 mt-8"
           />
 

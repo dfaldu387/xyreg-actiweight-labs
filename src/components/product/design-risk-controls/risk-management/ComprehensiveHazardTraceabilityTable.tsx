@@ -230,7 +230,7 @@ export function ComprehensiveHazardTraceabilityTable({
         ));
       },
     },
-    ...(belongsToFamily ? [scopeColumn] : []),
+    ...[scopeColumn],
   ];
 
   // Comprehensive view columns
@@ -337,7 +337,7 @@ export function ComprehensiveHazardTraceabilityTable({
         </div>
       )),
     },
-    ...(belongsToFamily ? [scopeColumn] : []),
+    ...[scopeColumn],
   ];
 
 

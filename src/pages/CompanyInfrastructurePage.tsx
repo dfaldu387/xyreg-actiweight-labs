@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { Building, Server, Wrench, ClipboardList, AlertTriangle, CheckCircle2, Clock, FolderOpen, Search, Plus, Shield, Pencil, Info, ArrowUpCircle, ArrowRight } from 'lucide-react';
 import { XyregValidationPanel } from '@/components/infrastructure/XyregValidationPanel';
 import { useCompanyId } from '@/hooks/useCompanyId';
@@ -190,8 +190,18 @@ export default function CompanyInfrastructurePage() {
   const { lang } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('facilities');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [validationPanelOpen, setValidationPanelOpen] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+
+  // Auto-open validation panel when returning from a test step
+  useEffect(() => {
+    if (searchParams.get('openValidation') === 'true') {
+      setValidationPanelOpen(true);
+      searchParams.delete('openValidation');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingAsset, setEditingAsset] = useState<InfrastructureAsset | null>(null);
 

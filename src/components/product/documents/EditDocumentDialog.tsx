@@ -44,6 +44,7 @@ import { DocumentCreationService } from "@/services/documentCreationService";
 import { SectionSelector } from "@/components/common/SectionSelector";
 import { useDocumentTypes } from "@/hooks/useDocumentTypes";
 import { AddDocumentTypeSheet } from "@/components/common/AddDocumentTypeSheet";
+import { useDocumentCategoryConfigs } from "@/hooks/useDocumentCategoryConfigs";
 import { useCompanyDateFormat } from "@/hooks/useCompanyDateFormat";
 import { ReferenceDocumentPicker } from "@/components/common/ReferenceDocumentPicker";
 import { useReferenceDocuments } from "@/hooks/useReferenceDocuments";
@@ -162,9 +163,59 @@ export function EditDocumentDialog({
   // Get dynamic document types
   const { documentTypes, isLoading: isLoadingDocTypes, refetch: refetchDocumentTypes } = useDocumentTypes(companyId);
   const [isAddDocumentTypeSheetOpen, setIsAddDocumentTypeSheetOpen] = useState(false);
+  
+  // Document category numbering
+  const { configs: categoryConfigs, isLoading: isLoadingCategories, getNextDocumentNumber, getUsedNumbers } = useDocumentCategoryConfigs(companyId);
+  const [documentNumber, setDocumentNumber] = useState(document?.document_number || '');
+  const [usedNumbersSet, setUsedNumbersSet] = useState<Set<string>>(new Set());
+  const [isLoadingUsedNumbers, setIsLoadingUsedNumbers] = useState(false);
   const { data: existingTags = [] } = useExistingTags(companyId);
 
-  // Get company date format
+  // Auto-detect document category and number from document name for existing docs
+  useEffect(() => {
+    if (documentNumber || !name || categoryConfigs.length === 0) return;
+    const knownPrefixes = categoryConfigs.map(c => c.prefix);
+    if (knownPrefixes.length === 0) return;
+    const prefixPattern = new RegExp(`^(${knownPrefixes.join('|')})-(\\d[\\d.-]*)`, 'i');
+    const match = name.match(prefixPattern);
+    if (match) {
+      const matchedPrefix = match[1].toUpperCase();
+      const fullId = `${matchedPrefix}-${match[2]}`;
+      const config = categoryConfigs.find(c => c.prefix.toUpperCase() === matchedPrefix);
+      if (config) {
+        setDocumentNumber(fullId);
+        if (!selectedDocumentType) {
+          setSelectedDocumentType(config.prefix);
+        }
+      }
+    }
+  }, [name, documentNumber, categoryConfigs, selectedDocumentType]);
+
+  // Fetch used numbers when category prefix changes
+  useEffect(() => {
+    if (!selectedDocumentType) return;
+    setIsLoadingUsedNumbers(true);
+    getUsedNumbers(selectedDocumentType).then(used => {
+      if (documentNumber) {
+        const ownMatch = documentNumber.match(new RegExp(`^${selectedDocumentType}-(\\d+)`));
+        if (ownMatch) used.delete(ownMatch[1]);
+      }
+      setUsedNumbersSet(used);
+      setIsLoadingUsedNumbers(false);
+    });
+  }, [selectedDocumentType, getUsedNumbers, documentNumber]);
+
+  // Strip prefix from name on load
+  useEffect(() => {
+    if (documentNumber && name) {
+      const stripped = name.replace(/^[A-Z]+-\d{3}\s+/, '');
+      if (stripped !== name) {
+        setName(stripped);
+      }
+    }
+  }, []);
+
+
   const { formatDate, dateFormat } = useCompanyDateFormat(companyId);
 
   // Handler for when a new document type is added
@@ -613,6 +664,7 @@ export function EditDocumentDialog({
         name: name.trim(),
         description: description.trim(),
         document_type: selectedDocumentType || null,
+        document_number: documentNumber || null,
         status: backendStatus,
         due_date: formattedDueDate,
         reviewers: document.reviewers || null,
@@ -1271,57 +1323,86 @@ export function EditDocumentDialog({
             })()}
           </FormControl>
 
-          {/* Document Type */}
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
-            <FormControl fullWidth disabled={isSubmitting || isLoadingDocTypes} sx={{ flex: 1 }}>
-              <InputLabel id="edit-document-type-select-label">{lang('document.documentType')}</InputLabel>
+          {/* Document Category */}
+          <FormControl fullWidth disabled={isSubmitting || isLoadingCategories}>
+            <InputLabel id="edit-document-category-select-label">Document Category</InputLabel>
+            <Select
+              labelId="edit-document-category-select-label"
+              value={selectedDocumentType}
+              label="Document Category"
+              onChange={async (e) => {
+                const prefix = e.target.value;
+                const config = categoryConfigs.find(c => c.prefix === prefix);
+                setSelectedDocumentType(prefix);
+                // Clear number when category changes
+                if (documentNumber) {
+                  const currentPrefix = documentNumber.split('-')[0];
+                  if (currentPrefix !== prefix) {
+                    setDocumentNumber('');
+                  }
+                }
+                if (config && !version) {
+                  setVersion(config.versionFormat === 'X.X' ? '1.0' : '1');
+                }
+              }}
+              MenuProps={{
+                disablePortal: false,
+                PaperProps: { style: { zIndex: 1400 } },
+              }}
+            >
+              {isLoadingCategories ? (
+                <MenuItem disabled>Loading categories...</MenuItem>
+              ) : categoryConfigs.length === 0 ? (
+                <MenuItem disabled>No categories configured</MenuItem>
+              ) : (
+                categoryConfigs.map(config => (
+                  <MenuItem key={config.categoryKey} value={config.prefix} title={config.categoryName}>
+                    <span className="font-mono font-medium">{config.prefix}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">{config.categoryName}</span>
+                  </MenuItem>
+                ))
+              )}
+            </Select>
+            {documentNumber && (
+              <FormHelperText sx={{ color: 'success.main', fontWeight: 600 }}>
+                Document ID: {documentNumber}
+              </FormHelperText>
+            )}
+          </FormControl>
+
+          {/* Document Number selector */}
+          {selectedDocumentType && (
+            <FormControl fullWidth disabled={isSubmitting || isLoadingUsedNumbers}>
+              <InputLabel id="edit-document-number-select-label">Document Number</InputLabel>
               <Select
-                labelId="edit-document-type-select-label"
-                value={selectedDocumentType}
-                label={lang('document.documentType')}
-                onChange={(e) => setSelectedDocumentType(e.target.value)}
+                labelId="edit-document-number-select-label"
+                value={documentNumber ? documentNumber.replace(`${selectedDocumentType}-`, '') : ''}
+                label="Document Number"
+                onChange={(e) => {
+                  const num = e.target.value;
+                  const fullId = `${selectedDocumentType}-${num}`;
+                  setDocumentNumber(fullId);
+                }}
                 MenuProps={{
                   disablePortal: false,
-                  PaperProps: {
-                    style: {
-                      zIndex: 1400,
-                    },
-                  },
+                  PaperProps: { style: { zIndex: 1400, maxHeight: 300 } },
                 }}
               >
-                {isLoadingDocTypes ? (
-                  <MenuItem disabled>{lang('document.loadingTypes')}</MenuItem>
-                ) : documentTypes.length === 0 ? (
-                  <MenuItem disabled>{lang('document.noTypesAvailable')}</MenuItem>
-                ) : (
-                  documentTypes.map(type => (
-                    <MenuItem key={type} value={type}>
-                      {type}
+                {Array.from({ length: 50 }, (_, i) => {
+                  const num = String(i + 1).padStart(3, '0');
+                  const isUsed = usedNumbersSet.has(num);
+                  return (
+                    <MenuItem key={num} value={num} disabled={isUsed}>
+                      <span style={isUsed ? { textDecoration: 'line-through', opacity: 0.5 } : {}}>
+                        {num}
+                      </span>
+                      {isUsed && <span className="ml-2 text-xs text-muted-foreground">(in use)</span>}
                     </MenuItem>
-                  ))
-                )}
+                  );
+                })}
               </Select>
             </FormControl>
-            <Tooltip title={lang('document.addNewDocumentType')}>
-              <IconButton
-                onClick={() => setIsAddDocumentTypeSheetOpen(true)}
-                disabled={isSubmitting || isLoadingDocTypes}
-                sx={{
-                  mt: 1,
-                  bgcolor: 'primary.main',
-                  color: 'white',
-                  '&:hover': {
-                    bgcolor: 'primary.dark',
-                  },
-                  '&:disabled': {
-                    bgcolor: 'action.disabledBackground',
-                  }
-                }}
-              >
-                <Add />
-              </IconButton>
-            </Tooltip>
-          </Box>
+          )}
 
           {/* Date */}
           <FormControl fullWidth disabled={isSubmitting}>
