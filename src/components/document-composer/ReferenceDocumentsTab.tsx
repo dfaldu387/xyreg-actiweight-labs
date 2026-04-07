@@ -29,6 +29,30 @@ const ACCEPTED_TYPES: Record<string, string[]> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
 };
 
+const MIME_LABELS: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'application/msword': 'Word',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word',
+  'application/vnd.ms-powerpoint': 'PowerPoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint',
+  'application/vnd.ms-excel': 'Excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel',
+  'text/plain': 'Text',
+  'text/csv': 'CSV',
+  'image/png': 'Image',
+  'image/jpeg': 'Image',
+  'image/gif': 'Image',
+};
+
+function getFriendlyType(mimeType: string | null, fileName?: string): string {
+  if (mimeType && MIME_LABELS[mimeType]) return MIME_LABELS[mimeType];
+  if (mimeType?.startsWith('image/')) return 'Image';
+  if (mimeType?.startsWith('text/')) return 'Text';
+  // Fallback to file extension
+  const ext = fileName?.split('.').pop()?.toUpperCase();
+  return ext || '—';
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return '—';
   if (bytes < 1024) return `${bytes} B`;
@@ -52,7 +76,7 @@ export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocument
   // Edit state
   const [editingDoc, setEditingDoc] = useState<ReferenceDocument | null>(null);
   const [editName, setEditName] = useState('');
-  const [editType, setEditType] = useState('');
+  
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editTagInput, setEditTagInput] = useState('');
 
@@ -116,7 +140,7 @@ export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocument
   const openEdit = (doc: ReferenceDocument) => {
     setEditingDoc(doc);
     setEditName(doc.file_name);
-    setEditType(doc.file_type || '');
+    
     setEditTags([...(doc.tags || [])]);
     setEditTagInput('');
   };
@@ -142,7 +166,6 @@ export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocument
       id: editingDoc.id,
       updates: {
         file_name: editName,
-        file_type: editType,
         tags: editTags,
       },
     });
@@ -225,18 +248,18 @@ export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocument
           <Table className="table-fixed w-full">
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Tags</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Size</TableHead>
-                <TableHead>Uploaded</TableHead>
+                <TableHead className="w-[35%]">Name</TableHead>
+                <TableHead className="w-[20%]">Tags</TableHead>
+                <TableHead className="w-[12%]">Type</TableHead>
+                <TableHead className="w-[8%]">Size</TableHead>
+                <TableHead className="w-[10%]">Uploaded</TableHead>
                 <TableHead className="w-[140px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedDocs.map(doc => (
                 <TableRow key={doc.id}>
-                  <TableCell className="font-medium max-w-[400px]">
+                  <TableCell className="font-medium">
                     <span className="block truncate" title={doc.file_name}>{doc.file_name}</span>
                   </TableCell>
                   <TableCell>
@@ -247,7 +270,7 @@ export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocument
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {doc.file_type || '—'}
+                    <span className="block truncate" title={doc.file_type || ''}>{getFriendlyType(doc.file_type, doc.file_name)}</span>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {formatFileSize(doc.file_size)}
@@ -400,7 +423,7 @@ export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocument
 
             <div className="space-y-2">
               <Label>Type</Label>
-              <Input value={editType} onChange={e => setEditType(e.target.value)} placeholder="e.g. application/pdf" />
+              <p className="text-sm text-muted-foreground px-3 py-2 bg-muted/50 rounded-md">{getFriendlyType(editingDoc?.file_type || null, editingDoc?.file_name)}</p>
             </div>
 
             <div className="space-y-2">

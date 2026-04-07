@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { TECHNICAL_FILE_GUIDED_SECTIONS } from '@/config/technicalFileSections';
+import { TECHNICAL_FILE_SECTIONS } from '@/types/designReview';
 import {
   FileText,
   Download,
@@ -37,14 +39,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DocumentStudioData } from '@/services/documentStudioPersistenceService';
 import { DocumentVersionService, DocumentVersion } from '@/services/documentVersionService';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useDocumentStudioFilters } from '@/hooks/useDocumentStudioFilters';
 import { EnhancedDocumentFilters } from '@/components/product/documents/EnhancedDocumentFilters';
-import { ReferenceDocumentsTab } from './ReferenceDocumentsTab';
-import { TemplatesSettings } from '@/components/settings/TemplatesSettings';
+
 
 interface DocumentPreviewProps {
   document: DocumentStudioData | null;
@@ -200,22 +200,35 @@ export function DocumentPreview({
     return null;
   };
 
+  /** Resolve a TF section_id to a human-readable label */
+  const resolveTfLabel = useCallback((sectionId: string): string => {
+    // Sub-step format: TF-0-a → look up guided sections
+    const subMatch = sectionId.match(/^(TF-\d+)-([a-z])$/i);
+    if (subMatch) {
+      const baseId = subMatch[1];
+      const letter = subMatch[2].toLowerCase();
+      const guided = TECHNICAL_FILE_GUIDED_SECTIONS.find(s => s.section === baseId);
+      if (guided) {
+        const sub = guided.subItems.find(si => si.letter.toLowerCase() === letter);
+        if (sub) return `${baseId}.${letter} — ${sub.description}`;
+      }
+      return sectionId;
+    }
+    // Section-level: TF-0 → use TECHNICAL_FILE_SECTIONS
+    const tfSection = TECHNICAL_FILE_SECTIONS.find(s => s.id === sectionId);
+    if (tfSection) return `${sectionId} — ${tfSection.label}`;
+    return sectionId;
+  }, []);
+
   if (showDocumentList) {
     return (
       <div className="flex-1 flex flex-col bg-background">
-        {/* Tabs Header */}
+        {/* Header */}
         <div className="p-4 border-b bg-background">
-          <Tabs value={activeListTab} onValueChange={setActiveListTab}>
-            <TabsList>
-              <TabsTrigger value="my-documents">{lang('draftStudio.myDocuments')}</TabsTrigger>
-              <TabsTrigger value="reference-documents">Reference Documents</TabsTrigger>
-              <TabsTrigger value="templates">Templates</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <h2 className="text-lg font-semibold text-foreground">{lang('draftStudio.myDocuments')}</h2>
         </div>
 
-        {activeListTab === 'my-documents' ? (
-          <>
+        <>
             {/* Filter Bar */}
             {documents.length > 0 && !isLoading && (
               <div className="px-4 py-2 border-b bg-background">
@@ -287,10 +300,11 @@ export function DocumentPreview({
                 <div className="space-y-0">
                   {/* Table Header */}
                   <div className="grid grid-cols-12 gap-2 px-4 py-3 text-xs font-medium text-muted-foreground border-b bg-muted/50 sticky top-0">
-                    <div className="col-span-4">{lang('draftStudio.tableHeaders.name')}</div>
-                    <div className="col-span-3">{lang('draftStudio.tableHeaders.lastModified')}</div>
+                    <div className="col-span-3">{lang('draftStudio.tableHeaders.name')}</div>
+                    <div className="col-span-2">{lang('draftStudio.tableHeaders.lastModified')}</div>
                     <div className="col-span-2">{lang('draftStudio.tableHeaders.type')}</div>
-                    <div className="col-span-2">{lang('draftStudio.tableHeaders.scope')}</div>
+                    <div className="col-span-3">Linked To</div>
+                    <div className="col-span-1">{lang('draftStudio.tableHeaders.scope')}</div>
                     <div className="col-span-1"></div>
                   </div>
                   
@@ -299,13 +313,13 @@ export function DocumentPreview({
                     {filteredDocuments.map((doc) => (
                     <React.Fragment key={doc.id}>
                     <div
-                      className="grid grid-cols-12 gap-2 px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer border-b"
+                      className="grid grid-cols-12 gap-2 px-4 py-3 hover:bg-muted/50 transition-colors cursor-pointer border-b items-center"
                       onClick={() => onDocumentSelect?.(doc)}
                     >
                       {/* Name Column */}
-                      <div className="col-span-4 flex items-center gap-2 min-w-0">
+                      <div className="col-span-3 flex items-start gap-2 min-w-0">
                         <button
-                          className="flex-shrink-0 p-0.5 rounded hover:bg-muted transition-colors"
+                          className="flex-shrink-0 p-0.5 rounded hover:bg-muted transition-colors mt-0.5"
                           onClick={(e) => handleToggleVersions(e, doc.id!)}
                           title="View versions"
                         >
@@ -315,24 +329,28 @@ export function DocumentPreview({
                             <ChevronRight className="w-4 h-4 text-muted-foreground" />
                           )}
                         </button>
-                        <div className="flex-shrink-0">
+                        <div className="flex-shrink-0 mt-0.5">
                           {getFileIcon(doc.type, doc.name)}
                         </div>
-                        <span className="text-sm font-medium text-foreground truncate">
-                          {(() => {
-                            const docNumber = (doc as any).document_number || (doc as any).document_control?.sopNumber;
-                            const cleanName = doc.name?.replace(/^[A-Z]{2,6}-\d{3}\s+/, '') || doc.name;
-                            return docNumber ? `${docNumber} ${cleanName}` : cleanName;
-                          })()}
-                        </span>
-                        {expandedDocId === doc.id && (versions[doc.id!] || []).length > 0 && (
-                          <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-600 hover:bg-green-600 flex-shrink-0">Current Version</Badge>
-                        )}
-                        {getSharingIndicator(true)}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium text-foreground truncate">
+                              {(() => {
+                                const docNumber = (doc as any).document_number || (doc as any).document_control?.sopNumber;
+                                const cleanName = doc.name?.replace(/^[A-Z]{2,6}-\d{3}\s+/, '') || doc.name;
+                                return docNumber ? `${docNumber} ${cleanName}` : cleanName;
+                              })()}
+                            </span>
+                            {expandedDocId === doc.id && (versions[doc.id!] || []).length > 0 && (
+                              <Badge variant="default" className="text-[10px] px-1.5 py-0 bg-green-600 hover:bg-green-600 flex-shrink-0">Current Version</Badge>
+                            )}
+                            {getSharingIndicator(true)}
+                          </div>
+                        </div>
                       </div>
 
                       {/* Last Modified Column */}
-                      <div className="col-span-3 flex items-center min-w-0">
+                      <div className="col-span-2 flex items-center min-w-0">
                         <span className="text-xs text-muted-foreground truncate">
                           {doc.updated_at ? new Date(doc.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Unknown'}
                         </span>
@@ -346,10 +364,28 @@ export function DocumentPreview({
                         </span>
                       </div>
 
+                      {/* Linked To Column */}
+                      <div className="col-span-3 flex items-center min-w-0">
+                        {doc.tfLinks && doc.tfLinks.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {doc.tfLinks.slice(0, 2).map((sectionId) => (
+                              <span key={sectionId} className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground truncate max-w-[140px]" title={resolveTfLabel(sectionId)}>
+                                {resolveTfLabel(sectionId)}
+                              </span>
+                            ))}
+                            {doc.tfLinks.length > 2 && (
+                              <span className="text-[10px] text-muted-foreground">+{doc.tfLinks.length - 2} more</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </div>
+
                       {/* Scope Column */}
-                      <div className="col-span-2 flex items-center min-w-0">
+                      <div className="col-span-1 flex items-center min-w-0">
                         <span className="text-xs text-muted-foreground truncate">
-                          {doc.product_context?.name || (doc.product_id ? 'Product-specific' : 'Company-wide')}
+                          {doc.product_id ? 'Product' : 'Company'}
                         </span>
                       </div>
 
@@ -467,14 +503,7 @@ export function DocumentPreview({
                 </div>
               </div>
             )}
-          </>
-        ) : activeListTab === 'reference-documents' ? (
-          <ReferenceDocumentsTab companyId={companyId} disabled={disabled} />
-        ) : (
-          <div className="p-4 overflow-y-auto flex-1">
-            <TemplatesSettings companyId={companyId!} />
-          </div>
-        )}
+        </>
       </div>
     );
   }

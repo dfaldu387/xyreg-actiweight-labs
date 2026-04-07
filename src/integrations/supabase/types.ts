@@ -8086,6 +8086,35 @@ export type Database = {
           },
         ]
       }
+      document_stars: {
+        Row: {
+          created_at: string
+          document_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_stars_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "phase_assigned_document_template"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_studio_templates: {
         Row: {
           associated_documents: Json | null

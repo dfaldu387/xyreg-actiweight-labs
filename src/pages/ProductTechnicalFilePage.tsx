@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { FileText, Globe, CheckCircle2, CheckCircle, Circle, Clock, AlertCircle, Upload, Save, Link2, Info, ShieldCheck, FolderOpen, ChevronRight, ChevronLeft, Home, Target, ArrowLeft, ArrowRight, BookOpen, Lightbulb, FileEdit, Unlink2 } from 'lucide-react';
+import { FileText, Globe, CheckCircle2, CheckCircle, Circle, Clock, AlertCircle, Upload, Save, Link2, Info, ShieldCheck, FolderOpen, ChevronRight, ChevronLeft, Home, Target, ArrowLeft, ArrowRight, BookOpen, Lightbulb, FileEdit, Unlink2, FilePlus2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { TechnicalFileDocumentPicker } from '@/components/technical-file/TechnicalFileDocumentPicker';
@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { prepareTFDocumentContent } from '@/services/technicalFileDocService';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
+import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
 
 const STATUS_OPTIONS = [
   { value: 'planned', label: 'Planned', icon: Clock, color: 'bg-muted text-muted-foreground' },
@@ -127,15 +128,8 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
   const [pickerSection, setPickerSection] = useState<{ id: string; label: string } | null>(null);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [activeSubStepIndex, setActiveSubStepIndex] = useState(0);
-  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string; documentReference?: string } | null>(null);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string; documentReference?: string; isNewUnsavedDocument?: boolean; tfSectionId?: string } | null>(null);
   const [isCreatingDoc, setIsCreatingDoc] = useState(false);
-  const [pendingTFDoc, setPendingTFDoc] = useState<{
-    sectionId: string;
-    letter: string;
-    description: string;
-    templateKey: string;
-    htmlContent: string;
-  } | null>(null);
 
   // Fetch company data for Document Studio navigation + AI prompt enrichment
   const { data: company } = useQuery({
@@ -214,7 +208,12 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
   const docMap = new Map((documents || []).map(d => [d.id, d]));
 
   const getDocsForSection = (sectionId: string) => {
-    const docIds = (allLinks || []).filter(l => l.section_id === sectionId).map(l => l.document_id);
+    const docIds = (allLinks || []).filter(l => {
+      if (l.section_id === sectionId) return true;
+      // Show legacy section-level links on the first sub-step (A)
+      if (sectionId.endsWith('-A') && l.section_id === sectionId.slice(0, -2)) return true;
+      return false;
+    }).map(l => l.document_id);
     return docIds.map(id => docMap.get(id)).filter(Boolean) as Array<{ id: string; name: string; document_type: string | null; status: string | null; document_reference: string | null }>;
   };
 
@@ -240,7 +239,11 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
     const statusMap = new Map((documents || []).map(d => [d.id, d]));
     const map = new Map<string, SectionCompletion>();
     TECHNICAL_FILE_GUIDED_SECTIONS.forEach(s => {
-      map.set(s.section, computeSectionCompletion(s.section, allLinks, gapItems, statusMap));
+      // For completion, check both section-level links AND sub-step-level links (e.g., TF-0-A, TF-0-B)
+      const allSectionLinks = (allLinks || []).filter(l => 
+        l.section_id === s.section || (s.subItems && s.subItems.some(sub => l.section_id === `${s.section}-${sub.letter}`))
+      );
+      map.set(s.section, computeSectionCompletion(s.section, allSectionLinks.length > 0 ? allSectionLinks.map(l => ({ ...l, section_id: s.section })) : undefined, gapItems, statusMap));
     });
     return map;
   }, [allLinks, gapItems, documents]);
@@ -273,9 +276,14 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
     : null;
   const activeCompletion = expandedSection ? completionData.get(expandedSection) : null;
   const activeTfMeta = expandedSection ? getTfMeta(expandedSection) : null;
-  const activeDocs = expandedSection ? getDocsForSection(expandedSection) : [];
-
   const activeSubStep: TFSubItem | null = activeConfig?.subItems?.[activeSubStepIndex] || null;
+
+  // Derive sub-step-specific section ID for per-sub-step evidence scoping
+  const activeSubStepSectionId = activeConfig && activeSubStep
+    ? `${activeConfig.section}-${activeSubStep.letter}`
+    : activeConfig?.section;
+
+  const activeDocs = activeSubStepSectionId ? getDocsForSection(activeSubStepSectionId) : [];
   const totalSubSteps = activeConfig?.subItems?.length || 0;
 
   const goToSubStep = (index: number) => {
@@ -529,6 +537,65 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                 </div>
                 <div className="flex items-center gap-1.5">
                   {companyId && company?.name && (
+                    <>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={isCreatingDoc}
+                          onClick={async () => {
+                            if (!companyId || !company?.name || !activeSubStep || !activeConfig) return;
+                            const { documentReference, htmlContent } = prepareTFDocumentContent({
+                              substepDescription: activeSubStep.description,
+                              sectionId: activeConfig.section,
+                              substepLetter: activeSubStep.letter,
+                            });
+
+                            // Check for existing CI by document_reference before opening drawer
+                            setIsCreatingDoc(true);
+                            try {
+                              const existingCIs = await DocumentStudioPersistenceService.getDocumentCIsByReference(
+                                companyId, documentReference, productId
+                              );
+                              if (existingCIs.success && existingCIs.data && existingCIs.data.length > 0) {
+                                const ciId = existingCIs.data[0].id;
+                                const { data: ciDoc } = await supabase
+                                  .from('phase_assigned_document_template')
+                                  .select('id, name, document_type')
+                                  .eq('id', ciId)
+                                  .single();
+                                setDraftDrawerDoc({
+                                  id: ciDoc?.id || ciId,
+                                  name: ciDoc?.name || activeSubStep.description,
+                                  type: ciDoc?.document_type || 'technical-file',
+                                  documentReference,
+                                });
+                                return;
+                              }
+                            } catch (err) {
+                              console.warn('Error checking existing CI:', err);
+                            } finally {
+                              setIsCreatingDoc(false);
+                            }
+
+                            // No existing CI — open drawer with blank template, CI created on first save
+                            setDraftDrawerDoc({
+                              id: `new-tf-${activeConfig.section}-${activeSubStep.letter}`,
+                              name: activeSubStep.description,
+                              type: 'technical-file',
+                              documentReference,
+                              isNewUnsavedDocument: true,
+                              tfSectionId: activeSubStepSectionId || activeConfig.section,
+                            });
+                          }}
+                        >
+                          <FileEdit className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Create Document</TooltipContent>
+                    </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -538,25 +605,28 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                           disabled={isCreatingDoc}
                           onClick={() => {
                             if (!companyId || !company?.name || !activeSubStep || !activeConfig) return;
-                            const { templateKey, htmlContent } = prepareTFDocumentContent({
+                            const { documentReference } = prepareTFDocumentContent({
                               substepDescription: activeSubStep.description,
                               sectionId: activeConfig.section,
                               substepLetter: activeSubStep.letter,
+                              isAdditional: true,
                             });
-                            setPendingTFDoc({
-                              sectionId: activeConfig.section,
-                              letter: activeSubStep.letter,
-                              description: activeSubStep.description,
-                              templateKey,
-                              htmlContent,
+                            setDraftDrawerDoc({
+                              id: `new-tf-add-${activeConfig.section}-${activeSubStep.letter}-${Date.now()}`,
+                              name: `${activeSubStep.description} (Additional)`,
+                              type: 'technical-file',
+                              documentReference,
+                              isNewUnsavedDocument: true,
+                              tfSectionId: activeSubStepSectionId || activeConfig.section,
                             });
                           }}
                         >
-                          <FileEdit className="h-3.5 w-3.5" />
+                          <FilePlus2 className="h-3.5 w-3.5" />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent>Create Document</TooltipContent>
+                      <TooltipContent>Create Additional Document</TooltipContent>
                     </Tooltip>
+                    </>
                   )}
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -564,7 +634,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                         variant="outline"
                         size="icon"
                         className="h-7 w-7"
-                        onClick={() => setPickerSection({ id: activeConfig.section, label: `${activeConfig.section} — ${activeConfig.title}` })}
+                        onClick={() => setPickerSection({ id: activeSubStepSectionId || activeConfig.section, label: activeSubStep ? `${activeSubStep.letter}. ${activeSubStep.description}` : `${activeConfig.section} — ${activeConfig.title}` })}
                       >
                         <Link2 className="h-3.5 w-3.5" />
                       </Button>
@@ -610,7 +680,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                               className="h-6 w-6 text-muted-foreground hover:text-destructive"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (expandedSection) handleUnlinkDoc(doc.id, expandedSection);
+                                if (activeSubStepSectionId) handleUnlinkDoc(doc.id, activeSubStepSectionId);
                               }}
                             >
                               <Unlink2 className="h-3.5 w-3.5" />
@@ -896,40 +966,6 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
         />
       )}
 
-      {/* Save-to-CI Dialog for new TF documents */}
-      {pendingTFDoc && companyId && company?.name && (
-        <SaveContentAsDocCIDialog
-          open={!!pendingTFDoc}
-          onOpenChange={(open) => { if (!open) setPendingTFDoc(null); }}
-          title={pendingTFDoc.description}
-          htmlContent={pendingTFDoc.htmlContent}
-          templateIdKey={pendingTFDoc.templateKey}
-          companyId={companyId}
-          companyName={company.name}
-          productId={productId}
-          defaultScope="device"
-          onDocumentCreated={async (docId, docName, docType) => {
-            // Link CI to TF section
-            await supabase
-              .from('technical_file_document_links')
-              .upsert(
-                { product_id: productId, section_id: pendingTFDoc.sectionId, document_id: docId },
-                { onConflict: 'product_id,section_id,document_id' }
-              );
-            await queryClient.invalidateQueries({ queryKey: ['tf-section-documents'] });
-            await queryClient.invalidateQueries({ queryKey: ['tf-linked-doc-details'] });
-            setPendingTFDoc(null);
-            setDraftDrawerDoc({
-              id: docId,
-              name: docName,
-              type: docType || 'technical-file',
-              documentReference: pendingTFDoc.templateKey,
-            });
-            toast.success('Document created and linked to Technical File');
-          }}
-        />
-      )}
-
       {/* Document Draft Side Drawer */}
       <DocumentDraftDrawer
         open={!!draftDrawerDoc}
@@ -940,6 +976,30 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
         productId={productId}
         companyId={companyId}
         documentReference={draftDrawerDoc?.documentReference}
+        isNewUnsavedDocument={draftDrawerDoc?.isNewUnsavedDocument}
+        onDocumentCreated={async (docId, docName, docType) => {
+          // Link CI to TF section
+          const tfSectionId = draftDrawerDoc?.tfSectionId;
+          if (tfSectionId) {
+            await supabase
+              .from('technical_file_document_links')
+              .upsert(
+                { product_id: productId, section_id: tfSectionId, document_id: docId },
+                { onConflict: 'product_id,section_id,document_id' }
+              );
+            await queryClient.invalidateQueries({ queryKey: ['tf-section-documents'] });
+            await queryClient.invalidateQueries({ queryKey: ['tf-linked-doc-details'] });
+            toast.success('Document created and linked to Technical File');
+          }
+          // Update drawer to point to real CI — preserve tfSectionId so context isn't lost
+          setDraftDrawerDoc(prev => prev ? {
+            ...prev,
+            id: docId,
+            name: docName,
+            type: docType || 'technical-file',
+            isNewUnsavedDocument: false,
+          } : null);
+        }}
       />
     </div>
     </TooltipProvider>

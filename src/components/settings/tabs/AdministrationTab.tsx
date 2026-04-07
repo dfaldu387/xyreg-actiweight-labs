@@ -2,7 +2,10 @@ import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Key, Archive, PlusCircle, Link2, Unlink } from "lucide-react";
+import { ChevronDown, Key, Archive, PlusCircle, Link2, Unlink, Users } from "lucide-react";
+import { ADVISORY_AGENTS, type AdvisoryAgent } from "@/data/advisoryAgents";
+import { AgentCard } from "@/components/advisory/AgentCard";
+import { AgentChatDialog } from "@/components/advisory/AgentChatDialog";
 import { toast } from "sonner";
 import { ArchiveCompanyDialog } from "@/components/company/ArchiveCompanyDialog";
 import { ArchiveProductDialog } from "@/components/product/ArchiveProductDialog";
@@ -29,6 +32,9 @@ export function AdministrationTab({ companyId, companyName }: AdministrationTabP
   const [dangerZoneOpen, setDangerZoneOpen] = useState(false);
   const [apiKeysOpen, setApiKeysOpen] = useState(false);
   const [eudamedOpen, setEudamedOpen] = useState(false);
+  const [advisoryOpen, setAdvisoryOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<AdvisoryAgent | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
   const { activeRole } = useCompanyRole();
   const queryClient = useQueryClient();
 
@@ -135,6 +141,50 @@ export function AdministrationTab({ companyId, companyName }: AdministrationTabP
 
   return (
     <div className="space-y-6">
+      {/* Technical Advisory Board */}
+      <Collapsible open={advisoryOpen} onOpenChange={setAdvisoryOpen}>
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-[#D4AF37]" />
+                    Technical Advisory Board
+                  </CardTitle>
+                  <CardDescription>
+                    Chat with domain-specialized AI consultants for regulatory, quality, and engineering guidance.
+                  </CardDescription>
+                </div>
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${advisoryOpen ? 'rotate-180' : ''}`} />
+              </div>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {ADVISORY_AGENTS.map(agent => (
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    onClick={() => {
+                      setSelectedAgent(agent);
+                      setChatOpen(true);
+                    }}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
+      <AgentChatDialog
+        agent={selectedAgent}
+        open={chatOpen}
+        onOpenChange={setChatOpen}
+      />
+
       {/* Password Expiration Policy */}
       <PasswordPolicySettings companyId={companyId} />
 

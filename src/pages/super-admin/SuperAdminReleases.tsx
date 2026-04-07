@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,11 +44,25 @@ interface CompanyAdoption {
   release_version: string;
   adopted_at: string;
   status: string;
+  preferred_date: string | null;
+  preferred_time_start: string | null;
+  preferred_time_end: string | null;
+}
+
+function formatTime12h(time: string): string {
+  const [h, m] = time.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${hour12}:${(m || 0).toString().padStart(2, '0')} ${suffix}`;
 }
 
 export default function SuperAdminReleases() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('releases');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'releases';
+  const setActiveTab = useCallback((tab: string) => {
+    setSearchParams({ tab }, { replace: true });
+  }, [setSearchParams]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -96,7 +111,7 @@ export default function SuperAdminReleases() {
       // Fetch adoptions (no FK joins available)
       const { data: rawAdoptions, error } = await (supabase as any)
         .from('company_release_adoptions')
-        .select('id, company_id, release_id, adopted_at, status')
+        .select('id, company_id, release_id, adopted_at, status, preferred_date, preferred_time_start, preferred_time_end')
         .order('adopted_at', { ascending: false });
       if (error) throw error;
       if (!rawAdoptions || rawAdoptions.length === 0) return [];
@@ -113,6 +128,9 @@ export default function SuperAdminReleases() {
         release_version: releaseMap.get(row.release_id) ?? 'Unknown',
         adopted_at: row.adopted_at,
         status: row.status,
+        preferred_date: row.preferred_date ?? null,
+        preferred_time_start: row.preferred_time_start ?? null,
+        preferred_time_end: row.preferred_time_end ?? null,
       }));
     },
     enabled: companies.length > 0 && releases.length > 0,
@@ -799,6 +817,7 @@ export default function SuperAdminReleases() {
                       <TableHead>Company</TableHead>
                       <TableHead>Version</TableHead>
                       <TableHead>Adopted At</TableHead>
+                      <TableHead>Preferred Update</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -814,6 +833,18 @@ export default function SuperAdminReleases() {
                         <TableCell className="font-mono font-semibold">v{a.release_version}</TableCell>
                         <TableCell>{format(new Date(a.adopted_at), 'MMM d, yyyy hh:mm a')}</TableCell>
                         <TableCell>
+                          {a.preferred_date ? (
+                            <div className="text-sm">
+                              <div className="font-medium">{format(new Date(a.preferred_date + 'T00:00:00'), 'MMM d, yyyy')}</div>
+                              {a.preferred_time_start && a.preferred_time_end && (
+                                <div className="text-xs text-muted-foreground">{formatTime12h(a.preferred_time_start)} – {formatTime12h(a.preferred_time_end)}</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <Select
                             value={a.status}
                             onValueChange={(value) => updateAdoptionStatus.mutate({ id: a.id, status: value })}
@@ -828,8 +859,7 @@ export default function SuperAdminReleases() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="active">Active</SelectItem>
-                              <SelectItem value="completed">Completed</SelectItem>
+                              <SelectItem value="active">Installed</SelectItem>
                             </SelectContent>
                           </Select>
                         </TableCell>

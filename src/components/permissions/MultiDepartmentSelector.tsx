@@ -72,11 +72,15 @@ export const MultiDepartmentSelector = forwardRef<MultiDepartmentSelectorRef, Mu
       const structure = (data?.department_structure as any[]) || [];
       const enabledDepts = structure
       .filter((dept: any) => dept.isEnabled !== false)
-        .map((dept: any) => ({
-          id: dept.id || dept.name,
-          name: dept.name,
-          roles: dept.roles || []
-        }));
+        .map((dept: any) => {
+          const allRoles = [...(dept.roles || []), ...(dept.customRoles || [])];
+          const disabledRoles = dept.disabledRoles || [];
+          return {
+            id: dept.id || dept.name,
+            name: dept.name,
+            roles: allRoles.filter((r: string) => !disabledRoles.includes(r))
+          };
+        });
 
       setDepartments(enabledDepts);
     } catch (error) {

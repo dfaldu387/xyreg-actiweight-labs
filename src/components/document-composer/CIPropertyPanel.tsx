@@ -316,6 +316,16 @@ export function CIPropertyPanel({
                   </SelectItem>
                 ) : (
                   <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <SelectItem value="NONE">
+                          <span className="text-muted-foreground italic">None</span>
+                        </SelectItem>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <p>No prefix — number only</p>
+                      </TooltipContent>
+                    </Tooltip>
                     {categoryConfigs.map(config => (
                       <Tooltip key={config.categoryKey}>
                         <TooltipTrigger asChild>
@@ -333,12 +343,12 @@ export function CIPropertyPanel({
               </SelectContent>
             </Select>
 
-            <span className="text-muted-foreground text-sm">-</span>
+            {documentType && documentType !== 'NONE' && <span className="text-muted-foreground text-sm">-</span>}
 
             <Select
-              value={documentNumber ? documentNumber.replace(`${documentType}-`, '') : undefined}
+              value={documentNumber ? (documentType === 'NONE' ? documentNumber : documentNumber.replace(`${documentType}-`, '')) : undefined}
               onValueChange={async (num) => {
-                const fullId = `${documentType}-${num}`;
+                const fullId = documentType === 'NONE' ? num : `${documentType}-${num}`;
                 await handleFieldSave('document_number', fullId);
               }}
               disabled={disabled || isLoadingUsedNumbers || !documentType}
@@ -389,25 +399,6 @@ export function CIPropertyPanel({
           />
         </div>
 
-        {/* Version */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs text-muted-foreground">Version</Label>
-            {renderSaveIndicator('version')}
-          </div>
-          <Input
-            value={localVersion}
-            onChange={(e) => {
-              setLocalVersion(e.target.value);
-              handleDebouncedFieldSave('version', e.target.value);
-            }}
-            onFocus={() => { isEditingVersionRef.current = true; }}
-            onBlur={() => { isEditingVersionRef.current = false; }}
-            disabled={disabled}
-            className="h-8 text-sm"
-            placeholder="e.g. 1.0"
-          />
-        </div>
 
         {/* Status */}
         <div className="space-y-1.5">

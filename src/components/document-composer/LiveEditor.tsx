@@ -47,13 +47,15 @@ interface LiveEditorProps {
   onDocumentControlChange?: (field: string, value: string) => void;
   companyLogoUrl?: string;
   onPushToDeviceFields?: () => void;
+  onCustomSave?: () => void;
   isRecord?: boolean;
   recordId?: string;
   nextReviewDate?: string;
   documentNumber?: string;
+  hideVersioning?: boolean;
 }
 
-export function LiveEditor({ template, className = '', onContentUpdate, companyId, onDocumentSaved, isEditingExistingDocument = false, editingDocumentId = null, onAIGenerate, onAddAutoNote, currentNotes = [], isUploadedDocument = false, uploadedDocumentSaved = false, onUploadedDocumentSaved, disabled = false, selectedScope = 'company', selectedProductId, uploadedFileInfo, onDocumentControlChange, companyLogoUrl, onPushToDeviceFields, isRecord = false, recordId, nextReviewDate, documentNumber }: LiveEditorProps) {
+export function LiveEditor({ template, className = '', onContentUpdate, companyId, onDocumentSaved, isEditingExistingDocument = false, editingDocumentId = null, onAIGenerate, onAddAutoNote, currentNotes = [], isUploadedDocument = false, uploadedDocumentSaved = false, onUploadedDocumentSaved, disabled = false, selectedScope = 'company', selectedProductId, uploadedFileInfo, onDocumentControlChange, companyLogoUrl, onPushToDeviceFields, onCustomSave, isRecord = false, recordId, nextReviewDate, documentNumber, hideVersioning = false }: LiveEditorProps) {
   const { activeCompanyRole } = useCompanyRole();
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [showSaveVersionDialog, setShowSaveVersionDialog] = useState(false);
@@ -225,6 +227,12 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   };
 
   const handleSave = async () => {
+    // If parent wants to handle save (e.g. CI-first flow), delegate entirely
+    if (onCustomSave) {
+      onCustomSave();
+      return;
+    }
+
     try {
       if (!activeCompanyRole?.companyId) {
         toast.error('Company information not available');
@@ -397,7 +405,7 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                     variant="outline"
                     size="icon"
                     onClick={() => setShowAutoFillDialog(true)}
-                    className="border-blue-300 text-blue-600 hover:bg-blue-50 h-8 w-8"
+                    className="border-amber-300 text-amber-500 hover:bg-amber-50 h-8 w-8"
                   >
                     <Sparkles className="w-4 h-4" />
                   </Button>
@@ -438,27 +446,41 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                 </Tooltip>
               </TooltipProvider>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <MoreHorizontal className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleSaveVersion}>
-                  <GitBranch className="w-4 h-4 mr-2" />
-                  Save Version
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleShowVersions}>
-                  <History className="w-4 h-4 mr-2" />
-                  View Versions
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleShare}>
-                  <Share className="w-4 h-4 mr-2" />
-                  Share
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {hideVersioning && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="outline" size="icon" onClick={handleShare} className="h-8 w-8">
+                      <Share className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Share</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {!hideVersioning && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleSaveVersion}>
+                    <GitBranch className="w-4 h-4 mr-2" />
+                    Save Version
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShowVersions}>
+                    <History className="w-4 h-4 mr-2" />
+                    View Versions
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleShare}>
+                    <Share className="w-4 h-4 mr-2" />
+                    Share
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
       </div>
@@ -495,10 +517,10 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                       variant="outline"
                       size="sm"
                       onClick={() => handleAIIconClick(section)}
-                      className="h-8 w-8 p-0 hover:bg-blue-50 hover:border-blue-300"
+                      className="h-8 w-8 p-0 hover:bg-amber-50 hover:border-amber-300"
                       title={`Generate AI content for ${section.title}`}
                     >
-                      <Wand2 className="w-4 h-4 text-blue-600" />
+                      <Wand2 className="w-4 h-4 text-amber-500" />
                     </Button>
                   </div>
                   <div className="space-y-2 pl-4">

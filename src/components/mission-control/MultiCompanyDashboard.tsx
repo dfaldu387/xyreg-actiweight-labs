@@ -11,9 +11,10 @@ import { MyActionItems } from "./MyActionItems";
 import { ProjectHealthAlerts } from "./ProjectHealthAlerts";
 import { CommunicationHub } from "./CommunicationHub";
 import { TrainingStatusCard } from "./TrainingStatusCard";
-import { DocumentStatusWidget } from "./DocumentStatusWidget";
+
 import { useDashboardWidgets } from "@/hooks/useDashboardWidgets";
 import { FeedbackTrackerWidget } from "./widgets/FeedbackTrackerWidget";
+import { MyDocumentsWidget } from "./MyDocumentsWidget";
 
 export function MultiCompanyDashboard() {
   const { companyRoles } = useCompanyRole();
@@ -63,8 +64,8 @@ export function MultiCompanyDashboard() {
         return <TrainingStatusCard key={widgetId} companyId={companyId} onRemove={() => removeWidget(widgetId)} />;
       case 'communication-hub':
         return <CommunicationHub key={widgetId} scope={dashboardType === 'multi-company' ? 'multi-company' : 'company'} companyId={companyId} />;
-      case 'document-status':
-        return <DocumentStatusWidget key={widgetId} companyId={companyId} onRemove={() => removeWidget(widgetId)} />;
+      case 'my-documents':
+        return <MyDocumentsWidget key={widgetId} companyId={companyId} onRemove={() => removeWidget(widgetId)} />;
       case 'feedback-tracker':
         return <FeedbackTrackerWidget key={widgetId} companyId={companyId} onRemove={() => removeWidget(widgetId)} readOnly={!isAdmin} />;
       default:
@@ -85,7 +86,7 @@ export function MultiCompanyDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <WidgetPalette enabledWidgetIds={enabledWidgetIds} onToggleWidget={toggleWidget} userRole={userRole} />
+          <WidgetPalette enabledWidgetIds={enabledWidgetIds} onToggleWidget={toggleWidget} onReorderWidget={reorderWidgets} userRole={userRole} />
           {companyRoles.length === 1 ? (
             <div>{companyRoles[0].companyName}</div>
           ) : (

@@ -5,9 +5,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useCompanyRole } from "@/context/CompanyRoleContext";
 import { DocumentScopeManager } from "@/components/documents/DocumentScopeManager";
 import { ConsistentPageHeader } from "@/components/layout/ConsistentPageHeader";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { ComplianceSection } from "@/components/compliance/ComplianceSection";
 import { CompanyDocumentSyncPage } from "@/components/documents/CompanyDocumentSyncPage";
+import { ReferenceDocumentsTab } from "@/components/document-composer/ReferenceDocumentsTab";
+import { TemplatesSettings } from "@/components/settings/TemplatesSettings";
 import { usePlanMenuAccess } from '@/hooks/usePlanMenuAccess';
 import { PORTFOLIO_MENU_ACCESS } from '@/constants/menuAccessKeys';
 import { RestrictedFeatureProvider } from '@/contexts/RestrictedFeatureContext';
@@ -15,8 +18,9 @@ import { RestrictedPreviewBanner } from '@/components/subscription/RestrictedPre
 
 function CompanyDocumentsPage() {
   const { companyName } = useParams<{ companyName: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const mode = searchParams.get('mode');
+  const activeTab = searchParams.get('tab') || 'documents';
   const navigate = useNavigate();
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -196,8 +200,24 @@ function CompanyDocumentsPage() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
           <div className="w-full flex flex-col gap-6 pt-6" data-tour="documents">
-            {/* Compliance Section */}
-            <ComplianceSection companyId={companyId} companyName={companyName} disabled={isRestricted} />
+            <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v })} className="w-full">
+              <div className="px-6">
+                <TabsList>
+                  <TabsTrigger value="documents">Documents</TabsTrigger>
+                  <TabsTrigger value="reference">Reference Documents</TabsTrigger>
+                  <TabsTrigger value="templates">Enterprise Templates</TabsTrigger>
+                </TabsList>
+              </div>
+              <TabsContent value="documents">
+                <ComplianceSection companyId={companyId} companyName={companyName} disabled={isRestricted} />
+              </TabsContent>
+              <TabsContent value="reference" className="px-6">
+                <ReferenceDocumentsTab companyId={companyId} disabled={isRestricted} />
+              </TabsContent>
+              <TabsContent value="templates" className="px-6">
+                <TemplatesSettings companyId={companyId} />
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>

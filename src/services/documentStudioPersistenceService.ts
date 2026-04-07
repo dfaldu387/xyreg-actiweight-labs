@@ -23,6 +23,10 @@ export interface DocumentStudioData {
   last_edited_by?: string;
   created_at?: string;
   updated_at?: string;
+  /** Technical File section IDs this document is linked to (e.g. ['TF-0-a', 'TF-1']) */
+  tfLinks?: string[];
+  /** If set, this document is backed by a Doc CI record and cannot be deleted from Studio alone */
+  linkedCiId?: string;
 }
 
 interface DraftContentSignals {
@@ -527,6 +531,48 @@ export class DocumentStudioPersistenceService {
         }
       }
 
+      // Fetch TF links for all CI IDs (both direct and DS-ref)
+      const allCiIds = [...new Set([
+        ...ciMetadataById.keys(),
+        ...(Array.from(ciMetadataByDsRef.entries()).map(([dsRef]) => {
+          // We need CI id, not DS ref — fetch below
+          return null;
+        }).filter(Boolean) as string[]),
+      ])];
+
+      // Build a map: CI id -> section_id[]
+      const tfLinksByCiId = new Map<string, string[]>();
+
+      // Also build DS-ref -> CI id map for reverse lookup
+      const ciIdByDsRef = new Map<string, string>();
+
+      if (dsReferences.length > 0) {
+        const { data: ciByRefFull } = await supabase
+          .from('phase_assigned_document_template')
+          .select('id, document_reference')
+          .in('document_reference', dsReferences);
+        (ciByRefFull || []).forEach(row => {
+          if (row.document_reference) ciIdByDsRef.set(row.document_reference, row.id);
+        });
+      }
+
+      const allResolvedCiIds = [...new Set([
+        ...templateIds,
+        ...Array.from(ciIdByDsRef.values()),
+      ])].filter(Boolean);
+
+      if (allResolvedCiIds.length > 0) {
+        const { data: tfLinksData } = await supabase
+          .from('technical_file_document_links')
+          .select('document_id, section_id')
+          .in('document_id', allResolvedCiIds);
+        (tfLinksData || []).forEach(row => {
+          const existing = tfLinksByCiId.get(row.document_id) || [];
+          existing.push(row.section_id);
+          tfLinksByCiId.set(row.document_id, existing);
+        });
+      }
+
       const merged = mapped.map((doc) => {
         // Try direct template_id match first, then fallback to DS-{studioId} reference
         const ciMetadata = ciMetadataById.get(doc.template_id)
@@ -537,6 +583,12 @@ export class DocumentStudioPersistenceService {
         const currentDocumentNumber = ciMetadata?.document_number || existingDocumentControl.sopNumber || undefined;
         const currentName = ciMetadata?.name || doc.name;
 
+        // Resolve TF links and CI linkage
+        const resolvedCiId = ciMetadataById.has(doc.template_id)
+          ? doc.template_id
+          : (doc.id ? ciIdByDsRef.get(`DS-${doc.id}`) : undefined);
+        const docTfLinks = resolvedCiId ? tfLinksByCiId.get(resolvedCiId) : undefined;
+
         return {
           ...doc,
           name: currentName,
@@ -546,6 +598,8 @@ export class DocumentStudioPersistenceService {
             ...(currentDocumentNumber ? { sopNumber: currentDocumentNumber } : {}),
             documentTitle: (currentName || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '') || existingDocumentControl.documentTitle,
           },
+          tfLinks: docTfLinks?.length ? docTfLinks : undefined,
+          linkedCiId: resolvedCiId || (ciMetadata ? doc.template_id : undefined),
         } as DocumentStudioData;
       });
 
@@ -638,6 +692,46 @@ export class DocumentStudioPersistenceService {
       }
     } catch (error) {
       console.error('Error in syncToDocumentCI:', error);
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * Rebind a studio draft from a deterministic key (e.g. TF-0-a) to the CI UUID.
+   * This ensures both TF drawer and Document Studio resolve the same draft.
+   */
+  static async rebindStudioDraftToCI(
+    companyId: string,
+    oldTemplateId: string,
+    newCiId: string,
+    productId?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      let query = supabase
+        .from('document_studio_templates')
+        .select('id, template_id')
+        .eq('company_id', companyId)
+        .eq('template_id', oldTemplateId);
+
+      if (productId) {
+        query = query.eq('product_id', productId);
+      }
+
+      const { data: rows, error: fetchError } = await query;
+      if (fetchError) return { success: false, error: fetchError.message };
+
+      if (rows && rows.length > 0) {
+        const { error: updateError } = await supabase
+          .from('document_studio_templates')
+          .update({ template_id: newCiId, updated_at: new Date().toISOString() })
+          .eq('id', rows[0].id);
+
+        if (updateError) return { success: false, error: updateError.message };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error in rebindStudioDraftToCI:', error);
       return { success: false, error: String(error) };
     }
   }

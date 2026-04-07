@@ -1,54 +1,27 @@
 
 
-## Plan: Fix TF-Document Studio Disconnect & Add CI Creation Dialog
+## Plan: Add location tags + fix device doc deep-link
 
-### Problem Summary
+### A) Add location tags to My Documents widget
 
-Two critical issues:
+**Problem**: Each document in the widget shows only its name, type, and timestamp — no indication of whether it belongs to an enterprise (company) document or a specific device/product.
 
-1. **Document in TF drawer ≠ Document in Doc Studio**: The `createTFDocument` service saves the studio draft with `template_id = templateKey` (e.g., `TF-0-a`), but old data has the double-prefix bug (`TF-TF-0-a`). When navigating from Document Studio URL (`?templateId=TF-TF-0-a`), the lookup finds the correct draft. But from the TF drawer, the lookup uses the CI UUID first, which doesn't match the studio draft's `template_id`. The two are disconnected.
+**Fix in `src/components/mission-control/MyDocumentsWidget.tsx`**:
+- After fetching documents, collect all unique `product_id` values and batch-fetch product names from `products` table (`id`, `name`, `current_lifecycle_phase`)
+- Add `productName` and `phaseName` fields to the `DocItem` interface
+- Render a small muted tag below each doc's metadata line:
+  - If `productId` exists: show `"{productName} | {phaseName}"` (or just product name if no phase)
+  - If no `productId`: show `"Enterprise"` 
 
-2. **No CI creation dialog**: Currently "Create Document" auto-creates everything silently. User wants it to first show the `SaveContentAsDocCIDialog` (or similar) so they can choose where to save (enterprise/device/phase), then proceed.
+### B) Fix device doc deep-link not opening the CI drawer
 
-### Changes
+**Problem**: Navigating to `/app/product/{id}/documents?docId={id}` lands on the documents list but the `docId` query param is never consumed — the deep-link auto-open logic only exists in `CompanyDocumentManager` (enterprise docs), not in `ProductDocumentsPage`.
 
-**File 1: `src/pages/ProductTechnicalFilePage.tsx`**
+**Fix in `src/pages/ProductDocumentsPage.tsx`**:
+- Add a `useEffect` that reads `searchParams.get('docId')`, finds the matching document in the loaded `documents` array, and sets it as `newlyCreatedDoc` (which the `DocumentTabs`/`AllActivePhasesTab` already use to auto-open the drawer)
+- Clear the `docId` param from the URL after consumption (same pattern as `CompanyDocumentManager`)
 
-- **Replace auto-create with dialog flow**: When clicking "Create Document" (FileEdit button), instead of calling `createTFDocument` directly:
-  1. Store the pending substep info in state (description, sectionId, letter)
-  2. Open a `SaveContentAsDocCIDialog` with a placeholder section content
-  3. On `onDocumentCreated` callback: link the new CI to the TF section via `technical_file_document_links`, invalidate queries, and open the draft drawer
-
-- **Add state**: `pendingTFDoc` state to hold the substep info for the dialog
-- **Add the dialog** to the JSX, passing `companyId`, `productId`, `templateIdKey = TF-{section}-{letter}`
-- **On document created callback**: Insert into `technical_file_document_links`, invalidate queries, open drawer
-
-**File 2: `src/services/technicalFileDocService.ts`**
-
-- **Simplify**: The `createTFDocument` function can be reduced or repurposed. The heavy lifting (studio save + CI sync) is now handled by `SaveContentAsDocCIDialog`. We still need a helper to:
-  - Build the initial content (placeholder or AI-generated) 
-  - Save it to `document_studio_templates` before opening the dialog
-  - Or: let the dialog handle save, then trigger AI generation in the background after
-
-- **New approach**: Create a lighter `prepareTFDocumentContent` function that returns the initial HTML content and metadata, used by the dialog's `htmlContent` prop. After the dialog creates the CI, fire-and-forget AI generation to update the studio draft.
-
-**File 3: `src/components/shared/SaveContentAsDocCIDialog.tsx`** (minor)
-
-- No changes needed — it already supports the full flow (scope selection, CI creation, studio save).
-
-### Flow After Fix
-
-1. User clicks "Create Document" in TF section
-2. `SaveContentAsDocCIDialog` opens with pre-filled title and placeholder content
-3. User selects scope (Enterprise / Device / Phase) and clicks "Create Document"
-4. Dialog saves to Document Studio + creates CI record
-5. Callback fires: links CI to TF section, opens draft drawer with correct `documentReference`
-6. AI generation runs in background to enrich the content
-7. Both TF drawer and Document Studio now reference the same draft via the same `template_id`
-
-### Summary
-- 2 files changed (ProductTechnicalFilePage.tsx, technicalFileDocService.ts)
-- Replaces silent auto-creation with proper CI creation dialog
-- Ensures TF and Document Studio share the same document identity
-- AI generation still runs in background after CI creation
+### Files
+1. `src/components/mission-control/MyDocumentsWidget.tsx` — add product name fetch, add `productName`/`phaseName` to DocItem, render location tag
+2. `src/pages/ProductDocumentsPage.tsx` — add `docId` deep-link useEffect to auto-open document drawer
 

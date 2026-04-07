@@ -13,7 +13,19 @@ import { ValidationCoverageDashboard } from './ValidationCoverageDashboard';
 import { toast } from 'sonner';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useCompanyId } from '@/hooks/useCompanyId';
-import { useCompanyAdoptedRelease, useAdoptRelease } from '@/hooks/useCompanyAdoptedRelease';
+import { useCompanyAdoptedRelease, useAdoptRelease, type AdoptReleaseParams } from '@/hooks/useCompanyAdoptedRelease';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+
+const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => {
+  const hour = i.toString().padStart(2, '0');
+  const label = i === 0 ? '12:00 AM'
+    : i < 12 ? `${i}:00 AM`
+    : i === 12 ? '12:00 PM'
+    : `${i - 12}:00 PM`;
+  return { value: `${hour}:00`, label };
+});
 import { useAvailableXyregReleases } from '@/hooks/useAvailableXyregReleases';
 import { useCumulativeChangelog } from '@/hooks/useCumulativeChangelog';
 import { useAllModuleGroupValidations } from '@/hooks/useModuleGroupValidation';
@@ -62,6 +74,15 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
   const adoptRelease = useAdoptRelease(resolvedCompanyId);
 
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [preferredDate, setPreferredDate] = useState('');
+  const [timeStart, setTimeStart] = useState('');
+  const [timeEnd, setTimeEnd] = useState('');
+
+  // Tomorrow's date as min for native date input
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minDate = tomorrow.toISOString().split('T')[0];
 
   // Check if there's a newer release available
   const newerReleases = adoptedRelease
@@ -94,16 +115,34 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
   const validatedCount = XYREG_MODULE_GROUPS.filter(g => getModuleStatus(g.id) === 'validated').length;
 
   const handleAdoptRelease = (releaseId: string) => {
-    adoptRelease.mutate(releaseId, {
-      onSuccess: () => {
-        const release = availableReleases.find(r => r.id === releaseId);
-        toast.success(`Adopted XYREG v${release?.version ?? ''}. Validation cycle started.`);
-      },
-      onError: () => {
-        toast.error('Failed to adopt release. Please try again.');
-      },
-    });
+    setShowSchedule(true);
   };
+
+  const handleConfirmUpgrade = () => {
+    if (!latestAvailable || !preferredDate || !timeStart || !timeEnd) return;
+    adoptRelease.mutate(
+      {
+        releaseId: latestAvailable.id,
+        preferredDate,
+        preferredTimeStart: timeStart,
+        preferredTimeEnd: timeEnd,
+      },
+      {
+        onSuccess: () => {
+          toast.success(`Adopted XYREG v${latestAvailable.version}. Validation cycle started.`);
+          setShowSchedule(false);
+          setPreferredDate('');
+          setTimeStart('');
+          setTimeEnd('');
+        },
+        onError: () => {
+          toast.error('Failed to adopt release. Please try again.');
+        },
+      },
+    );
+  };
+
+  const isScheduleValid = preferredDate && timeStart && timeEnd && timeStart < timeEnd;
 
   const handleSaveValidation = (data: any) => {
     console.log('Saving validation for', selectedGroup?.id, data);
@@ -171,14 +210,66 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
                               Released {new Date(latestAvailable.release_date).toLocaleDateString()} — Start validation to begin your IQ/OQ/PQ cycle.
                             </p>
                           </div>
-                          <Button
-                            size="sm"
-                            disabled={adoptRelease.isPending}
-                            onClick={() => handleAdoptRelease(latestAvailable.id)}
-                          >
-                            <ArrowUpCircle className="h-3.5 w-3.5 mr-1.5" />
-                            {adoptRelease.isPending ? 'Adopting...' : `Start Validation for v${latestAvailable.version}`}
-                          </Button>
+                          {!showSchedule ? (
+                            <Button
+                              size="sm"
+                              disabled={adoptRelease.isPending}
+                              onClick={() => handleAdoptRelease(latestAvailable.id)}
+                            >
+                              <ArrowUpCircle className="h-3.5 w-3.5 mr-1.5" />
+                              {adoptRelease.isPending ? 'Adopting...' : `Start Validation for v${latestAvailable.version}`}
+                            </Button>
+                          ) : (
+                            <div className="w-full border-t pt-3 mt-1 space-y-3">
+                              <p className="text-xs font-semibold">Choose your preferred update window</p>
+                              <p className="text-xs text-muted-foreground">Our team will perform the upgrade during this window.</p>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">Preferred Date</Label>
+                                <Input
+                                  type="date"
+                                  className="h-9 max-w-fit"
+                                  value={preferredDate}
+                                  min={minDate}
+                                  onChange={(e) => setPreferredDate(e.target.value)}
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">From</Label>
+                                  <Select value={timeStart} onValueChange={setTimeStart}>
+                                    <SelectTrigger className="h-9"><SelectValue placeholder="Start time" /></SelectTrigger>
+                                    <SelectContent>
+                                      {TIME_OPTIONS.map(opt => (
+                                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">To</Label>
+                                  <Select value={timeEnd} onValueChange={setTimeEnd}>
+                                    <SelectTrigger className="h-9"><SelectValue placeholder="End time" /></SelectTrigger>
+                                    <SelectContent>
+                                      {TIME_OPTIONS.map(opt => (
+                                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              {timeStart && timeEnd && timeStart >= timeEnd && (
+                                <p className="text-xs text-red-500">End time must be after start time.</p>
+                              )}
+                              <div className="flex items-center gap-2 pt-1">
+                                <Button size="sm" variant="ghost" className="text-xs" onClick={() => { setShowSchedule(false); setPreferredDate(''); setTimeStart(''); setTimeEnd(''); }} disabled={adoptRelease.isPending}>
+                                  Cancel
+                                </Button>
+                                <Button size="sm" className="text-xs" disabled={!isScheduleValid || adoptRelease.isPending} onClick={handleConfirmUpgrade}>
+                                  {adoptRelease.isPending ? 'Requesting...' : 'Confirm & Request Update'}
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </>
                       ) : (
                         <div>
@@ -255,6 +346,80 @@ export function XyregValidationPanel({ open, onOpenChange, companyId: propCompan
                           </Button>
                         </div>
                       </div>
+
+                      {/* Inline preferred schedule picker */}
+                      {showSchedule && (
+                        <div className="border-t border-blue-200 pt-3 space-y-3">
+                          <p className="text-xs font-semibold text-blue-900">
+                            Choose your preferred update window
+                          </p>
+                          <p className="text-xs text-blue-700">
+                            Our team will perform the upgrade during this window.
+                          </p>
+                          <div className="space-y-3">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs text-blue-800">Preferred Date</Label>
+                              <Input
+                                type="date"
+                                className="h-9 max-w-fit bg-white border-blue-200"
+                                value={preferredDate}
+                                min={minDate}
+                                onChange={(e) => setPreferredDate(e.target.value)}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-blue-800">From</Label>
+                                <Select value={timeStart} onValueChange={setTimeStart}>
+                                  <SelectTrigger className="h-9 bg-white border-blue-200">
+                                    <SelectValue placeholder="Start time" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {TIME_OPTIONS.map(opt => (
+                                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-blue-800">To</Label>
+                                <Select value={timeEnd} onValueChange={setTimeEnd}>
+                                  <SelectTrigger className="h-9 bg-white border-blue-200">
+                                    <SelectValue placeholder="End time" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {TIME_OPTIONS.map(opt => (
+                                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            {timeStart && timeEnd && timeStart >= timeEnd && (
+                              <p className="text-xs text-red-500">End time must be after start time.</p>
+                            )}
+                            <div className="flex items-center gap-2 pt-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-blue-700 hover:bg-blue-100 text-xs"
+                                onClick={() => { setShowSchedule(false); setPreferredDate(''); setTimeStart(''); setTimeEnd(''); }}
+                                disabled={adoptRelease.isPending}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs"
+                                disabled={!isScheduleValid || adoptRelease.isPending}
+                                onClick={handleConfirmUpgrade}
+                              >
+                                {adoptRelease.isPending ? 'Requesting...' : 'Confirm & Request Update'}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Cumulative changelog */}
                       {showChangelog && cumulativeChangelog.length > 0 && (

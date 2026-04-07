@@ -290,12 +290,6 @@ export const defaultSidebarConfig: SidebarConfig = {
           route: '/app/company/:companyName/marketplace-preview',
           companyAdminOnly: true
         },
-        {
-          id: 'mc-review-panel',
-          name: 'Awaiting My Review',
-          icon: <FileSearch className="w-5 h-5" />,
-          route: '/app/company/:companyName/review'
-        },
       ]
     },
     {
@@ -417,14 +411,6 @@ export const defaultSidebarConfig: SidebarConfig = {
             { id: 'company-audits', name: 'Audits', icon: <ClipboardList className="w-4 h-4" />, route: '/app/company/:companyName/audits' },
             { id: 'ip-management', name: 'IP Management', icon: <Lightbulb className="w-4 h-4" />, route: '/app/company/:companyName/ip-portfolio' },
           ]
-        },
-        // ── Gold: Advisory Board ──
-        {
-          id: 'advisory-board',
-          name: 'Advisory Board',
-          icon: <Users className="w-5 h-5" />,
-          route: '/app/company/:companyName/advisory-board',
-          domainColor: 'gold'
         },
       ]
     },
@@ -564,6 +550,7 @@ export const defaultSidebarConfig: SidebarConfig = {
             { id: 'gap-analysis', name: 'Gap Analysis', icon: <ClipboardCheck className="w-4 h-4" />, route: '/app/product/:id/gap-analysis' },
             { id: 'activities', name: 'Activities', icon: <Activity className="w-4 h-4" />, route: '/app/product/:id/activities' },
             { id: 'documents', name: 'Technical Documentation', icon: <FileText className="w-4 h-4" />, route: '/app/product/:id/documents' },
+            
             { id: 'technical-file', name: 'Technical File', icon: <FileText className="w-4 h-4" />, route: '/app/product/:id/technical-file' },
             { id: 'pms', name: 'Post-Market Surveillance', icon: <Eye className="w-4 h-4" />, route: '/app/product/:id/post-market-surveillance' },
           ]
@@ -576,7 +563,7 @@ export const defaultSidebarConfig: SidebarConfig = {
       label: 'Document Studio',
       description: 'Document creation and management workspace',
       headerTitle: 'Document Studio',
-      // showAddButton: true,
+      hidden: true,
       menuItems: [
         {
           id: 'document-studio',
@@ -584,36 +571,6 @@ export const defaultSidebarConfig: SidebarConfig = {
           icon: <FileText className="w-5 h-5" />,
           route: '/app/company/:companyName/document-studio'
         },
-        // {
-        //   id: 'product-selection',
-        //   name: 'Product Selection',
-        //   icon: <Target className="w-5 h-5" />,
-        //   route: '/app/document-studio/product-selection'
-        // },
-        // {
-        //   id: 'templates',
-        //   name: 'Templates',
-        //   icon: <FileCheck className="w-5 h-5" />,
-        //   route: '/app/document-studio/templates'
-        // },
-        // {
-        //   id: 'document-composer',
-        //   name: 'Document Composer',
-        //   icon: <Edit className="w-5 h-5" />,
-        //   route: '/app/document-composer'
-        // },
-        // {
-        //   id: 'company-document-studio',
-        //   name: 'Company Document Studio',
-        //   icon: <Building className="w-5 h-5" />,
-        //   route: '/app/company/:companyName/document-studio'
-        // },
-        // {
-        //   id: 'company-document-composer',
-        //   name: 'Company Document Composer',
-        //   icon: <Edit className="w-5 h-5" />,
-        //   route: '/app/company/:companyName/document-composer'
-        // }
       ]
     },
     // Communications module removed — now lives inside Mission Control CommunicationHub

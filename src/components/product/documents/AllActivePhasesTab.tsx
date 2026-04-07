@@ -888,13 +888,19 @@ export function AllActivePhasesTab({
   }, [lifecyclePhaseDocuments]);
 
   // Optimistically add newly created document to list instantly
+  // If it's a deep-link request (_deepLink flag), also open the drawer
   React.useEffect(() => {
     if (newlyCreatedDoc?.id) {
-      setOptimisticAdds(prev => {
-        // Avoid duplicates
-        if (prev.some(d => d.id === newlyCreatedDoc.id)) return prev;
-        return [newlyCreatedDoc, ...prev];
-      });
+      if (newlyCreatedDoc._deepLink) {
+        // Deep-link: open the side drawer for this document
+        setDraftDrawerDocument(newlyCreatedDoc);
+      } else {
+        setOptimisticAdds(prev => {
+          // Avoid duplicates
+          if (prev.some(d => d.id === newlyCreatedDoc.id)) return prev;
+          return [newlyCreatedDoc, ...prev];
+        });
+      }
     }
   }, [newlyCreatedDoc]);
 

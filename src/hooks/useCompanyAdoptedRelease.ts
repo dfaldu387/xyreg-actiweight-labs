@@ -47,11 +47,18 @@ export function useCompanyAdoptedRelease(companyId: string) {
   });
 }
 
+export interface AdoptReleaseParams {
+  releaseId: string;
+  preferredDate?: string;
+  preferredTimeStart?: string;
+  preferredTimeEnd?: string;
+}
+
 export function useAdoptRelease(companyId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (releaseId: string) => {
+    mutationFn: async ({ releaseId, preferredDate, preferredTimeStart, preferredTimeEnd }: AdoptReleaseParams) => {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id ?? null;
 
@@ -63,6 +70,9 @@ export function useAdoptRelease(companyId: string) {
           release_id: releaseId,
           adopted_by: userId,
           status: 'pending',
+          preferred_date: preferredDate ?? null,
+          preferred_time_start: preferredTimeStart ?? null,
+          preferred_time_end: preferredTimeEnd ?? null,
         });
       if (error) throw error;
 
@@ -101,7 +111,9 @@ export function useAdoptRelease(companyId: string) {
             category: 'system',
             action: 'release_adopted',
             title: `${companyName} adopted XYREG v${releaseVersion}`,
-            message: `${companyName} has started validation for version v${releaseVersion}.`,
+            message: preferredDate
+              ? `${companyName} has started validation for v${releaseVersion}. Preferred update: ${preferredDate}${preferredTimeStart && preferredTimeEnd ? ` (${preferredTimeStart}–${preferredTimeEnd})` : ''}.`
+              : `${companyName} has started validation for version v${releaseVersion}.`,
             priority: 'medium',
             entity_type: 'xyreg_release',
             entity_id: releaseId,
@@ -129,6 +141,9 @@ export function useAdoptRelease(companyId: string) {
               companyName,
               releaseVersion,
               adoptedAt: new Date().toISOString(),
+              preferredDate: preferredDate ?? null,
+              preferredTimeStart: preferredTimeStart ?? null,
+              preferredTimeEnd: preferredTimeEnd ?? null,
             },
           });
         }

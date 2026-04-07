@@ -25,7 +25,7 @@ import { MissionControlRedirect } from "@/components/mission-control/MissionCont
 
 // Lazy load heavy components
 const MissionControlDashboard = lazy(() => import("@/pages/MissionControlDashboard"));
-const AdvisoryBoard = lazy(() => import("@/pages/AdvisoryBoard"));
+
 import { SingleCompanyDashboard } from "@/components/mission-control/SingleCompanyDashboard";
 const Archives = lazy(() => import("@/pages/Archives"));
 const SupplierDetailPage = lazy(() => import("@/pages/SupplierDetailPage"));
@@ -119,6 +119,7 @@ const DocumentComposerPage = lazy(() => import("@/pages/DocumentComposerPage"));
 const ComplianceInstancesPage = lazy(() => import("@/pages/ComplianceInstancesPage"));
 const ProductComplianceInstancesPage = lazy(() => import("@/pages/ProductComplianceInstancesPage"));
 const ProductTechnicalFilePage = lazy(() => import("@/pages/ProductTechnicalFilePage"));
+
 const CompanyCommercialLandingPage = lazy(() => import("@/pages/CompanyCommercialLandingPage"));
 const ProductBusinessCaseLandingPage = lazy(() => import("@/pages/ProductBusinessCaseLandingPage"));
 const ProductDefinitionLandingPage = lazy(() => import("@/pages/ProductDefinitionLandingPage"));
@@ -545,16 +546,6 @@ function App() {
                 <ErrorBoundary level="component">
                   <MissionControlRedirect />
                 </ErrorBoundary>
-              } />
-              {/* Advisory Board */}
-              <Route path="company/:companyName/advisory-board" element={
-                <Suspense fallback={<PageLoader />}>
-                  <ErrorBoundary level="component">
-                    <CompanyRouteGuard>
-                      <AdvisoryBoard />
-                    </CompanyRouteGuard>
-                  </ErrorBoundary>
-                </Suspense>
               } />
 
               {/* User x Product Matrix */}
@@ -1375,6 +1366,7 @@ function App() {
                   </ErrorBoundary>
                 </Suspense>
               } />
+
 
               <Route path="product/:productId/technical-file" element={
                 <Suspense fallback={<PageLoader />}>

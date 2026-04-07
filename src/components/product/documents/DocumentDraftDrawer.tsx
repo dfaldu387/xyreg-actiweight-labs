@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { IconButton, Box, Typography, CircularProgress, Tooltip } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { ResizableDrawer } from '@/components/ui/resizable-drawer';
@@ -10,12 +11,14 @@ import { useCompanyRole } from '@/context/CompanyRoleContext';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentEditor } from "@onlyoffice/document-editor-react";
-import { FileEdit, ArrowLeft, Loader2, AlertCircle, Send, Check, FilePen, Eye, ShieldCheck, CircleCheckBig, Hourglass } from 'lucide-react';
+import { FileEdit, ArrowLeft, Loader2, AlertCircle, Send, Check, FilePen, Eye, ShieldCheck, CircleCheckBig, Hourglass, ExternalLink, Star } from 'lucide-react';
+import { useDocumentStar } from '@/hooks/useDocumentStar';
 import { DocumentEditorSidebar } from '@/components/document-composer/DocumentEditorSidebar';
 import { SendToReviewGroupDialog } from '@/components/documents/SendToReviewGroupDialog';
 import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
 import { extractFieldsFromSections } from '@/utils/documentToFieldExtractor';
 import { useProductFieldSuggestions } from '@/hooks/useProductFieldSuggestions';
+import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
 import { toast } from 'sonner';
 
 // OnlyOffice constants
@@ -57,10 +60,13 @@ interface DocumentDraftDrawerProps {
   documentType: string;
   productId?: string;
   companyId?: string;
+  companyName?: string;
   onDocumentSaved?: () => void;
   filePath?: string;
   fileName?: string;
   documentReference?: string;
+  isNewUnsavedDocument?: boolean;
+  onDocumentCreated?: (docId: string, docName: string, docType: string) => void;
 }
 
 export function DocumentDraftDrawer({
@@ -71,10 +77,13 @@ export function DocumentDraftDrawer({
   documentType,
   productId,
   companyId,
+  companyName,
   onDocumentSaved,
   filePath,
   fileName,
   documentReference,
+  isNewUnsavedDocument,
+  onDocumentCreated,
 }: DocumentDraftDrawerProps) {
   const [template, setTemplate] = useState<DocumentTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -84,6 +93,7 @@ export function DocumentDraftDrawer({
   const [docStatus, setDocStatus] = useState<string>('Not Started');
   const [editorKey, setEditorKey] = useState<string | null>(null);
   const { activeCompanyRole } = useCompanyRole();
+  const drawerNavigate = useNavigate();
   const { user } = useAuth();
   const activeRole = activeCompanyRole?.role;
   const canEdit = activeRole !== 'viewer';
@@ -94,6 +104,8 @@ export function DocumentDraftDrawer({
   const [documentNumber, setDocumentNumber] = useState<string | null>(null);
   const [showSendForReview, setShowSendForReview] = useState(false);
   const [existingReviewerGroupIds, setExistingReviewerGroupIds] = useState<string[]>([]);
+  const [showSaveCIDialog, setShowSaveCIDialog] = useState(false);
+  const [isUnsaved, setIsUnsaved] = useState(isNewUnsavedDocument || false);
 
   const resolvedCompanyId = companyId || activeCompanyRole?.companyId;
 
@@ -139,8 +151,12 @@ export function DocumentDraftDrawer({
       setShowAdvancedEditor(false);
       setEditorMounted(false);
       setEditorKey(null);
+      setShowSaveCIDialog(false);
+      setIsUnsaved(false);
+    } else if (isNewUnsavedDocument) {
+      setIsUnsaved(true);
     }
-  }, [open]);
+  }, [open, isNewUnsavedDocument]);
 
   const resolvedDocUrl = editorMounted && filePath ? getDocumentUrl(filePath) : "";
 
@@ -168,15 +184,23 @@ export function DocumentDraftDrawer({
     fetchOrCreateKey();
   }, [editorMounted, documentId]);
 
+  // Local override for document identity — set after CI creation to avoid drift
+  const [overrideDocId, setOverrideDocId] = useState<string | null>(null);
+
   // Normalize the CI document ID (strip "template-" prefix if present)
-  const normalizedDocId = documentId?.startsWith('template-')
-    ? documentId.replace('template-', '')
-    : documentId;
+  const normalizedDocId = overrideDocId
+    || (documentId?.startsWith('template-') ? documentId.replace('template-', '') : documentId);
 
-
-  // Fetch document status for stepper
+  // Reset override when drawer closes or prop documentId changes
   useEffect(() => {
-    if (!open || !normalizedDocId) return;
+    setOverrideDocId(null);
+  }, [documentId, open]);
+
+  const { isStarred, isLoading: starLoading, toggleStar } = useDocumentStar(normalizedDocId);
+
+  // Fetch document status for stepper (skip for new unsaved documents)
+  useEffect(() => {
+    if (!open || !normalizedDocId || isUnsaved) return;
     const fetchStatus = async () => {
       const { data } = await supabase
         .from('phase_assigned_document_template')
@@ -186,7 +210,7 @@ export function DocumentDraftDrawer({
       if (data?.status) setDocStatus(data.status);
     };
     fetchStatus();
-  }, [open, normalizedDocId]);
+  }, [open, normalizedDocId, isUnsaved]);
 
   // Initialize template when drawer opens - check for existing draft first
   useEffect(() => {
@@ -198,15 +222,36 @@ export function DocumentDraftDrawer({
 
     if (!resolvedCompanyId || !normalizedDocId) return;
 
+    // For new unsaved documents, skip DB lookup — just create a blank template
+    if (isUnsaved) {
+      const sections = getDefaultSectionsForType(documentType);
+      setTemplate({
+        id: normalizedDocId,
+        name: documentName,
+        type: documentType,
+        sections,
+        productContext: { id: productId || '', name: '', riskClass: '', phase: '', regulatoryRequirements: [] },
+        documentControl: {
+          sopNumber: '', documentTitle: documentName, version: '1.0',
+          effectiveDate: new Date(), documentOwner: '',
+          preparedBy: { name: '', title: '', date: new Date() },
+          reviewedBy: { name: '', title: '', date: new Date() },
+          approvedBy: { name: '', title: '', date: new Date() },
+        },
+        metadata: { version: '1.0', lastUpdated: new Date(), estimatedCompletionTime: '30 minutes' },
+      });
+      setExistingDraftId(null);
+      return;
+    }
+
     const loadOrCreateTemplate = async () => {
       setIsLoading(true);
       try {
+        // Primary: look up by CI UUID (normalizedDocId)
+        // Secondary: look up by documentReference (for legacy TF-key drafts)
         const templateIds = [normalizedDocId];
-        if (documentReference) {
+        if (documentReference && documentReference !== normalizedDocId) {
           templateIds.push(documentReference);
-        }
-        if (productId) {
-          templateIds.push(`DEVICE-DEF-FULL-${productId}`);
         }
 
         const bestDraftResult = await DocumentStudioPersistenceService.loadBestTemplateForTemplateIds(
@@ -222,6 +267,18 @@ export function DocumentDraftDrawer({
         const existingDraft = bestDraftResult.data || null;
 
         if (existingDraft) {
+          // Legacy migration: if draft was found under a deterministic key (e.g. TF-0-a)
+          // but the CI UUID is different, rebind the draft to the CI UUID
+          if (existingDraft.template_id && existingDraft.template_id !== normalizedDocId && documentReference) {
+            console.log(`[DocumentDraftDrawer] Migrating legacy draft from ${existingDraft.template_id} to ${normalizedDocId}`);
+            await DocumentStudioPersistenceService.rebindStudioDraftToCI(
+              resolvedCompanyId,
+              existingDraft.template_id,
+              normalizedDocId,
+              productId
+            );
+          }
+
           // Load existing draft
           const sections = Array.isArray(existingDraft.sections) ? existingDraft.sections : [];
           const docControl = existingDraft.document_control as any;
@@ -384,9 +441,22 @@ export function DocumentDraftDrawer({
   }, []);
 
   const handleDocumentSaved = useCallback(() => {
+    if (isUnsaved) {
+      // Intercept: show scope dialog instead of closing
+      setShowSaveCIDialog(true);
+      return;
+    }
     onOpenChange(false);
     onDocumentSaved?.();
-  }, [onOpenChange, onDocumentSaved]);
+  }, [onOpenChange, onDocumentSaved, isUnsaved]);
+
+  // Serialize current template sections to HTML for CI creation
+  const getTemplateHtml = useCallback(() => {
+    if (!template) return '';
+    return template.sections
+      .map(s => s.content.map(c => c.content || '').join('\n'))
+      .join('\n');
+  }, [template]);
 
   return (
     <>
@@ -451,6 +521,33 @@ export function DocumentDraftDrawer({
               </IconButton>
             </Tooltip>
           )}
+          {resolvedCompanyId && (
+            <Tooltip title="View in Document Control" arrow>
+              <IconButton
+                onClick={() => {
+                  if (productId) {
+                    drawerNavigate(`/app/product/${productId}/documents?docId=${documentId}`);
+                  } else {
+                    drawerNavigate(`/app/company/${encodeURIComponent(companyName || activeCompanyRole?.companyName || resolvedCompanyId)}/documents?docId=${documentId}`);
+                  }
+                }}
+                size="small"
+                sx={{ color: '#7c3aed', border: '1px solid #7c3aed', borderRadius: '6px', '&:hover': { backgroundColor: 'rgba(124, 58, 237, 0.08)' } }}
+              >
+                <ExternalLink style={{ width: 16, height: 16 }} />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip title={isStarred ? "Unstar document" : "Star document"} arrow>
+            <IconButton
+              onClick={(e) => { e.stopPropagation(); toggleStar(); }}
+              size="small"
+              disabled={starLoading}
+              sx={{ color: isStarred ? '#eab308' : '#9ca3af', '&:hover': { backgroundColor: 'rgba(234, 179, 8, 0.08)' } }}
+            >
+              <Star style={{ width: 16, height: 16, fill: isStarred ? '#eab308' : 'none' }} />
+            </IconButton>
+          </Tooltip>
           <IconButton onClick={() => onOpenChange(false)} size="small">
             <CloseIcon />
           </IconButton>
@@ -597,10 +694,12 @@ export function DocumentDraftDrawer({
               selectedProductId={productId}
               onDocumentControlChange={handleDocumentControlChange}
               onPushToDeviceFields={productId ? handlePushToDeviceFields : undefined}
+              onCustomSave={isUnsaved ? () => setShowSaveCIDialog(true) : undefined}
               isRecord={isRecord}
               recordId={recordId || undefined}
               nextReviewDate={nextReviewDate || undefined}
               documentNumber={documentNumber || undefined}
+              hideVersioning
             />
           ) : null}
         </Box>
@@ -634,6 +733,53 @@ export function DocumentDraftDrawer({
         existingGroupIds={existingReviewerGroupIds}
         onSent={() => {
           onDocumentSaved?.();
+        }}
+      />
+    )}
+    {/* Save-as-CI scope dialog — shown on first save of unsaved documents */}
+    {showSaveCIDialog && resolvedCompanyId && (
+      <SaveContentAsDocCIDialog
+        open={showSaveCIDialog}
+        onOpenChange={(open) => { if (!open) setShowSaveCIDialog(false); }}
+        title={documentName}
+        htmlContent={getTemplateHtml()}
+        templateIdKey={documentReference || documentId}
+        companyId={resolvedCompanyId}
+        companyName=""
+        productId={productId}
+        defaultScope={productId ? 'device' : 'enterprise'}
+        onDocumentCreated={async (ciId, ciName, ciType) => {
+          setShowSaveCIDialog(false);
+          setIsUnsaved(false);
+
+          // Rebind drawer identity to the real CI UUID
+          setOverrideDocId(ciId);
+
+          // Persist the current template content as a studio draft under the CI UUID
+          if (template && resolvedCompanyId) {
+            try {
+              const savedDraft = await DocumentStudioPersistenceService.saveTemplate({
+                company_id: resolvedCompanyId,
+                template_id: ciId,
+                name: ciName || template.name,
+                type: template.type,
+                sections: template.sections as any[],
+                product_context: template.productContext,
+                document_control: template.documentControl,
+                metadata: template.metadata || { version: '1.0', lastUpdated: new Date() },
+                product_id: productId,
+              });
+              if (savedDraft?.id) {
+                setExistingDraftId(savedDraft.id);
+              }
+              // Update the in-memory template id so subsequent saves use CI UUID
+              setTemplate(prev => prev ? { ...prev, id: ciId, name: ciName || prev.name } : prev);
+            } catch (err) {
+              console.error('[DocumentDraftDrawer] Failed to persist studio draft after CI creation:', err);
+            }
+          }
+
+          onDocumentCreated?.(ciId, ciName, ciType);
         }}
       />
     )}

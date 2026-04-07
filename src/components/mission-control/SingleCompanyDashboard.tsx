@@ -8,12 +8,13 @@ import { hasEditorPrivileges } from "@/utils/roleUtils";
 import { MyActionItems } from "./MyActionItems";
 import { NewReleaseNotification } from "./NewReleaseNotification";
 import { ProjectHealthAlerts } from "./ProjectHealthAlerts";
+import { MyDocumentsWidget } from "./MyDocumentsWidget";
 import { CommunicationHub } from "./CommunicationHub";
 import { KnowledgeBotWidget } from "./KnowledgeBotWidget";
 import { FeedbackTrackerWidget } from "./widgets/FeedbackTrackerWidget";
 import { ReviewActionItemsWidget } from "./widgets/ReviewActionItemsWidget";
 import { TrainingStatusCard } from "./TrainingStatusCard";
-import { DocumentStatusWidget } from "./DocumentStatusWidget";
+
 import { CompanySelector } from "./CompanySelector";
 import { WidgetPalette } from "./WidgetPalette";
 import { SortableWidgetColumn } from "./SortableWidgetColumn";
@@ -122,8 +123,8 @@ export function SingleCompanyDashboard() {
         return <TrainingStatusCard key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
       case 'communication-hub':
         return <CommunicationHub key={widgetId} scope="company" companyId={currentCompanyId} />;
-      case 'document-status':
-        return <DocumentStatusWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
+      case 'my-documents':
+        return <MyDocumentsWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
       case 'knowledge-bot':
         return <KnowledgeBotWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
       case 'review-action-items':
@@ -143,7 +144,7 @@ export function SingleCompanyDashboard() {
         subtitle={`${currentCompany?.companyName || lang('common.company')} - ${lang('missionControl.subtitle')}`}
         actions={
           <div className="flex items-center gap-2">
-            <WidgetPalette enabledWidgetIds={enabledWidgetIds} onToggleWidget={toggleWidget} userRole={userRole} />
+            <WidgetPalette enabledWidgetIds={enabledWidgetIds} onToggleWidget={toggleWidget} onReorderWidget={reorderWidgets} userRole={userRole} />
             {companyRoles.length === 1 ? (
               <div className="text-sm font-medium">{companyRoles[0].companyName}</div>
             ) : (

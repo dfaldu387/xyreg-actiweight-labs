@@ -71,44 +71,13 @@ export function SaveContentAsDocCIDialog({
   }, [scope, companyId]);
 
   const handleSave = async () => {
-    if (!htmlContent.trim()) {
-      toast.error('No content to export');
-      return;
-    }
+    const resolvedContent = htmlContent.trim() || '<p>[Document content pending]</p>';
     setIsSaving(true);
     try {
       const docScope = scope === 'enterprise' ? 'company' : 'product';
       const scopeProductId = scope !== 'enterprise' ? productId : undefined;
 
-      const sections = [
-        {
-          id: 'exported-content',
-          title,
-          content: [{ id: 'content-1', type: 'paragraph', content: htmlContent }],
-          order: 0,
-        },
-      ];
-
-      const existing = await DocumentStudioPersistenceService.loadTemplate(
-        companyId, templateIdKey, scopeProductId
-      );
-
-      const studioData: DocumentStudioData = {
-        ...(existing.data?.id ? { id: existing.data.id } : {}),
-        company_id: companyId,
-        product_id: scopeProductId,
-        template_id: templateIdKey,
-        name: title,
-        type: 'Technical',
-        sections,
-        metadata: { source: 'content-export', templateIdKey },
-      };
-
-      const saveResult = await DocumentStudioPersistenceService.saveTemplate(studioData);
-      if (!saveResult.success || !saveResult.id) {
-        throw new Error(saveResult.error || 'Failed to save studio template');
-      }
-
+      // Step 1: Create the CI first to get a stable UUID
       const syncResult = await DocumentStudioPersistenceService.syncToDocumentCI({
         companyId,
         productId: scopeProductId,
@@ -117,18 +86,52 @@ export function SaveContentAsDocCIDialog({
         documentReference: templateIdKey,
         documentScope: docScope === 'company' ? 'company_document' : 'product_document',
       });
-      if (!syncResult.success) {
+      if (!syncResult.success || !syncResult.id) {
         throw new Error(syncResult.error || 'Failed to create Document CI record');
       }
 
+      const ciUUID = syncResult.id;
+
+      // Step 2: Save studio draft using the CI UUID as template_id (single identity)
+      const sections = [
+        {
+          id: 'exported-content',
+          title,
+          content: [{ id: 'content-1', type: 'paragraph', content: resolvedContent }],
+          order: 0,
+        },
+      ];
+
+      const existing = await DocumentStudioPersistenceService.loadTemplate(
+        companyId, ciUUID, scopeProductId
+      );
+
+      const studioData: DocumentStudioData = {
+        ...(existing.data?.id ? { id: existing.data.id } : {}),
+        company_id: companyId,
+        product_id: scopeProductId,
+        template_id: ciUUID,
+        name: title,
+        type: 'Technical',
+        sections,
+        metadata: { source: 'content-export', templateIdKey, ciId: ciUUID },
+      };
+
+      const saveResult = await DocumentStudioPersistenceService.saveTemplate(studioData);
+      if (!saveResult.success || !saveResult.id) {
+        throw new Error(saveResult.error || 'Failed to save studio template');
+      }
+
+      // No rebinding needed — CI UUID is the template_id from the start
+
       setSavedStudioId(saveResult.id);
-      setSavedTemplateId(templateIdKey);
+      setSavedTemplateId(ciUUID);
       queryClient.invalidateQueries({ queryKey: ['company-documents', companyId] });
       toast.success('Document created successfully');
 
-      if (onDocumentCreated && syncResult.id) {
+      if (onDocumentCreated) {
         handleClose();
-        onDocumentCreated(syncResult.id, title, 'Report');
+        onDocumentCreated(ciUUID, title, 'Report');
       }
     } catch (err: any) {
       console.error('Save as Doc CI failed:', err);

@@ -169,6 +169,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
     if (urlLayout !== viewMode) setViewModeState(urlLayout);
   }, [searchParams]);
 
+
   // Wrapper functions that update both state and URL
   const setSearchTerm = useCallback((value: string) => {
     setSearchTermState(value);
@@ -213,6 +214,22 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
   // Use TanStack Query hook
   const { documents, isLoading, error, refetch, deleteDocument, updateDocumentStatus, isDeleting, isUpdatingStatus, updatingStatusId } = useCompanyDocuments(companyId);
   
+  // Deep-link: auto-open drawer when docId param is present
+  useEffect(() => {
+    const docId = searchParams.get('docId');
+    if (docId && documents && documents.length > 0 && !draftDrawerDocument) {
+      const targetDoc = documents.find(d => d.id === docId);
+      if (targetDoc) {
+        setDraftDrawerDocument(targetDoc);
+        setSearchParams(prev => {
+          const newParams = new URLSearchParams(prev);
+          newParams.delete('docId');
+          return newParams;
+        }, { replace: true });
+      }
+    }
+  }, [searchParams, documents, draftDrawerDocument, setSearchParams]);
+
   // Get dynamic document types
   const { documentTypes, isLoading: isLoadingDocTypes } = useDocumentTypes(companyId);
 

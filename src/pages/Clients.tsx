@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { DirectNameFix } from "@/components/eudamed/DirectNameFix";
 import { CompanyUsageService } from "@/services/companyUsageService";
 import { HelpAnchor } from "@/components/help/HelpAnchor";
+import { AwaitingMyReviewWidget } from "@/components/review/AwaitingMyReviewWidget";
 
 import { Badge } from "@/components/ui/badge";
 import { usePlanMenuAccess } from "@/hooks/usePlanMenuAccess";
@@ -235,6 +236,7 @@ function ClientsContent() {
       {/* Main content area with proper scrolling */}
       <div className="flex-1 overflow-y-auto">
         <div className="w-full py-6">
+
           {/* Emergency Fix for Nox Medical moved to notification bell */}
 
           <ClientLoadingState

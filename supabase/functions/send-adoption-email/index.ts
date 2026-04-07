@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { to, companyName, releaseVersion, adoptedAt } = await req.json();
+    const { to, companyName, releaseVersion, adoptedAt, preferredDate, preferredTimeStart, preferredTimeEnd } = await req.json();
 
     if (!to || !Array.isArray(to) || to.length === 0) {
       return new Response(JSON.stringify({ error: "No recipients" }), {
@@ -30,6 +30,27 @@ serve(async (req) => {
       minute: "2-digit",
       timeZone: "UTC",
     }) + " UTC";
+
+    function formatTime12h(time: string): string {
+      const [h, m] = time.split(":").map(Number);
+      const suffix = h >= 12 ? "PM" : "AM";
+      const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      return `${hour12}:${m.toString().padStart(2, "0")} ${suffix}`;
+    }
+
+    let preferredWindow = "";
+    if (preferredDate) {
+      const dateStr = new Date(preferredDate + "T00:00:00").toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      if (preferredTimeStart && preferredTimeEnd) {
+        preferredWindow = `${dateStr}, ${formatTime12h(preferredTimeStart)} – ${formatTime12h(preferredTimeEnd)}`;
+      } else {
+        preferredWindow = dateStr;
+      }
+    }
 
     const html = `
       <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
@@ -57,6 +78,10 @@ serve(async (req) => {
                 <td style="color: #64748b; font-size: 14px; padding: 6px 0;">Adopted At</td>
                 <td style="color: #0f172a; font-size: 14px; padding: 6px 0; text-align: right;">${formattedDate}</td>
               </tr>
+              ${preferredWindow ? `<tr>
+                <td style="color: #64748b; font-size: 14px; padding: 6px 0;">Preferred Update Window</td>
+                <td style="color: #0d9488; font-size: 14px; font-weight: 600; padding: 6px 0; text-align: right;">${preferredWindow}</td>
+              </tr>` : ""}
             </table>
           </div>
           <div style="text-align: center; margin: 28px 0;">
@@ -87,7 +112,9 @@ serve(async (req) => {
       body: JSON.stringify({
         from: "XYREG <noreply@xyreg.com>",
         to,
-        subject: `${companyName} adopted XYREG v${releaseVersion}`,
+        subject: preferredWindow
+          ? `${companyName} adopted XYREG v${releaseVersion} — Update requested: ${preferredWindow}`
+          : `${companyName} adopted XYREG v${releaseVersion}`,
         html,
       }),
     });

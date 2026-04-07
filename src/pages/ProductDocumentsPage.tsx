@@ -18,7 +18,9 @@ import { RestrictedFeatureProvider } from "@/contexts/RestrictedFeatureContext";
 import { RestrictedPreviewBanner } from "@/components/subscription/RestrictedPreviewBanner";
 
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, RefreshCw, Zap, Link } from "lucide-react";
+import { TemplatesSettings } from "@/components/settings/TemplatesSettings";
 import { DocumentDependencyDialog } from "@/components/product/documents/DocumentDependencyDialog";
 import { ProductDocumentSyncPage } from "@/components/documents/ProductDocumentSyncPage";
 // import { DocumentDebugPanel } from "@/components/product/documents/DocumentDebugPanel";
@@ -29,10 +31,11 @@ import { mapDBStatusToUI } from "@/utils/statusUtils";
 
 export default function ProductDocumentsPage() {
   const { productId } = useParams<{ productId: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
   const { isMenuAccessKeyEnabled, isLoading: isLoadingPlanAccess, planName } = usePlanMenuAccess();
+  const activeMainTab = searchParams.get('tab') || 'documents';
   const phaseFilter = searchParams.get('phase');
   const filterFromUrl = searchParams.get('filter');
   const statusFromUrl = searchParams.get('status');
@@ -318,6 +321,31 @@ export default function ProductDocumentsPage() {
     }
   }, [product?.current_lifecycle_phase, currentLifecyclePhase, refreshDocuments]);
 
+  // Deep-link: auto-open document drawer when ?docId= is present
+  useEffect(() => {
+    const docId = searchParams.get('docId');
+    if (!docId || !documents || documents.length === 0) return;
+    const doc = documents.find((d: any) => d.id === docId);
+    if (doc) {
+      // Map to DocumentCICard shape expected by AllActivePhasesTab/DrawerDocument
+      setNewlyCreatedDoc({
+        id: doc.id,
+        name: doc.name,
+        document_type: doc.documentType || 'Standard',
+        status: doc.status,
+        file_path: doc.file_path || doc.filePath,
+        file_name: doc.file_name || doc.fileName,
+        _deepLink: true,
+      });
+      // Clear the docId param to avoid re-opening on subsequent renders
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('docId');
+        return next;
+      }, { replace: true });
+    }
+  }, [searchParams, documents, setSearchParams]);
+
   // Enhanced refresh wrapper with consistent return type
   // IMPORTANT: Uses safe refresh path — does NOT call ensureInstancesForCurrentPhase/cleanupProductData
   // which would destroy lifecycle_phases records (see bug fix 2026-02-17)
@@ -495,90 +523,94 @@ export default function ProductDocumentsPage() {
         >
           {isRestricted && <RestrictedPreviewBanner className="mt-2 !mb-0" />}
           <div className="flex-1 overflow-y-auto">
-            <div className="w-full py-2 sm:py-3 lg:py-4 space-y-2 sm:space-y-3 lg:space-y-4">
-              {/* Actions bar */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                </div>
-                {/* <div className="flex items-center gap-2 mt-4">
-                  <Button variant="outline" onClick={enhancedRefresh} disabled={isRestricted} className="gap-2 bg-background">
-                    <RefreshCw className="h-4 w-4" />
-                    Refresh ({totalDocuments})
-                  </Button>
-                  <Button variant="outline" onClick={enhancedSync} disabled={isRestricted || isSyncing} className="gap-2 bg-background">
-                    <Zap className="h-4 w-4" />
-                    {isSyncing ? "Syncing..." : "Sync Templates"}
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowDependencyDialog(true)} disabled={isRestricted} className="gap-2 bg-background">
-                    <Link className="h-4 w-4" />
-                    Dependencies
-                  </Button>
-                  <Button onClick={() => setShowAddDialog(true)} disabled={isRestricted} className="gap-2" data-tour="upload-document">
-                    <Plus className="h-4 w-4" />
-                    Add Document
-                  </Button>
-                </div> */}
-              </div>
-
-            {/* Document Status Summary - uses usePhaseDocuments hook directly for consistent data */}
-            <DocumentStatusSummary
-              companyId={companyId || ''}
-              productId={productId || ''}
-            />
-
-
-            {/* Document Tabs with Operations */}
-            <DocumentStatusOperations
-              productId={productId || ''}
-              companyId={companyId || ''}
-              phases={companyPhases && companyPhases.length > 0 ? companyPhases : phases}
-              onRefresh={enhancedRefresh}
+            <Tabs
+              value={activeMainTab}
+              onValueChange={(value) => {
+                const newParams = new URLSearchParams(searchParams);
+                if (value === 'documents') {
+                  newParams.delete('tab');
+                } else {
+                  newParams.set('tab', value);
+                }
+                const newSearch = newParams.toString();
+                navigate(`${location.pathname}${newSearch ? `?${newSearch}` : ''}`, { replace: true });
+              }}
+              className="w-full"
             >
-              {(operations) => (
-                <DocumentTabs
-                  activeTab="all-phases"
-                  onTabChange={() => { }}
-                  currentPhaseInstances={currentPhaseInstances}
-                  allPhaseInstances={allPhaseInstances}
-                  productSpecificDocuments={productSpecificDocuments}
-                  phases={companyPhases && companyPhases.length > 0 ? companyPhases : phases}
-                  currentLifecyclePhase={currentLifecyclePhase}
-                  refreshTrigger={refreshTrigger}
-                  newlyCreatedDoc={newlyCreatedDoc}
-                  productId={productId}
-                  companyId={companyId}
-                  onDocumentUpdated={onDocumentUpdated}
-                  onDocumentsRefresh={enhancedRefresh}
-                  onSyncRefresh={safeDocumentsRefresh}
-                  onAddDocumentClick={() => setShowAddDialog(true)}
-                  statusFilter={statusFilter}
-                  onStatusFilterChange={handleStatusFilterChange}
-                  onPhaseDeadlineChange={operations.handlePhaseDeadlineChange}
-                  onDocumentStatusChange={operations.handleDocumentStatusChange}
-                  onDocumentDeadlineChange={operations.handleDocumentDeadlineChange}
-                  phaseFilter={filterFromUrl || phaseFilter}
-                  onPhaseFilterChange={handlePhaseFilterChange}
-                  searchQuery={searchQuery}
-                  onSearchChange={handleSearchChange}
-                  disabled={isRestricted}
-                  // New filter props
-                  authorFilter={operations.authorFilter}
-                  onAuthorFilterChange={operations.onAuthorFilterChange}
-                  dateFilter={operations.dateFilter}
-                  onDateFilterChange={operations.onDateFilterChange}
-                  clearAllFilters={operations.clearAllFilters}
-                  availableAuthors={operations.availableAuthors}
-                  availablePhases={operations.availablePhases}
-                  availableStatuses={operations.availableStatuses}
-                  // AI Summary Sidebar props
-                  isSidebarOpen={isSidebarOpen}
-                  onSidebarOpenChange={setIsSidebarOpen}
-                  selectedDocsForSummary={selectedDocsForSummary}
-                  onToggleDocForSummary={handleToggleDocForSummary}
-                />
-              )}
-            </DocumentStatusOperations>
-            </div>
+              <TabsList className="mx-4 mt-2">
+                <TabsTrigger value="documents">Documents</TabsTrigger>
+                <TabsTrigger value="device-templates">Device Templates</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="documents">
+                <div className="w-full py-2 sm:py-3 lg:py-4 space-y-2 sm:space-y-3 lg:space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                    </div>
+                  </div>
+
+                  <DocumentStatusSummary
+                    companyId={companyId || ''}
+                    productId={productId || ''}
+                  />
+
+                  <DocumentStatusOperations
+                    productId={productId || ''}
+                    companyId={companyId || ''}
+                    phases={companyPhases && companyPhases.length > 0 ? companyPhases : phases}
+                    onRefresh={enhancedRefresh}
+                  >
+                    {(operations) => (
+                      <DocumentTabs
+                        activeTab="all-phases"
+                        onTabChange={() => { }}
+                        currentPhaseInstances={currentPhaseInstances}
+                        allPhaseInstances={allPhaseInstances}
+                        productSpecificDocuments={productSpecificDocuments}
+                        phases={companyPhases && companyPhases.length > 0 ? companyPhases : phases}
+                        currentLifecyclePhase={currentLifecyclePhase}
+                        refreshTrigger={refreshTrigger}
+                        newlyCreatedDoc={newlyCreatedDoc}
+                        productId={productId}
+                        companyId={companyId}
+                        onDocumentUpdated={onDocumentUpdated}
+                        onDocumentsRefresh={enhancedRefresh}
+                        onSyncRefresh={safeDocumentsRefresh}
+                        onAddDocumentClick={() => setShowAddDialog(true)}
+                        statusFilter={statusFilter}
+                        onStatusFilterChange={handleStatusFilterChange}
+                        onPhaseDeadlineChange={operations.handlePhaseDeadlineChange}
+                        onDocumentStatusChange={operations.handleDocumentStatusChange}
+                        onDocumentDeadlineChange={operations.handleDocumentDeadlineChange}
+                        phaseFilter={filterFromUrl || phaseFilter}
+                        onPhaseFilterChange={handlePhaseFilterChange}
+                        searchQuery={searchQuery}
+                        onSearchChange={handleSearchChange}
+                        disabled={isRestricted}
+                        authorFilter={operations.authorFilter}
+                        onAuthorFilterChange={operations.onAuthorFilterChange}
+                        dateFilter={operations.dateFilter}
+                        onDateFilterChange={operations.onDateFilterChange}
+                        clearAllFilters={operations.clearAllFilters}
+                        availableAuthors={operations.availableAuthors}
+                        availablePhases={operations.availablePhases}
+                        availableStatuses={operations.availableStatuses}
+                        isSidebarOpen={isSidebarOpen}
+                        onSidebarOpenChange={setIsSidebarOpen}
+                        selectedDocsForSummary={selectedDocsForSummary}
+                        onToggleDocForSummary={handleToggleDocForSummary}
+                      />
+                    )}
+                  </DocumentStatusOperations>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="device-templates">
+                <div className="py-2 sm:py-3 lg:py-4">
+                  <TemplatesSettings companyId={companyId || ''} />
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </RestrictedFeatureProvider>
 

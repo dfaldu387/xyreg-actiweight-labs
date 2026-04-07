@@ -3,8 +3,9 @@ import { useLocation } from 'react-router-dom';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, X, ChevronLeft, Volume2, VolumeX, Users } from 'lucide-react';
+import { Send, Loader2, X, ChevronLeft, Volume2, VolumeX, Users, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ReactMarkdown from 'react-markdown';
 import { ADVISORY_AGENTS, type AdvisoryAgent, getAgentById } from '@/data/advisoryAgents';
 import { supabase } from '@/integrations/supabase/client';
@@ -56,11 +57,20 @@ function speakBrowser(text: string) {
   window.speechSynthesis.speak(utterance);
 }
 
+const VOICE_OPTIONS = [
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Clear & professional' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', desc: 'Warm & authoritative' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', desc: 'Calm British' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', desc: 'Deep & warm' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', desc: 'Clear American' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', desc: 'Natural Australian' },
+] as const;
+
 /** Active audio element for cancellation. */
 let activeAudio: HTMLAudioElement | null = null;
 
 /** Speak text via ElevenLabs TTS edge function, falling back to browser. */
-async function speakElevenLabs(text: string) {
+async function speakElevenLabs(text: string, voiceId?: string) {
   // Cancel any currently playing audio
   if (activeAudio) {
     activeAudio.pause();
@@ -79,7 +89,7 @@ async function speakElevenLabs(text: string) {
           apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ text: stripped, companyId: CompanyContextService.get()?.companyId }),
+        body: JSON.stringify({ text: stripped, companyId: CompanyContextService.get()?.companyId, voiceId }),
       }
     );
     console.log('[TTS] Response status:', response.status);
@@ -114,6 +124,7 @@ export function FloatingAdvisoryBot() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [selectedVoice, setSelectedVoice] = useState(VOICE_OPTIONS[0].id);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const location = useLocation();
@@ -206,7 +217,7 @@ export function FloatingAdvisoryBot() {
 
       // Fire TTS immediately (don't await) so voice starts while text renders
       if (voiceEnabled) {
-        speakElevenLabs(content);
+        speakElevenLabs(content, selectedVoice);
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content }]);
@@ -216,7 +227,7 @@ export function FloatingAdvisoryBot() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, selectedAgent, messages, voiceEnabled, toast, pageContext]);
+  }, [input, isLoading, selectedAgent, messages, voiceEnabled, selectedVoice, toast, pageContext]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -255,12 +266,27 @@ export function FloatingAdvisoryBot() {
         </div>
         </div>
         <div className="flex items-center gap-1">
+          {selectedAgent && voiceEnabled && (
+            <Select value={selectedVoice} onValueChange={setSelectedVoice}>
+              <SelectTrigger className="h-7 w-[90px] text-[10px] border-none bg-transparent px-1.5 focus:ring-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VOICE_OPTIONS.map(v => (
+                  <SelectItem key={v.id} value={v.id} className="text-xs">
+                    <span className="font-medium">{v.name}</span>
+                    <span className="text-muted-foreground ml-1">· {v.desc}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {selectedAgent && (
             <Button
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={() => { setVoiceEnabled(!voiceEnabled); if (voiceEnabled) window.speechSynthesis?.cancel(); }}
+              onClick={() => { setVoiceEnabled(!voiceEnabled); if (voiceEnabled) { window.speechSynthesis?.cancel(); if (activeAudio) { activeAudio.pause(); activeAudio = null; } } }}
               title={voiceEnabled ? 'Mute voice' : 'Enable voice'}
             >
               {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4 text-muted-foreground" />}

@@ -101,7 +101,9 @@ export function useDocumentTemplate(templateId: string, productId: string, docNa
           }
 
           // If not found by templateId, try by name (handles DS-{randomUUID} mismatch)
-          if (!studioMatch && docName) {
+          // But skip name fallback for TF- prefixed keys to avoid cross-document collisions
+          const isTFKey = templateId.startsWith('TF-');
+          if (!studioMatch && docName && !isTFKey) {
             const { data: studioByName } = await supabase
               .from('document_studio_templates')
               .select('*')

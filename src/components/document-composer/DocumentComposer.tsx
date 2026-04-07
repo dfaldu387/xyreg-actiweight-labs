@@ -735,7 +735,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
       toast.error('Company information not available');
       return;
     }
-    setDocumentToDelete(document);
+    setTimeout(() => setDocumentToDelete(document), 0);
   };
 
   const confirmDeleteDocument = async () => {
@@ -743,6 +743,12 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
 
     const docToDelete = documentToDelete;
     setDocumentToDelete(null); // Close dialog immediately
+
+    // CI-backed documents cannot be deleted from Studio alone
+    if (docToDelete.linkedCiId) {
+      toast.error('This document is managed in Doc CI and cannot be deleted from Document Studio. Remove it from the Technical File or Doc CI registry instead.');
+      return;
+    }
 
     try {
       const success = await DocumentStudioPersistenceService.deleteTemplate(docToDelete.id!, activeCompanyRole.companyId);
@@ -1475,16 +1481,29 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
       <AlertDialog open={!!documentToDelete} onOpenChange={(open) => !open && setDocumentToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogTitle>
+              {documentToDelete?.linkedCiId ? 'Cannot Delete Document' : 'Delete Draft'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Do you really want to delete "{documentToDelete?.name}"? This action cannot be undone.
+              {documentToDelete?.linkedCiId
+                ? `"${documentToDelete?.name}" is linked to a Doc CI compliance record and cannot be deleted from Document Studio. To remove it, use the Technical File or Doc CI registry.`
+                : `Do you really want to delete the draft "${documentToDelete?.name}"? This action cannot be undone.`
+              }
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteDocument} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
-            </AlertDialogAction>
+            <AlertDialogCancel>{documentToDelete?.linkedCiId ? 'Close' : 'Cancel'}</AlertDialogCancel>
+            {!documentToDelete?.linkedCiId && (
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  confirmDeleteDocument();
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete Draft
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

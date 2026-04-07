@@ -13,6 +13,7 @@ import {
   type VisibilityState,
 } from "@tanstack/react-table";
 import { ArrowUpDown, ChevronLeft, ChevronRight, FileEdit, Trash2, Eye, Send, Pencil, MoreHorizontal, Copy, FileDown, Loader2 } from "lucide-react";
+import { DocumentStarButton } from './DocumentStarButton';
 import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
 import { toast } from 'sonner';
 import { Checkbox } from "@/components/ui/checkbox";
@@ -661,7 +662,9 @@ export function CompanyDocumentListView({
         const hasFile = !!(doc.file_path || doc.file_name);
 
         return (
-          <div className="flex items-center justify-end gap-1 max-w-[220px]">
+          <div className="flex items-center justify-end gap-1 max-w-[240px]">
+            {/* Star */}
+            <DocumentStarButton documentId={doc.id} />
             {/* Studio */}
             <Button
               variant="ghost"
