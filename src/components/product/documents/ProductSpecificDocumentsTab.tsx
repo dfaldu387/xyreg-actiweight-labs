@@ -8,7 +8,7 @@ import { FileText, Plus, User, File, Eye, Trash2, FolderOpen, Pencil } from "luc
 import { DocumentActionMenu } from "./DocumentActionMenu";
 import { DocumentReviewersList } from "./DocumentReviewersList";
 // import { DocumentAuthorsList } from "./DocumentAuthorsList";
-import { EditDocumentDialog } from "./EditDocumentDialog";
+import { DocumentDraftDrawer } from './DocumentDraftDrawer';
 // AssignReviewersDialog removed for template instances
 import { DocumentViewer } from "../DocumentViewer";
 import { DueDateBadge } from "./DueDateBadge";
@@ -58,7 +58,7 @@ export function ProductSpecificDocumentsTab({
 }: ProductSpecificDocumentsTabProps) {
   const { activeRole } = useCompanyRole();
   const { isAdmin } = useUserDocumentAccess();
-  const [editingDocument, setEditingDocument] = useState<any>(null);
+  const [draftDrawerDocument, setDraftDrawerDocument] = useState<any>(null);
   const [assigningReviewers, setAssigningReviewers] = useState<any>(null);
   const [viewingDocument, setViewingDocument] = useState<any>(null);
   const [serviceUpdating, setServiceUpdating] = useState(false);
@@ -299,7 +299,7 @@ export function ProductSpecificDocumentsTab({
       toast.error("Cannot edit: Document is not product-specific for this product");
       return;
     }
-    setEditingDocument(document);
+    setDraftDrawerDocument(document);
   };
 
   const handleAssignReviewers = (document: any) => {
@@ -318,7 +318,7 @@ export function ProductSpecificDocumentsTab({
       return;
     }
     onDocumentUpdated(updatedDocument);
-    setEditingDocument(null);
+    setDraftDrawerDocument(null);
   };
 
   const handleReviewersUpdated = (updatedDocument: any) => {
@@ -617,19 +617,27 @@ export function ProductSpecificDocumentsTab({
         ) : null;
       })()}
 
-      {/* Edit Document Dialog */}
-      {editingDocument && (
-        <EditDocumentDialog
-          open={!!editingDocument}
-          onOpenChange={(open) => !open && setEditingDocument(null)}
-          document={editingDocument}
-          onDocumentUpdated={handleDocumentUpdated}
-          productId={productId}
-          companyId={companyId}
-          documentType="product-specific"
-          handleRefreshData={handleRefreshData}
-        />
-      )}
+      {/* Document Draft Drawer */}
+      <DocumentDraftDrawer
+        open={!!draftDrawerDocument}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDraftDrawerDocument(null);
+            handleRefreshData();
+          }
+        }}
+        documentId={draftDrawerDocument?.id || ''}
+        documentName={draftDrawerDocument?.name || ''}
+        documentType={draftDrawerDocument?.document_type || 'Standard'}
+        productId={productId}
+        companyId={companyId}
+        onDocumentSaved={() => {
+          setDraftDrawerDocument(null);
+          handleRefreshData();
+        }}
+        filePath={draftDrawerDocument?.file_path}
+        fileName={draftDrawerDocument?.file_name}
+      />
 
       {/* Assign Reviewers Dialog removed for template instances */}
 

@@ -777,14 +777,36 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
       return;
     }
 
-    // If a SOP template is provided, use it directly
+    // If a SOP template is provided, run it through auto-population to inject company data
     if (sopTemplate) {
-      setGeneratedTemplate(sopTemplate);
-
       // Check if this is from Upload Own Document (has temporary ID starting with 'uploaded-')
       const isFromUpload = sopTemplate.id?.startsWith('uploaded-');
       setIsUploadedDocument(isFromUpload);
       setUploadedDocumentSaved(false); // Reset save status
+
+      // Route through auto-population to inject company name, personnel, dates, etc.
+      try {
+        const { AutomatedTemplatePopulationService } = await import('@/services/automatedTemplatePopulationService');
+        const result = await AutomatedTemplatePopulationService.autoPopulateTemplate(
+          sopTemplate,
+          activeCompanyRole.companyId,
+          selectedProductId || productId || undefined
+        );
+        if (result.template) {
+          setGeneratedTemplate(result.template);
+          setSmartData({
+            populatedFields: result.populatedFields,
+            missingDataIndicators: result.missingDataIndicators,
+            suggestions: result.suggestions,
+            completionPercentage: result.completionPercentage,
+          });
+        } else {
+          setGeneratedTemplate(sopTemplate);
+        }
+      } catch (err) {
+        console.error('[DocumentComposer] Auto-population failed for SOP template, using raw template:', err);
+        setGeneratedTemplate(sopTemplate);
+      }
 
       toast.success('SOP document loaded successfully!');
       return;
@@ -866,6 +888,40 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
         templateId,
         updatedTemplate
       );
+      return;
+    }
+
+    // Special case: Handle section title rename
+    if (contentId.startsWith('section-title-')) {
+      const sectionId = contentId.replace('section-title-', '');
+      const updatedTemplate = {
+        ...currentTemplate,
+        sections: currentTemplate.sections.map(section =>
+          section.id === sectionId
+            ? { ...section, customTitle: newContent }
+            : section
+        )
+      };
+      setGeneratedTemplate(updatedTemplate);
+      const templateId = currentTemplate.id || 'temp-template';
+      DocumentTemplatePersistenceService.saveTemplateToLocalStorage(templateId, updatedTemplate);
+      return;
+    }
+
+    // Special case: Handle section header visibility toggle
+    if (contentId.startsWith('section-visibility-')) {
+      const sectionId = contentId.replace('section-visibility-', '');
+      const updatedTemplate = {
+        ...currentTemplate,
+        sections: currentTemplate.sections.map(section =>
+          section.id === sectionId
+            ? { ...section, showHeader: newContent === 'show' }
+            : section
+        )
+      };
+      setGeneratedTemplate(updatedTemplate);
+      const templateId = currentTemplate.id || 'temp-template';
+      DocumentTemplatePersistenceService.saveTemplateToLocalStorage(templateId, updatedTemplate);
       return;
     }
 
@@ -1153,6 +1209,18 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
               onRecordIdChange={setRecordId}
               onNextReviewDateChange={setNextReviewDate}
               onDocumentNumberChange={setDocumentNumber}
+              showSectionNumbers={(generatedTemplate || template)?.formatOptions?.showSectionNumbers}
+              onShowSectionNumbersChange={(show) => {
+                const currentTemplate = generatedTemplate || template;
+                if (!currentTemplate) return;
+                const updatedTemplate = {
+                  ...currentTemplate,
+                  formatOptions: { ...currentTemplate.formatOptions, showSectionNumbers: show }
+                };
+                setGeneratedTemplate(updatedTemplate);
+                const templateId = currentTemplate.id || 'temp-template';
+                DocumentTemplatePersistenceService.saveTemplateToLocalStorage(templateId, updatedTemplate);
+              }}
               controlPanelProps={{
                 productContext: template?.productContext,
                 documentType: template?.type,

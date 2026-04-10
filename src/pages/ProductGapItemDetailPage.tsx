@@ -102,7 +102,7 @@ function getFrameworkConfig(fw: string): FrameworkConfig | null {
     return { sections: IEC_62366_SECTIONS, groups: IEC_62366_GROUPS, label: 'IEC 62366-1', icon: Cpu, frameworkFilter: fw };
   }
   if (fwLower.includes('10993')) {
-    return { sections: ISO_10993_SECTIONS, groups: ISO_10993_GROUPS, label: 'ISO 10993', icon: ShieldCheck, frameworkFilter: fw };
+    return { sections: ISO_10993_SECTIONS, groups: ISO_10993_GROUPS, label: 'ISO 10993-1:2025', icon: ShieldCheck, frameworkFilter: fw };
   }
   if (fwLower.includes('15223')) {
     return { sections: ISO_15223_SECTIONS, groups: ISO_15223_GROUPS, label: 'ISO 15223-1', icon: FileText, frameworkFilter: fw };

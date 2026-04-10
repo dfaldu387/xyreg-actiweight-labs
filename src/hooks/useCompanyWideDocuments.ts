@@ -16,6 +16,7 @@ export interface CompanyWideDocument {
   tags?: string[];
   sub_section?: string;
   authors_ids?: string[];
+  document_number?: string | null;
 }
 
 export function useCompanyWideDocuments(companyId: string) {
@@ -60,6 +61,7 @@ export function useCompanyWideDocuments(companyId: string) {
         tags: Array.isArray(doc.tags) ? doc.tags : [],
         sub_section: doc.sub_section || null,
         authors_ids: Array.isArray(doc.authors_ids) ? doc.authors_ids : [],
+        document_number: doc.document_number || null,
       }));
 
       setDocuments(transformedDocs);

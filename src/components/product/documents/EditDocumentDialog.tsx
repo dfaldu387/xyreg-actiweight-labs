@@ -195,9 +195,9 @@ export function EditDocumentDialog({
   useEffect(() => {
     if (!selectedDocumentType) return;
     setIsLoadingUsedNumbers(true);
-    getUsedNumbers(selectedDocumentType).then(used => {
+    getUsedNumbers(selectedDocumentType, companyId).then(used => {
       if (documentNumber) {
-        const ownMatch = documentNumber.match(new RegExp(`^${selectedDocumentType}-(\\d+)`));
+        const ownMatch = documentNumber.match(new RegExp(`^${selectedDocumentType}-(?:[A-Z]+-)?([\\d]+)`));
         if (ownMatch) used.delete(ownMatch[1]);
       }
       setUsedNumbersSet(used);

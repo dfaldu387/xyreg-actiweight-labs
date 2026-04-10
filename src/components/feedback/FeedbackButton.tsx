@@ -26,7 +26,7 @@ export function FeedbackButton({ onClick, className }: FeedbackButtonProps) {
             onClick();
           }}
           className={cn(
-            'fixed bottom-6 right-6 z-[40]',
+            'fixed bottom-6 right-6 z-[9999]',
             'h-14 w-14 rounded-full',
             'bg-primary text-primary-foreground',
             'shadow-lg hover:shadow-xl',

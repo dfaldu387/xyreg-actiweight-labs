@@ -111,7 +111,7 @@ export function ReviewDraftsList({ companyId, documentId }: ReviewDraftsListProp
                   No review drafts yet. Drafts are created when the document is sent for review.
                 </p>
               ) : (
-                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
                   {drafts.map((draft, index) => (
                     <div
                       key={draft.name}

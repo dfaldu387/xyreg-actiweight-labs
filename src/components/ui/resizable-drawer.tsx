@@ -19,10 +19,17 @@ export function ResizableDrawer({
   anchor = 'right',
   defaultWidthPercent = 40,
   minWidth = 400,
-  maxWidthPercent = 95,
+  maxWidthPercent = 98,
   children,
 }: ResizableDrawerProps) {
   const [drawerWidth, setDrawerWidth] = useState(() => window.innerWidth * (defaultWidthPercent / 100));
+
+  // Reset width to default every time drawer opens
+  React.useEffect(() => {
+    if (open) {
+      setDrawerWidth(window.innerWidth * (defaultWidthPercent / 100));
+    }
+  }, [open, defaultWidthPercent]);
   const isResizing = useRef(false);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

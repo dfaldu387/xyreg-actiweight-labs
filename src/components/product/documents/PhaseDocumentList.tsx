@@ -6,7 +6,7 @@ import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { DocumentReviewersList } from "./DocumentReviewersList";
 import { FileText, Calendar, UserPlus, Edit, FolderOpen } from "lucide-react";
 import { formatDate } from "@/lib/date";
-import { EditDocumentDialog } from "./EditDocumentDialog";
+import { DocumentDraftDrawer } from './DocumentDraftDrawer';
 // AssignReviewersDialog removed for template instances
 import { getDocumentType, validateDocumentForContext } from "@/utils/documentTypeUtils";
 import { useComplianceSections } from "@/hooks/useComplianceSections";
@@ -20,9 +20,7 @@ interface PhaseDocumentListProps {
 }
 
 export function PhaseDocumentList({ documents, onDocumentUpdated, companyId, productId }: PhaseDocumentListProps) {
-  const [selectedDocument, setSelectedDocument] = useState<any | null>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [assignReviewersDialogOpen, setAssignReviewersDialogOpen] = useState(false);
+  const [draftDrawerDocument, setDraftDrawerDocument] = useState<any | null>(null);
 
   // Fetch sections for displaying section names
   const { sections } = useComplianceSections(companyId);
@@ -71,9 +69,8 @@ export function PhaseDocumentList({ documents, onDocumentUpdated, companyId, pro
       return;
     }
 
-    console.log("PhaseDocumentList: Document validation passed, opening edit dialog");
-    setSelectedDocument(document);
-    setEditDialogOpen(true);
+    console.log("PhaseDocumentList: Document validation passed, opening draft drawer");
+    setDraftDrawerDocument(document);
   };
   
   const handleAssignReviewers = (document: any) => {
@@ -110,9 +107,8 @@ export function PhaseDocumentList({ documents, onDocumentUpdated, companyId, pro
       return;
     }
 
-    console.log("PhaseDocumentList: Document validation passed, opening reviewers dialog");
-    setSelectedDocument(document);
-    setAssignReviewersDialogOpen(true);
+    console.log("PhaseDocumentList: Document validation passed, opening draft drawer for reviewers");
+    setDraftDrawerDocument(document);
   };
   
   // Helper function to get the deadline from either due_date or deadline field
@@ -250,19 +246,27 @@ export function PhaseDocumentList({ documents, onDocumentUpdated, companyId, pro
         </Table>
       </div>
       
-      {/* Edit Document Dialog */}
-      {selectedDocument && productId && companyId && getProductDocumentType(selectedDocument) && (
-        <EditDocumentDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          document={selectedDocument}
-          onDocumentUpdated={onDocumentUpdated}
-          documentType={getProductDocumentType(selectedDocument)!}
-          productId={productId}
-          companyId={companyId}
-          handleRefreshData={() => {}}
-        />
-      )}
+      {/* Document Draft Drawer */}
+      <DocumentDraftDrawer
+        open={!!draftDrawerDocument}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDraftDrawerDocument(null);
+            onDocumentUpdated({});
+          }
+        }}
+        documentId={draftDrawerDocument?.id || ''}
+        documentName={draftDrawerDocument?.name || ''}
+        documentType={draftDrawerDocument?.document_type || 'Standard'}
+        productId={productId || ''}
+        companyId={companyId || ''}
+        onDocumentSaved={() => {
+          setDraftDrawerDocument(null);
+          onDocumentUpdated({});
+        }}
+        filePath={draftDrawerDocument?.file_path}
+        fileName={draftDrawerDocument?.file_name}
+      />
       
       {/* Assign Reviewers Dialog removed for template instances */}
     </>

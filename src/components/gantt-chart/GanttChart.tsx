@@ -6,7 +6,7 @@ import "./GanttChartCustom.css";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BarChart3 } from "lucide-react";
-import { EditDocumentDialog } from "@/components/product/documents/EditDocumentDialog";
+import { DocumentDraftDrawer } from "@/components/product/documents/DocumentDraftDrawer";
 import { GanttTask, GanttLink } from "@/types/ganttChart";
 import { CircularProgress } from "@/components/common/CircularProgress";
 import { zoomLevels, getColumns, taskTypes, DEFAULT_ZOOM_LEVEL } from "./config/ganttChartConfig";
@@ -204,7 +204,9 @@ export function GanttChartV23({
                 end: task.end instanceof Date ? task.end : (task.end ? new Date(task.end) : task.end),
                 type: customTypes.includes(task.type)
                     ? task.type
-                    : (task.phaseId || (task as any).phase_id) ? 'summary' : task.type,
+                    : (task.subTaskType && task.type === 'task')
+                        ? 'task' // Preserve 'task' type for document/activity/gap-analysis sub-tasks
+                        : (task.phaseId || (task as any).phase_id) ? 'summary' : task.type,
             }));
         }
         return [];
@@ -224,10 +226,12 @@ export function GanttChartV23({
                 ...task,
                 start: task.start instanceof Date ? task.start : new Date(task.start),
                 end: task.end instanceof Date ? task.end : (task.end ? new Date(task.end) : task.end),
-                // Keep custom types (category, status-based), otherwise use summary for phase tasks or original type
+                // Keep custom types (category, status-based), preserve 'task' for sub-tasks, otherwise use summary for phase tasks
                 type: customTypes.includes(task.type)
                     ? task.type
-                    : (task.phaseId || (task as any).phase_id) ? 'summary' : task.type,
+                    : (task.subTaskType && task.type === 'task')
+                        ? 'task'
+                        : (task.phaseId || (task as any).phase_id) ? 'summary' : task.type,
             }));
             setTasks(parsedTasks);
         } else if (propsTasks !== undefined && propsTasks.length === 0) {
@@ -878,6 +882,14 @@ export function GanttChartV23({
         const isActivityTaskId = (id: string | number | undefined) => hasTaskPrefix(id, 'activity');
         const isAuditTaskId = (id: string | number | undefined) => hasTaskPrefix(id, 'audit');
         const isGapAnalysisTaskId = (id: string | number | undefined) => hasTaskPrefix(id, 'gap');
+
+        // Intercept show-editor for document tasks - use DocumentDraftDrawer instead
+        ganttApi.intercept('show-editor', ({ id }: any) => {
+            if (isDocumentTaskId(id)) {
+                return false; // Prevent built-in editor, select-task handler opens the drawer
+            }
+            return true;
+        });
 
         ganttApi.intercept('drag-task', ({ id, top }: any) => {
             try {
@@ -2312,7 +2324,7 @@ export function GanttChartV23({
                 const selectedTask = ganttApi.getTask(ev.id);
                 const isDocumentTask =
                     selectedTask &&
-                    selectedTask.type === 'task' &&
+                    (selectedTask.type === 'task' || selectedTask.subTaskType === 'document') &&
                     selectedTask.subTaskType === 'document';
 
                 if (isDocumentTask) {
@@ -2593,9 +2605,9 @@ export function GanttChartV23({
                     </Willow>
                 </div>
             </CardContent>
-            {/* Edit Document Dialog - Full document editing */}
+            {/* Document Draft Drawer - Full document editing */}
             {selectedDocument && companyId && (
-                <EditDocumentDialog
+                <DocumentDraftDrawer
                     open={showDocumentEditor}
                     onOpenChange={(open) => {
                         if (!open) {
@@ -2604,165 +2616,18 @@ export function GanttChartV23({
                             setSelectedDocument(null);
                         }
                     }}
-                    document={selectedDocument}
-                    onDocumentUpdated={async (updatedDoc) => {
-                        // Update the task in the Gantt chart
-                        const taskId = selectedDocumentTaskId;
-
-                        // Close dialog first to improve UX
+                    documentId={selectedDocument.id}
+                    documentName={selectedDocument.name || selectedDocument.document_name || ''}
+                    documentType={selectedDocumentType === 'template-instance' ? 'template-instance' : 'product-specific'}
+                    productId={productId}
+                    companyId={companyId}
+                    filePath={selectedDocument.file_path}
+                    fileName={selectedDocument.file_name}
+                    onDocumentSaved={() => {
                         setShowDocumentEditor(false);
-
-                        if (taskId && apiRef.current) {
-                            const ganttApi = apiRef.current;
-                            try {
-                                const existingTask = ganttApi.getTask(taskId);
-                                if (existingTask) {
-                                    // Get author names - fetch from database if authors_ids is provided
-                                    let authorNames: string | undefined = undefined;
-                                    let authorsData = existingTask.authors;
-
-                                    if (updatedDoc.authors_ids && Array.isArray(updatedDoc.authors_ids) && updatedDoc.authors_ids.length > 0) {
-                                        // Fetch author names from multiple sources (same as useDocumentAuthors hook)
-                                        const authorIds = updatedDoc.authors_ids;
-                                        const foundAuthors: Array<{id: string; name: string}> = [];
-
-                                        // 1. Try user_profiles via user_company_access (active company users)
-                                        const { data: companyUsers, error: usersError } = await supabase
-                                            .from('user_company_access')
-                                            .select(`
-                                                user_id,
-                                                user_profiles!inner(id, first_name, last_name, email)
-                                            `)
-                                            .eq('company_id', companyId)
-                                            .in('user_id', authorIds);
-
-                                        if (usersError) {
-                                            console.error('[GanttChart] Error fetching company users:', usersError);
-                                        }
-
-                                        if (companyUsers && companyUsers.length > 0) {
-                                            companyUsers.forEach(u => {
-                                                const profile = u.user_profiles as any;
-                                                if (profile) {
-                                                    const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
-                                                    foundAuthors.push({
-                                                        id: u.user_id,
-                                                        name: fullName || profile.email || u.user_id
-                                                    });
-                                                }
-                                            });
-                                        }
-
-                                        // 2. Check for remaining IDs in user_invitations (pending invitations)
-                                        const foundIds = foundAuthors.map(a => a.id);
-                                        const remainingIds = authorIds.filter((id: string) => !foundIds.includes(id));
-
-                                        if (remainingIds.length > 0) {
-                                            const { data: invitations, error: invError } = await supabase
-                                                .from('user_invitations')
-                                                .select('id, email, first_name, last_name')
-                                                .in('id', remainingIds);
-
-                                            if (!invError && invitations && invitations.length > 0) {
-                                                invitations.forEach(inv => {
-                                                    const fullName = [inv.first_name, inv.last_name].filter(Boolean).join(' ').trim();
-                                                    foundAuthors.push({
-                                                        id: inv.id,
-                                                        name: fullName || inv.email || inv.id
-                                                    });
-                                                });
-                                            }
-                                        }
-
-                                        // 3. Check for remaining IDs in document_authors (custom authors)
-                                        const foundIds2 = foundAuthors.map(a => a.id);
-                                        const remainingIds2 = authorIds.filter((id: string) => !foundIds2.includes(id));
-
-                                        if (remainingIds2.length > 0) {
-                                            const { data: docAuthors, error: docError } = await supabase
-                                                .from('document_authors')
-                                                .select('id, name, last_name, email')
-                                                .in('id', remainingIds2);
-
-                                            if (!docError && docAuthors && docAuthors.length > 0) {
-                                                docAuthors.forEach(a => {
-                                                    const fullName = [a.name, a.last_name].filter(Boolean).join(' ').trim();
-                                                    foundAuthors.push({
-                                                        id: a.id,
-                                                        name: fullName || a.email || a.id
-                                                    });
-                                                });
-                                            }
-                                        }
-
-                                        if (foundAuthors.length > 0) {
-                                            authorsData = foundAuthors;
-                                            authorNames = foundAuthors.map(a => a.name).join(', ');
-                                        } else {
-                                            console.warn('[GanttChart] No authors found for authors_ids:', authorIds);
-                                            // Use "Unassigned" if no authors found
-                                            authorNames = undefined;
-                                        }
-                                    } else if (updatedDoc.authors && Array.isArray(updatedDoc.authors) && updatedDoc.authors.length > 0) {
-                                        // Authors array contains objects with name property
-                                        authorsData = updatedDoc.authors;
-                                        authorNames = updatedDoc.authors.map((a: any) => a.name || a.label || a.id).join(', ');
-                                    } else if (!updatedDoc.authors_ids || updatedDoc.authors_ids.length === 0) {
-                                        // Authors were cleared
-                                        authorNames = undefined;
-                                        authorsData = undefined;
-                                    }
-
-                                    // If authorNames is still undefined, keep existing or set to undefined for "Unassigned"
-                                    const finalAuthorNames = authorNames !== undefined ? authorNames : existingTask.assigned;
-
-                                    // Handle date fields - due_date/deadline maps to end date
-                                    const endDate = updatedDoc.due_date || updatedDoc.deadline;
-                                    const newEndDate = endDate ? new Date(endDate) : existingTask.end;
-
-                                    const updatedTaskData = {
-                                        text: updatedDoc.name || existingTask.text,
-                                        assigned: finalAuthorNames,
-                                        authors_ids: updatedDoc.authors_ids || existingTask.authors_ids,
-                                        authors: authorsData || existingTask.authors,
-                                        start: existingTask.start,
-                                        end: newEndDate,
-                                    };
-
-                                    // Update React state to trigger re-render - this is the primary update mechanism
-                                    setTasks(prevTasks => {
-                                        const newTasks = prevTasks.map(task => {
-                                            if (task.id.toString() === taskId.toString()) {
-                                                const updatedTask = {
-                                                    ...task,
-                                                    ...updatedTaskData,
-                                                };
-                                                return updatedTask;
-                                            }
-                                            return task;
-                                        });
-                                        // Also update tasksRef for consistency
-                                        tasksRef.current = newTasks;
-                                        return newTasks;
-                                    });
-                                }
-                            } catch (err) {
-                                console.error('[GanttChart] Error updating task after document edit:', err);
-                            }
-                        }
-
                         setSelectedDocumentTaskId(null);
                         setSelectedDocument(null);
                     }}
-                    documentType={selectedDocumentType}
-                    productId={productId}
-                    companyId={companyId}
-                    handleRefreshData={() => {
-                        // Trigger a refresh of the Gantt chart data
-                        // This will be handled by the parent component or we can emit an event
-                        console.log('[GanttChart] Document updated, refresh requested');
-                    }}
-                    isFromGanttChart={true}
                 />
             )}
         </Card>

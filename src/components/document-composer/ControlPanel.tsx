@@ -52,6 +52,8 @@ export interface ControlPanelProps {
   selectedReferenceIds?: string[];
   onReferenceSelectionChange?: (ids: string[]) => void;
   disabled?: boolean;
+  isEditing?: boolean;
+  onEditModeChange?: (editing: boolean) => void;
 }
 
 export function ControlPanel({
@@ -75,7 +77,9 @@ export function ControlPanel({
   
   selectedReferenceIds,
   onReferenceSelectionChange,
-  disabled = false
+  disabled = false,
+  isEditing = false,
+  onEditModeChange,
 }: ControlPanelProps) {
   const { lang } = useTranslation();
   const { activeCompanyRole } = useCompanyRole();
@@ -253,9 +257,22 @@ export function ControlPanel({
     <div className={`border-r bg-muted/30 overflow-hidden flex flex-col h-full ${className}`} data-tour="use-template">
       <div className="p-6 space-y-6 flex-1 overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          {isLocked ? <Lock className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-          {lang('draftStudio.controlPanel.documentConfiguration')}
+        <div className="flex items-center justify-between text-sm font-medium text-muted-foreground">
+          <div className="flex items-center gap-2">
+            {isLocked ? <Lock className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+            {lang('draftStudio.controlPanel.documentConfiguration')}
+          </div>
+          {onEditModeChange && (
+            <Button
+              variant={isEditing ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onEditModeChange(!isEditing)}
+              className="h-7 gap-1.5 text-xs"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              {isEditing ? 'Editing' : 'Edit'}
+            </Button>
+          )}
         </div>
 
         {/* Document Control removed — now in CIPropertyPanel */}

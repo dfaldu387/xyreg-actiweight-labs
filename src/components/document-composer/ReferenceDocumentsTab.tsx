@@ -16,6 +16,7 @@ import type { ReferenceDocument } from '@/services/referenceDocumentService';
 
 interface ReferenceDocumentsTabProps {
   companyId: string | undefined;
+  productId?: string;
   disabled?: boolean;
 }
 
@@ -60,9 +61,9 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocumentsTabProps) {
+export function ReferenceDocumentsTab({ companyId, productId, disabled }: ReferenceDocumentsTabProps) {
   const {
-    documents, isLoading, upload, isUploading, deleteDocument, updateDocument, downloadDocument
+    documents: allDocuments, isLoading, upload, isUploading, deleteDocument, updateDocument, downloadDocument
   } = useReferenceDocuments(companyId);
 
   const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -185,6 +186,12 @@ export function ReferenceDocumentsTab({ companyId, disabled }: ReferenceDocument
   };
 
   // Filter
+  // Scope filter: if productId is provided, only show docs tagged with that product
+  const documents = productId
+    ? allDocuments.filter(d => d.tags?.some(t => t === productId || t === `product:${productId}`))
+    : allDocuments;
+
+  // Filter by tag search
   const filteredDocs = filterTag
     ? documents.filter(d => d.tags?.some(t => t.toLowerCase().includes(filterTag.toLowerCase())))
     : documents;

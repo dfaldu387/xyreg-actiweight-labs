@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { FileText, Download, Share, Save, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { FileText, Download, Share, Save, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine, Eye, EyeOff, Pencil, ShieldCheck } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AIContentBlock } from './AIContentBlock';
+import { AIInlineEditBar } from './AIInlineEditBar';
 import { HighlightedContent } from './HighlightedContent';
 import { EditableContent } from './EditableContent';
 import { SOPDocumentHeader } from './SOPDocumentHeader';
@@ -24,7 +25,62 @@ import { AIContentRecommendationService } from '@/services/aiContentRecommendati
 import { AISuggestionService } from '@/services/aiSuggestionService';
 import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
 import { AIAutoFillDialog } from './AIAutoFillDialog';
+import { AIDocumentValidationDialog } from './AIDocumentValidationDialog';
 import { EmptySectionPrompt } from './EmptySectionPrompt';
+import { documentContextStore } from '@/stores/documentContextStore';
+
+/**
+ * Strip redundant leading headings from content that duplicate the section title.
+ * E.g. if sectionTitle is "Purpose", removes leading "1.0 Purpose", "# 1.0 Purpose", "**1.0 Purpose**", etc.
+ */
+function stripRedundantSectionHeading(content: string, sectionTitle: string): string {
+  if (!content || !sectionTitle) return content;
+  const escapedTitle = sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let cleaned = content;
+
+  // HTML patterns: <h1>1.0 Purpose</h1>, <p><strong>1.0 Purpose</strong></p>
+  const htmlHeadingPattern = new RegExp(
+    `^\\s*<(h[1-6]|p)>\\s*(?:<strong>)?\\s*(?:\\d+(?:\\.\\d+)*\\.?\\s+)?${escapedTitle}\\s*(?:</strong>)?\\s*</(h[1-6]|p)>\\s*`,
+    'i'
+  );
+  cleaned = cleaned.replace(htmlHeadingPattern, '');
+
+  // Standalone <strong>1.0 Purpose</strong> at start
+  const htmlBoldPattern = new RegExp(
+    `^\\s*<strong>\\s*(?:\\d+(?:\\.\\d+)*\\.?\\s+)?${escapedTitle}\\s*</strong>\\s*`,
+    'i'
+  );
+  cleaned = cleaned.replace(htmlBoldPattern, '');
+
+  // Markdown patterns: "# 1.0 Purpose", "**1.0 Purpose**", "1.0 Purpose"
+  const mdPattern = new RegExp(
+    `^\\s*(?:#{1,6}\\s+)?(?:\\*{1,2})?(?:\\d+(?:\\.\\d+)*\\.?\\s+)?${escapedTitle}(?:\\*{1,2})?\\s*\\n+`,
+    'i'
+  );
+  cleaned = cleaned.replace(mdPattern, '');
+
+  return cleaned;
+}
+
+/**
+ * Strip leading number prefixes (e.g. "1.1 ", "2.3.1 ") from all h1-h6 headings
+ * inside HTML content, so the system's chapter numbering is the sole source of truth.
+ */
+function stripContentHeadingNumbers(content: string): string {
+  if (!content) return content;
+  return content.replace(
+    /(<h[1-6][^>]*>)\s*\d+(?:\.\d+)+\.?\s+/gi,
+    '$1'
+  );
+}
+
+function replaceCompanyPlaceholders(content: string, companyName: string): string {
+  if (!content || !companyName) return content;
+  return content
+    .replace(/\[Your Company Name\]/gi, companyName)
+    .replace(/\[Company Name\]/gi, companyName)
+    .replace(/\[company name\]/gi, companyName);
+}
 
 interface LiveEditorProps {
   template: DocumentTemplate;
@@ -53,9 +109,10 @@ interface LiveEditorProps {
   nextReviewDate?: string;
   documentNumber?: string;
   hideVersioning?: boolean;
+  isEditing?: boolean;
 }
 
-export function LiveEditor({ template, className = '', onContentUpdate, companyId, onDocumentSaved, isEditingExistingDocument = false, editingDocumentId = null, onAIGenerate, onAddAutoNote, currentNotes = [], isUploadedDocument = false, uploadedDocumentSaved = false, onUploadedDocumentSaved, disabled = false, selectedScope = 'company', selectedProductId, uploadedFileInfo, onDocumentControlChange, companyLogoUrl, onPushToDeviceFields, onCustomSave, isRecord = false, recordId, nextReviewDate, documentNumber, hideVersioning = false }: LiveEditorProps) {
+export function LiveEditor({ template, className = '', onContentUpdate, companyId, onDocumentSaved, isEditingExistingDocument = false, editingDocumentId = null, onAIGenerate, onAddAutoNote, currentNotes = [], isUploadedDocument = false, uploadedDocumentSaved = false, onUploadedDocumentSaved, disabled = false, selectedScope = 'company', selectedProductId, uploadedFileInfo, onDocumentControlChange, companyLogoUrl, onPushToDeviceFields, onCustomSave, isRecord = false, recordId, nextReviewDate, documentNumber, hideVersioning = false, isEditing: isEditingProp }: LiveEditorProps) {
   const { activeCompanyRole } = useCompanyRole();
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [showSaveVersionDialog, setShowSaveVersionDialog] = useState(false);
@@ -66,6 +123,24 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   const [showAIModal, setShowAIModal] = useState(false);
   const [selectedSection, setSelectedSection] = useState<{title: string, content: string} | null>(null);
   const [showAutoFillDialog, setShowAutoFillDialog] = useState(false);
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editedSectionTitle, setEditedSectionTitle] = useState('');
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [inlineEditSectionId, setInlineEditSectionId] = useState<string | null>(null);
+  const [aiTargetContentId, setAiTargetContentId] = useState<string | null>(null);
+  const [showDocumentAIBar, setShowDocumentAIBar] = useState(false);
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const autoFillPendingRef = useRef(false);
+  const autoFillOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (autoFillOpenTimeoutRef.current) {
+        clearTimeout(autoFillOpenTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Check for existing document ID when template changes
   useEffect(() => {
     const checkExistingDocument = async () => {
@@ -207,23 +282,52 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   const handleAIIconClick = (section: any) => {
     // Get current content from the section
     const currentContent = (Array.isArray(section.content) ? section.content : []).map((item: any) => item.content).join('\n') || '';
-    setSelectedSection({
-      title: section.title,
-      content: currentContent
-    });
+    // Push context to store so Professor Xyreg can see it
+    documentContextStore.set({ sectionTitle: section.title, content: currentContent });
+
+    // Track the exact content block to update
+    const targetItem = (Array.isArray(section.content) ? section.content : []).find((c: any) => c.type !== 'heading') || section.content?.[0];
+    setAiTargetContentId(targetItem?.id || null);
+
+    // If section has meaningful content, show inline edit bar instead of full modal
+    const hasContent = currentContent.trim().length > 0 && currentContent !== '[AI_PROMPT_NEEDED]';
+    if (hasContent) {
+      setShowDocumentAIBar(false); // Close document-level bar
+      setInlineEditSectionId(section.id);
+    } else {
+      setSelectedSection({ title: section.title, content: currentContent });
+      setShowAIModal(true);
+    }
+  };
+
+  const handleOpenFullModalFromInline = () => {
+    setInlineEditSectionId(null);
     setShowAIModal(true);
   };
 
+  const openAutoFillSafely = () => {
+    setInlineEditSectionId(null);
+    setShowDocumentAIBar(false);
+    setAiTargetContentId(null);
+
+    if (autoFillOpenTimeoutRef.current) {
+      clearTimeout(autoFillOpenTimeoutRef.current);
+    }
+
+    autoFillOpenTimeoutRef.current = setTimeout(() => {
+      setShowAutoFillDialog(true);
+      autoFillOpenTimeoutRef.current = null;
+    }, 0);
+  };
+
   const handleAIContentGenerated = (newContent: string) => {
-    if (selectedSection && onContentUpdate) {
-      // Update the first content item in the section with the new AI-generated content
-      const firstContentItem = template?.sections?.find(s => s.title === selectedSection.title)?.content?.[0];
-      if (firstContentItem) {
-        onContentUpdate(firstContentItem.id, newContent);
-      }
+    if (onContentUpdate && aiTargetContentId) {
+      onContentUpdate(aiTargetContentId, newContent);
     }
     setShowAIModal(false);
+    setInlineEditSectionId(null);
     setSelectedSection(null);
+    setAiTargetContentId(null);
   };
 
   const handleSave = async () => {
@@ -323,7 +427,14 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       const composedName = documentNumber ? `${documentNumber} ${cleanName}` : cleanName;
       const filename = `${composedName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.docx`;
       
-      await DocumentExportService.exportDocument(template, {
+      const exportTemplate = {
+        ...template,
+        documentControl: {
+          ...template.documentControl,
+          sopNumber: documentNumber || template.documentControl?.sopNumber || '',
+        }
+      };
+      await DocumentExportService.exportDocument(exportTemplate, {
         format: 'docx',
         includeHighlighting: true,
         filename,
@@ -399,18 +510,66 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
 
           <div className="flex items-center gap-2">
             <TooltipProvider>
+              <DropdownMenu open={aiMenuOpen} onOpenChange={setAiMenuOpen} modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="border-amber-300 text-amber-500 hover:bg-amber-50 h-8 w-8"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onCloseAutoFocus={(e) => {
+                    if (autoFillPendingRef.current) {
+                      e.preventDefault();
+                      autoFillPendingRef.current = false;
+                    }
+                  }}>
+                  <DropdownMenuItem onSelect={() => {
+                    autoFillPendingRef.current = true;
+                    setAiMenuOpen(false);
+                    openAutoFillSafely();
+                  }}>
+                    <Wand2 className="w-4 h-4 mr-2" />
+                    Auto-Fill Sections
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    if (showDocumentAIBar) return; // Already open
+                    // Close section-level AI bar if open
+                    setInlineEditSectionId(null);
+                    // Gather all document content for review, capped at 8000 chars
+                    const allContent = (template?.sections || [])
+                      .sort((a, b) => a.order - b.order)
+                      .map(s => {
+                        const sContent = (Array.isArray(s.content) ? s.content : [])
+                          .filter((c: any) => c.type !== 'heading')
+                          .map((c: any) => c.content)
+                          .join('\n');
+                        return `## ${s.title}\n${sContent}`;
+                      })
+                      .join('\n\n')
+                      .slice(0, 8000);
+                    setSelectedSection({ title: template?.name || 'Document', content: allContent });
+                    setShowDocumentAIBar(true);
+                  }}>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Review Document
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => setShowAutoFillDialog(true)}
-                    className="border-amber-300 text-amber-500 hover:bg-amber-50 h-8 w-8"
+                    onClick={() => setShowValidationDialog(true)}
+                    className="border-blue-300 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950 h-8 w-8"
                   >
-                    <Sparkles className="w-4 h-4" />
+                    <ShieldCheck className="w-4 h-4" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>AI Auto-Fill</TooltipContent>
+                <TooltipContent>AI Validate</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -486,8 +645,8 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       </div>
 
       {/* Document Content */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50">
-        <div className="bg-white min-h-full p-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/30">
+        <div className="max-w-[210mm] mx-auto my-8 bg-background shadow-md rounded-sm min-h-[297mm] p-0">
           {/* Professional SOP Header */}
           <SOPDocumentHeader 
             documentControl={template?.documentControl}
@@ -503,48 +662,160 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
           />
 
           {/* Document Content */}
-          <div className="px-8 space-y-6">
+          <div className="px-8 space-y-4">
+            {/* Document-level AI review bar */}
+            {showDocumentAIBar && selectedSection && (
+              <AIInlineEditBar
+                sectionTitle={selectedSection.title}
+                currentContent={selectedSection.content}
+                companyId={companyId}
+                onContentGenerated={() => {}}
+                onClose={() => {
+                  setShowDocumentAIBar(false);
+                  setSelectedSection(null);
+                }}
+                onOpenFullModal={() => {
+                  setShowDocumentAIBar(false);
+                  setShowAIModal(true);
+                }}
+                mode="review"
+              />
+            )}
             {template?.sections && template.sections.length > 0 ? (
               template.sections
                 .sort((a, b) => a.order - b.order)
                 .map((section, sectionIndex) => (
-                <div key={section.id} className="space-y-4">
-                  <div className="flex items-center justify-between border-b-2 border-gray-300 pb-2">
-                    <h2 className="text-lg font-bold text-gray-800">
-                      {section.title}
-                    </h2>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleAIIconClick(section)}
-                      className="h-8 w-8 p-0 hover:bg-amber-50 hover:border-amber-300"
-                      title={`Generate AI content for ${section.title}`}
-                    >
-                      <Wand2 className="w-4 h-4 text-amber-500" />
-                    </Button>
+                <div key={section.id} className="space-y-3">
+                  {section.showHeader !== false && (
+                  <div className="flex items-center justify-between border-b border-border pb-2">
+                    {editingSectionId === section.id ? (
+                      <Input
+                        value={editedSectionTitle}
+                        onChange={(e) => setEditedSectionTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            onContentUpdate?.(`section-title-${section.id}`, editedSectionTitle.trim());
+                            setEditingSectionId(null);
+                          } else if (e.key === 'Escape') {
+                            setEditingSectionId(null);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (editedSectionTitle.trim()) {
+                            onContentUpdate?.(`section-title-${section.id}`, editedSectionTitle.trim());
+                          }
+                          setEditingSectionId(null);
+                        }}
+                        className="text-lg font-bold h-8 max-w-[70%]"
+                        autoFocus
+                      />
+                    ) : (
+                      <h2
+                        className="text-lg font-bold text-foreground cursor-pointer hover:bg-muted/50 px-1 rounded"
+                        onClick={() => {
+                          setEditingSectionId(section.id);
+                          setEditedSectionTitle(section.customTitle || section.title);
+                        }}
+                        title="Click to rename"
+                      >
+                        {template?.formatOptions?.showSectionNumbers && `${sectionIndex + 1}.0 `}
+                        {section.customTitle || section.title}
+                      </h2>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAIIconClick(section)}
+                        className="h-8 w-8 p-0 hover:bg-amber-50 hover:border-amber-300"
+                        title={`Generate AI content for ${section.title}`}
+                      >
+                        <Wand2 className="w-4 h-4 text-amber-500" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => {
+                            setEditingSectionId(section.id);
+                            setEditedSectionTitle(section.customTitle || section.title);
+                          }}>
+                            <Pencil className="w-4 h-4 mr-2" />
+                            Rename Section
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            onContentUpdate?.(`section-visibility-${section.id}`, 'hide');
+                          }}>
+                            <EyeOff className="w-4 h-4 mr-2" />
+                            Hide Header
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                  <div className="space-y-2 pl-4">
-                    {(Array.isArray(section.content) ? section.content : []).map((contentItem, contentIndex) => (
-                      <div key={contentItem.id} className="space-y-2">
-                        {contentItem.type === 'heading' && (
-                          <h3 className="text-base font-semibold text-gray-800 mt-4">
-                            {contentItem.content}
+                  )}
+                  {section.showHeader === false && (
+                    <div className="flex items-center gap-2 py-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-muted-foreground h-6 px-2"
+                        onClick={() => {
+                          onContentUpdate?.(`section-visibility-${section.id}`, 'show');
+                        }}
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        Show "{section.customTitle || section.title}" header
+                      </Button>
+                    </div>
+                  )}
+                  {/* Inline AI Edit Bar */}
+                  {inlineEditSectionId === section.id && selectedSection && (
+                    <AIInlineEditBar
+                      sectionTitle={selectedSection.title}
+                      currentContent={selectedSection.content}
+                      companyId={companyId || activeCompanyRole?.companyId}
+                      onContentGenerated={handleAIContentGenerated}
+                      onClose={() => {
+                        setInlineEditSectionId(null);
+                        setSelectedSection(null);
+                      }}
+                      onOpenFullModal={handleOpenFullModalFromInline}
+                    />
+                  )}
+                  <div className="space-y-1 pl-4">
+                    {(Array.isArray(section.content) ? section.content : []).map((contentItem, contentIndex) => {
+                      const sectionTitle = section.customTitle || section.title;
+                      const companyName = activeCompanyRole?.companyName || '';
+                      let processedContent = stripRedundantSectionHeading(contentItem.content, sectionTitle);
+                      if (template?.formatOptions?.showSectionNumbers) {
+                        processedContent = stripContentHeadingNumbers(processedContent);
+                      }
+                      processedContent = replaceCompanyPlaceholders(processedContent, companyName);
+                      const cleanedItem = processedContent !== contentItem.content ? { ...contentItem, content: processedContent } : contentItem;
+                      return (
+                      <div key={contentItem.id} className="space-y-1">
+                        {cleanedItem.type === 'heading' && (
+                          <h3 className="text-base font-semibold text-foreground mt-3">
+                            {cleanedItem.content}
                           </h3>
                         )}
-                        {contentItem.type === 'table' && (
-                          <div className="my-4">
-                            <table className="w-full border-collapse border border-gray-300 text-sm">
+                        {cleanedItem.type === 'table' && (
+                          <div className="my-3">
+                            <table className="w-full border-collapse border border-border text-sm">
                               <tbody>
-                                {contentItem.content.split('\n').filter(row => row.trim()).map((row, rowIndex) => (
+                                {cleanedItem.content.split('\n').filter(row => row.trim()).map((row, rowIndex) => (
                                   <tr key={rowIndex}>
                                     {row.split('|').map((cell, cellIndex) => (
-                                        <td key={cellIndex} className="border border-gray-300 px-3 py-2">
+                                        <td key={cellIndex} className="border border-border px-3 py-2">
                                           <HighlightedContent 
                                             content={cell.trim()}
-                                            contentId={`${contentItem.id}-cell-${rowIndex}-${cellIndex}`}
+                                            contentId={`${cleanedItem.id}-cell-${rowIndex}-${cellIndex}`}
                                             onAIGenerate={(prompt) => {
                                               // Handle AI generation for table cells
-                                              // console.log('AI generation requested for table cell:', prompt);
                                             }}
                                           />
                                         </td>
@@ -555,38 +826,33 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                             </table>
                           </div>
                         )}
-                        {contentItem.type !== 'heading' && contentItem.type !== 'table' && (
+                        {cleanedItem.type !== 'heading' && cleanedItem.type !== 'table' && (
                           <>
-                            {(!contentItem.content || contentItem.content.trim() === '' || contentItem.content === '[AI_PROMPT_NEEDED]') && !contentItem.isAIGenerated ? (
+                            {(!cleanedItem.content || cleanedItem.content.trim() === '' || cleanedItem.content === '[AI_PROMPT_NEEDED]') && !cleanedItem.isAIGenerated ? (
                               <EmptySectionPrompt
                                 sectionTitle={section.title}
                                 sectionId={section.id}
-                                contentId={contentItem.id}
+                                contentId={cleanedItem.id}
                                 companyId={companyId || activeCompanyRole?.companyId}
                                 onContentUpdate={handleContentUpdate}
-                                onOpenAutoFill={() => setShowAutoFillDialog(true)}
-                              />
-                            ) : contentItem.isAIGenerated ? (
-                              <AIContentBlock
-                                content={contentItem}
-                                sectionTitle={section.title}
-                                onContentUpdate={handleContentUpdate}
-                                className="bg-transparent border-none"
+                                onOpenAutoFill={openAutoFillSafely}
                               />
                             ) : (
                               <EditableContent
-                                content={contentItem}
+                                content={cleanedItem}
                                 onContentUpdate={handleContentUpdate}
                                 companyId={companyId || activeCompanyRole?.companyId}
                                 templateId={template.id}
                                 className="bg-transparent"
                                 refreshTrigger={refreshTrigger}
+                                isEditing={isEditingProp}
                               />
                             )}
                           </>
                         )}
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 </div>
               ))
@@ -654,6 +920,17 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
         onOpenChange={setShowAutoFillDialog}
         template={template}
         companyId={companyId}
+        productId={selectedProductId}
+        onContentUpdate={handleContentUpdate}
+      />
+
+      {/* AI Document Validation Dialog */}
+      <AIDocumentValidationDialog
+        open={showValidationDialog}
+        onOpenChange={setShowValidationDialog}
+        template={template}
+        companyId={companyId}
+        companyName={activeCompanyRole?.companyName}
         onContentUpdate={handleContentUpdate}
       />
     </div>

@@ -39,6 +39,7 @@ export interface CompanyDocument {
   approved_by?: string | null;
   approval_note?: string | null;
   tags?: string[];
+  document_number?: string | null;
 }
 
 export function useCompanyDocuments(companyId: string) {
@@ -127,7 +128,8 @@ export function useCompanyDocuments(companyId: string) {
           approval_date: doc.approval_date || null,
           approved_by: doc.approved_by || null,
           approval_note: doc.approval_note || null,
-          tags: Array.isArray(doc.tags) ? doc.tags : []
+          tags: Array.isArray(doc.tags) ? doc.tags : [],
+          document_number: doc.document_number || null
         }));
 
         // Also query document_studio_templates for company-level documents (product_id IS NULL)
@@ -187,7 +189,8 @@ export function useCompanyDocuments(companyId: string) {
               approval_date: meta.approval_date || null,
               approved_by: meta.approved_by || null,
               approval_note: meta.approval_note || null,
-              tags: Array.isArray(meta.tags) ? meta.tags : []
+              tags: Array.isArray(meta.tags) ? meta.tags : [],
+              document_number: (doc.document_control as any)?.document_number || meta.document_number || null
             };
           });
 

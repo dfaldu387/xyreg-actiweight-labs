@@ -13,6 +13,7 @@ import { RestrictedFeatureProvider } from "@/contexts/RestrictedFeatureContext";
 import { RestrictedPreviewBanner } from "@/components/subscription/RestrictedPreviewBanner";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useEnabledGapFrameworks } from "@/hooks/useEnabledGapFrameworks";
+import { useStandardVersionStatus } from "@/hooks/useStandardVersionStatus";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GenericGapLaunchView } from "@/components/company/gap-analysis/GenericGapLaunchView";
 import { GenericGapSidebar } from "@/components/company/gap-analysis/GenericGapSidebar";
@@ -67,6 +68,8 @@ export default function ProductGapAnalysisPage() {
   const { companyId } = useCompanyProducts(product?.company_id || "");
   const { isMenuAccessKeyEnabled, isLoading: isLoadingPlanAccess, planName } = usePlanMenuAccess();
   const { data: enabledFrameworks, isLoading: isLoadingFrameworks } = useEnabledGapFrameworks(product?.company_id);
+  const { data: standardStatuses } = useStandardVersionStatus();
+  const getStatus = (key: string) => standardStatuses?.find(s => s.framework_key === key);
 
   const isFeatureEnabled = isMenuAccessKeyEnabled(DEVICES_MENU_ACCESS.COMPLIANCE_GAP_ANALYSIS);
   const isRestricted = !isFeatureEnabled;
@@ -94,7 +97,7 @@ export default function ProductGapAnalysisPage() {
     IEC_62366_1: 'IEC 62366-1',
     ISO_15223_1: 'ISO 15223-1',
     ISO_20417: 'ISO 20417',
-    ISO_10993: 'ISO 10993',
+    ISO_10993: 'ISO 10993-1:2025',
   };
 
   // Helper to build sharing toggle for a framework
@@ -116,6 +119,7 @@ export default function ProductGapAnalysisPage() {
     isFrameworkShared: isFrameworkShared(frameworkKey),
     clauseExclusions,
     onClauseExclusionChange: setClauseExcludedProducts,
+    standardStatus: getStatus(frameworkKey),
   });
   const marketStatus = useProductMarketStatus(product?.markets);
 
@@ -290,7 +294,7 @@ export default function ProductGapAnalysisPage() {
   const iec62366Items = filterByFramework(gapItems, 'IEC 62366-1', 'IEC_62366_1');
   const iso15223Items = filterByFramework(gapItems, 'ISO 15223-1', 'ISO_15223_1');
   const iso20417Items = filterByFramework(gapItems, 'ISO 20417', 'ISO_20417');
-  const iso10993Items = filterByFramework(gapItems, 'ISO 10993', 'ISO_10993');
+  const iso10993Items = filterByFramework(gapItems, 'ISO 10993-1:2025', 'ISO_10993');
 
   const noFrameworksEnabled = !hasMDR && !hasISO14971Device && !hasIEC62304 && !hasIEC60601 && !hasIEC20957 && !hasIEC62366 && !hasISO15223 && !hasISO20417 && !hasISO10993;
 
@@ -344,7 +348,7 @@ export default function ProductGapAnalysisPage() {
                 {hasIEC20957 && <TabsTrigger value="iec-20957">IEC 20957</TabsTrigger>}
                 {hasISO15223 && <TabsTrigger value="iso-15223">ISO 15223-1</TabsTrigger>}
                 {hasISO20417 && <TabsTrigger value="iso-20417">ISO 20417</TabsTrigger>}
-                {hasISO10993 && <TabsTrigger value="iso-10993">ISO 10993</TabsTrigger>}
+                {hasISO10993 && <TabsTrigger value="iso-10993">ISO 10993-1:2025</TabsTrigger>}
               </TabsList>
 
               {/* EU MDR — with sub-tabs */}
@@ -744,10 +748,10 @@ export default function ProductGapAnalysisPage() {
                       sections={ISO_10993_SECTIONS}
                       groups={ISO_10993_GROUPS}
                       items={iso10993Items}
-                      standardName="ISO 10993 — Biological Evaluation of Medical Devices"
-                      standardTag="ISO 10993"
+                      standardName="ISO 10993-1:2025 — Biological Evaluation of Medical Devices"
+                      standardTag="ISO 10993-1:2025"
                       standardIcon={FlaskConical}
-                      bannerDescription="Biological evaluation planning, material characterization, endpoint testing (cytotoxicity, sensitization, irritation, systemic toxicity, genotoxicity, haemocompatibility), and chemical characterization."
+                      bannerDescription="Biological evaluation within the ISO 14971 risk management framework. Covers material characterization, device categorization, biological effects (cytotoxicity, sensitization, irritation, systemic toxicity, local effects, genotoxicity, carcinogenicity, haemocompatibility), gap analysis, equivalence, testing, risk evaluation, risk control, and post-production monitoring."
                       disabled={isRestricted}
                       headerActions={buildSharingToggle('ISO_10993')}
                       {...buildScopeProps('ISO_10993')}
@@ -756,10 +760,10 @@ export default function ProductGapAnalysisPage() {
                       sections={ISO_10993_SECTIONS}
                       groups={ISO_10993_GROUPS}
                       items={iso10993Items}
-                      standardLabel="ISO 10993 Biocompatibility"
+                      standardLabel="ISO 10993-1:2025 Biocompatibility"
                       standardIcon={FlaskConical}
                       disabled={isRestricted}
-                      framework="ISO 10993"
+                      framework="ISO 10993-1:2025"
                       productId={productId}
                     />
                   </div>

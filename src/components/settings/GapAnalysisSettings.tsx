@@ -15,6 +15,8 @@ import { GapTemplateConfigurationDialog } from "./GapTemplateConfigurationDialog
 import { TemplateEnableProgressDialog } from "./gap-analysis/TemplateEnableProgressDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useStandardVersionStatus } from "@/hooks/useStandardVersionStatus";
+import { StandardStatusBadge } from "@/components/company/gap-analysis/StandardStatusBadge";
 import {
   Dialog,
   DialogContent,
@@ -31,6 +33,7 @@ export function GapAnalysisSettings({
   companyId
 }: GapAnalysisSettingsProps) {
   const { lang } = useTranslation();
+  const { data: standardStatuses } = useStandardVersionStatus();
   const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [templateRequirements, setTemplateRequirements] = useState<any[]>([]);
@@ -319,9 +322,15 @@ export function GapAnalysisSettings({
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs">
-                        {template.framework}
-                      </Badge>
+                      <span className="flex items-center gap-1.5">
+                        <Badge variant="outline" className="text-xs">
+                          {template.framework}
+                        </Badge>
+                        <StandardStatusBadge
+                          status={standardStatuses?.find(s => s.standard_name?.includes(template.framework) || s.framework_key === template.framework?.replace(/[\s\-:]/g, '_'))}
+                          compact
+                        />
+                      </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[280px]">
                       <TooltipProvider>

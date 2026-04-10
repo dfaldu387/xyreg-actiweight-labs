@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, FileText, Clock, AlertCircle, Eye, CheckSquare, File } from 'lucide-react';
+import { Loader2, FileText, Clock, AlertCircle, Eye, CheckSquare, File, CheckCircle } from 'lucide-react';
 import { PdfPreviewButton } from '@/components/documents/PdfPreviewButton';
 import { format } from 'date-fns';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -19,10 +19,13 @@ interface AssignedDocument {
   phase: string;
   dueDate?: string;
   assignedDate: string;
+  lastUpdated?: string;
   priority?: string;
   reviewerGroupName?: string;
   reviewerGroupId?: string;
   role?: 'review' | 'author';
+  isAlsoApprover?: boolean;
+  myDecision?: string;
   deviceName?: string;
   documentFile?: {
     path: string;
@@ -45,6 +48,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
   const navigate = useNavigate();
   const location = useLocation();
   const [documents, setDocuments] = useState<AssignedDocument[]>([]);
+  const [completedDocs, setCompletedDocs] = useState<AssignedDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewingDocument, setViewingDocument] = useState<AssignedDocument | null>(null);
@@ -165,7 +169,10 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
           phase_id,
           product_id,
           company_id,
-          document_scope
+          document_scope,
+          updated_at,
+          approver_user_ids,
+          approver_group_ids
         `)
         .eq('company_id', companyId)
         .eq('is_excluded', false)
@@ -325,16 +332,22 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         .map(doc => {
           const phaseInfo = doc.phase_id ? phasesMap.get(doc.phase_id) : null;
           const isCompanyDoc = (doc as any).document_scope === 'company_document';
+          // Check if current user is also an approver for this document
+          const approverUserIds = (doc as any).approver_user_ids || [];
+          const approverGroupIds = (doc as any).approver_group_ids || [];
+          const isAlsoApprover = approverUserIds.includes(user!.id) || approverGroupIds.some((gid: string) => userGroups.includes(gid));
           return {
             id: `template-${doc.id}`,
             name: doc.name,
             status: doc.status || 'Pending',
             phase: phaseInfo?.name || 'N/A',
             assignedDate: doc.created_at,
+            lastUpdated: (doc as any).updated_at || doc.created_at,
             dueDate: doc.due_date || doc.deadline,
             reviewerGroupName: doc.reviewer_group_ids?.[0] ? groupNamesMap.get(doc.reviewer_group_ids[0]) : undefined,
             reviewerGroupId: doc.reviewer_group_ids?.[0] || '',
             role: 'review' as const,
+            isAlsoApprover,
             deviceName: isCompanyDoc ? undefined : ((doc as any).product_id
               ? productNameMap.get((doc as any).product_id)
               : (doc.phase_id ? phaseProductMap.get(doc.phase_id) : undefined)),
@@ -381,6 +394,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
             status: doc.status || 'Draft',
             phase: phaseInfo?.name || 'N/A',
             assignedDate: doc.created_at,
+            lastUpdated: doc.created_at,
             dueDate: doc.due_date || doc.deadline,
             reviewerGroupName: 'Author',
             reviewerGroupId: '',
@@ -418,7 +432,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
           } : null
         }));
 
-      // Also fetch documents where user is assigned as approver (Pending Approval)
+      // Also fetch documents where user is assigned as approver (Pending Approval + Approved/Completed/Closed)
       const approverExistingIds = new Set([
         ...mappedDocuments.map(d => d.id),
         ...mappedPhaseDocuments.map(d => d.id),
@@ -437,7 +451,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         .select('id, name, status, due_date, deadline, created_at, phase_id, product_id, company_id, file_path, file_name, file_size, file_type, document_type, document_scope, approver_due_date')
         .eq('company_id', companyId)
         .eq('is_excluded', false)
-        .eq('status', 'Pending Approval')
+        .in('status', ['In Review', 'Under Review', 'Pending Approval', 'Approved', 'Completed', 'Closed'])
         .or(approverOrParts.join(','));
 
       const approverDocsMapped: AssignedDocument[] = (approverDocs || [])
@@ -451,6 +465,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
             status: doc.status || 'Pending Approval',
             phase: phaseInfo?.name || 'N/A',
             assignedDate: doc.created_at,
+            lastUpdated: doc.created_at,
             dueDate: (doc as any).approver_due_date || doc.due_date || doc.deadline,
             reviewerGroupName: 'Approver',
             reviewerGroupId: '',
@@ -484,6 +499,7 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
             const cleanId = doc.id.replace('template-', '');
             const myDecision = decisionMap.get(cleanId);
             if (myDecision) {
+              doc.myDecision = myDecision;
               // Only override status for non-approved decisions —
               // "approved" at user level shouldn't hide the doc when the document is still in review
               const decisionStatusMap: Record<string, string> = {
@@ -501,9 +517,13 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         }
       }
 
-      // Filter out approved documents — they no longer need review
-      const pendingDocuments = allDocuments.filter(doc => doc.status?.toLowerCase() !== 'approved');
+      // Split into pending and completed documents, sort by last updated first
+      const sortByDate = (a: AssignedDocument, b: AssignedDocument) =>
+        new Date(b.lastUpdated || b.assignedDate).getTime() - new Date(a.lastUpdated || a.assignedDate).getTime();
+      const pendingDocuments = allDocuments.filter(doc => !['approved', 'completed', 'closed'].includes(doc.status?.toLowerCase())).sort(sortByDate);
+      const completedDocuments = allDocuments.filter(doc => ['approved', 'completed', 'closed'].includes(doc.status?.toLowerCase())).sort(sortByDate);
       setDocuments(pendingDocuments);
+      setCompletedDocs(completedDocuments);
     } catch (err) {
       console.error('Error fetching assigned documents:', err);
       setError(lang('reviewDashboard.errors.failedToLoadDocuments'));
@@ -740,6 +760,99 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
         </div>
       )}
 
+      {/* Reviewed & Approved Documents */}
+      {completedDocs.length > 0 && (
+        <div className="space-y-4 mt-8">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            Reviewed & Approved Documents ({completedDocs.length})
+          </h2>
+          {completedDocs.map((doc) => (
+            <Card
+              key={doc.id}
+              data-doc-id={doc.id.replace(/^template-/, '')}
+              className={`p-6 hover:shadow-md transition-shadow border-green-200 bg-green-50/30 ${
+                highlightedDocId === doc.id.replace(/^template-/, '')
+                  ? 'outline outline-2 outline-primary bg-primary/5 animate-[notification-pulse_1.5s_ease-in-out_infinite]'
+                  : ''
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    {doc.documentFile ? (
+                      <File className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <FileText className="h-5 w-5 text-green-600" />
+                    )}
+                    <h3 className="font-semibold text-lg">{doc.name}</h3>
+                    {doc.role === 'author' ? (
+                      <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs">
+                        Author
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 text-xs">
+                        Reviewer
+                      </Badge>
+                    )}
+                    <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                      {doc.status === 'Approved' ? 'Approved' : doc.status === 'Completed' ? 'Completed' : 'Closed'}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 text-sm text-muted-foreground">
+                    {doc.deviceName && (
+                      <div>
+                        <p className="font-medium text-foreground mb-1">Device</p>
+                        <p>{doc.deviceName}</p>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="font-medium text-foreground mb-1">{lang('reviewDashboard.labels.assignedDate')}</p>
+                      <p>{format(new Date(doc.assignedDate), 'MMM dd, yyyy')}</p>
+                    </div>
+
+                    {doc.dueDate && (
+                      <div>
+                        <p className="font-medium text-foreground mb-1">{lang('reviewDashboard.labels.dueDate')}</p>
+                        <p>{format(new Date(doc.dueDate), 'MMM dd, yyyy')}</p>
+                      </div>
+                    )}
+
+                    {doc.reviewerGroupName && (
+                      <div>
+                        <p className="font-medium text-foreground mb-1">{lang('reviewDashboard.labels.reviewerGroup')}</p>
+                        <p>{doc.reviewerGroupName}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      setViewingDocument(doc);
+                      setIsViewerOpen(true);
+                    }}
+                    variant="outline"
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    {lang('reviewDashboard.reviewDocument')}
+                  </Button>
+                  <PdfPreviewButton
+                    documentId={doc.id}
+                    companyId={companyId}
+                    variant="outline"
+                    size="sm"
+                  />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
       {/* OnlyOffice Review Viewer */}
       {viewingDocument && (
         <OnlyOfficeReviewViewer
@@ -756,7 +869,12 @@ export function AwaitingMyReviewPage({ companyId, userGroups, companyName, first
           documentFile={viewingDocument.documentFile}
           companyId={companyId}
           reviewerGroupId={viewingDocument.reviewerGroupId || userGroups[0]}
-          userRole={viewingDocument.status === 'Pending Approval' || viewingDocument.reviewerGroupName === 'Approver' ? 'approver' : viewingDocument.role === 'review' ? 'review' : 'author'}
+          userRole={
+            viewingDocument.reviewerGroupName === 'Approver' ? 'approver'
+            : (viewingDocument.isAlsoApprover && (viewingDocument.myDecision === 'reviewed' || viewingDocument.myDecision === 'approved')) ? 'approver'
+            : viewingDocument.role === 'review' ? 'review'
+            : 'author'
+          }
         />
       )}
 

@@ -119,11 +119,17 @@ export function useDocumentCategoryConfigs(companyId: string | undefined) {
   /**
    * Fetch used number suffixes for a given prefix (e.g., "SOP" → ["001", "002"]).
    */
-  const getUsedNumbers = useCallback(async (prefix: string): Promise<Set<string>> => {
-    const { data, error } = await supabase
+  const getUsedNumbers = useCallback(async (prefix: string, filterCompanyId?: string): Promise<Set<string>> => {
+    let query = supabase
       .from('phase_assigned_document_template')
       .select('document_number')
       .like('document_number', `${prefix}-%`);
+
+    if (filterCompanyId) {
+      query = query.eq('company_id', filterCompanyId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching used numbers for prefix:', error);
@@ -132,7 +138,7 @@ export function useDocumentCategoryConfigs(companyId: string | undefined) {
 
     const used = new Set<string>();
     (data || []).forEach((row: any) => {
-      const match = row.document_number?.match(new RegExp(`^${prefix}-(\\d+)`));
+      const match = row.document_number?.match(new RegExp(`^${prefix}-(?:[A-Z]+-)?([\\d]+)`));
       if (match) {
         used.add(match[1]);
       }

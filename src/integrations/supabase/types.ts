@@ -212,6 +212,83 @@ export type Database = {
           },
         ]
       }
+      advisory_conversations: {
+        Row: {
+          agent_id: string
+          company_id: string
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_id?: string
+          company_id: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advisory_conversations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "advisory_conversations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+        ]
+      }
+      advisory_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          role: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          role: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "advisory_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "advisory_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_summary_prompts: {
         Row: {
           additional_instructions: string | null
@@ -5166,6 +5243,9 @@ export type Database = {
           company_id: string
           created_at: string
           id: string
+          preferred_date: string | null
+          preferred_time_end: string | null
+          preferred_time_start: string | null
           release_id: string
           status: string
           updated_at: string
@@ -5176,6 +5256,9 @@ export type Database = {
           company_id: string
           created_at?: string
           id?: string
+          preferred_date?: string | null
+          preferred_time_end?: string | null
+          preferred_time_start?: string | null
           release_id: string
           status?: string
           updated_at?: string
@@ -5186,6 +5269,9 @@ export type Database = {
           company_id?: string
           created_at?: string
           id?: string
+          preferred_date?: string | null
+          preferred_time_end?: string | null
+          preferred_time_start?: string | null
           release_id?: string
           status?: string
           updated_at?: string
@@ -8468,6 +8554,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      docx_comments: {
+        Row: {
+          author: string | null
+          author_initials: string | null
+          comment_date: string | null
+          content: string
+          created_at: string
+          document_id: string
+          docx_comment_id: string
+          id: string
+          is_resolved: boolean | null
+          metadata: Json | null
+          parent_comment_docx_id: string | null
+          quoted_text: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          author?: string | null
+          author_initials?: string | null
+          comment_date?: string | null
+          content: string
+          created_at?: string
+          document_id: string
+          docx_comment_id: string
+          id?: string
+          is_resolved?: boolean | null
+          metadata?: Json | null
+          parent_comment_docx_id?: string | null
+          quoted_text?: string | null
+          updated_at?: string
+          version: number
+        }
+        Update: {
+          author?: string | null
+          author_initials?: string | null
+          comment_date?: string | null
+          content?: string
+          created_at?: string
+          document_id?: string
+          docx_comment_id?: string
+          id?: string
+          is_resolved?: boolean | null
+          metadata?: Json | null
+          parent_comment_docx_id?: string | null
+          quoted_text?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
       }
       esign_audit_log: {
         Row: {
@@ -12925,6 +13062,69 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "suppliers"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      mc_tasks: {
+        Row: {
+          assigned_to: string
+          attachment_path: string | null
+          company_id: string
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          due_date: string | null
+          id: string
+          is_completed: boolean
+          linked_document_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to: string
+          attachment_path?: string | null
+          company_id: string
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          is_completed?: boolean
+          linked_document_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to?: string
+          attachment_path?: string | null
+          company_id?: string
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          is_completed?: boolean
+          linked_document_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mc_tasks_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mc_tasks_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
           },
         ]
       }
@@ -23449,6 +23649,42 @@ export type Database = {
           is_editable?: boolean
           name?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      standard_version_status: {
+        Row: {
+          created_at: string | null
+          framework_key: string
+          id: string
+          iso_url: string | null
+          last_checked_at: string | null
+          standard_name: string
+          status: string
+          successor_name: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          framework_key: string
+          id?: string
+          iso_url?: string | null
+          last_checked_at?: string | null
+          standard_name: string
+          status?: string
+          successor_name?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          framework_key?: string
+          id?: string
+          iso_url?: string | null
+          last_checked_at?: string | null
+          standard_name?: string
+          status?: string
+          successor_name?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }

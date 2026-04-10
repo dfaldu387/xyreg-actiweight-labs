@@ -15,6 +15,7 @@ import { TrainingStatusCard } from "./TrainingStatusCard";
 import { useDashboardWidgets } from "@/hooks/useDashboardWidgets";
 import { FeedbackTrackerWidget } from "./widgets/FeedbackTrackerWidget";
 import { MyDocumentsWidget } from "./MyDocumentsWidget";
+import { TaskListWidget } from "./widgets/TaskListWidget";
 
 export function MultiCompanyDashboard() {
   const { companyRoles } = useCompanyRole();
@@ -66,6 +67,8 @@ export function MultiCompanyDashboard() {
         return <CommunicationHub key={widgetId} scope={dashboardType === 'multi-company' ? 'multi-company' : 'company'} companyId={companyId} />;
       case 'my-documents':
         return <MyDocumentsWidget key={widgetId} companyId={companyId} onRemove={() => removeWidget(widgetId)} />;
+      case 'task-list':
+        return <TaskListWidget key={widgetId} companyId={companyId} onRemove={() => removeWidget(widgetId)} />;
       case 'feedback-tracker':
         return <FeedbackTrackerWidget key={widgetId} companyId={companyId} onRemove={() => removeWidget(widgetId)} readOnly={!isAdmin} />;
       default:

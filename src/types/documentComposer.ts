@@ -3,6 +3,8 @@ export interface DocumentSection {
   title: string;
   content: DocumentContent[];
   order: number;
+  showHeader?: boolean;
+  customTitle?: string;
 }
 
 export interface DocumentContent {
@@ -95,5 +97,8 @@ export interface DocumentTemplate {
     version: string;
     lastUpdated: Date;
     estimatedCompletionTime: string;
+  };
+  formatOptions?: {
+    showSectionNumbers?: boolean;
   };
 }

@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { ControlPanel, ControlPanelProps } from './ControlPanel';
 import { CIPropertyPanel } from './CIPropertyPanel';
 import { useCIDocumentMetadata } from '@/hooks/useCIDocumentMetadata';
-import { ReviewDraftsList } from './ReviewDraftsList';
 
 interface DocumentEditorSidebarProps {
   // Sidebar collapse state
   collapsed: boolean;
   onToggleCollapse: () => void;
+
+  // Optional width override for wider layouts (e.g. draft drawer)
+  widthClassName?: string;
 
   // CI metadata lookup
   ciDocumentId: string | null;
@@ -20,14 +22,21 @@ interface DocumentEditorSidebarProps {
   onRecordIdChange?: (recordId: string | null) => void;
   onNextReviewDateChange?: (nextReviewDate: string | null) => void;
   onDocumentNumberChange?: (documentNumber: string | null) => void;
+  onShowSectionNumbersChange?: (show: boolean) => void;
+  showSectionNumbers?: boolean;
+
+  // Edit mode
+  isEditing?: boolean;
+  onEditModeChange?: (editing: boolean) => void;
 
   // All ControlPanel props except reference doc ones (managed internally)
-  controlPanelProps: Omit<ControlPanelProps, 'selectedReferenceIds' | 'onReferenceSelectionChange'>;
+  controlPanelProps: Omit<ControlPanelProps, 'selectedReferenceIds' | 'onReferenceSelectionChange' | 'isEditing' | 'onEditModeChange'>;
 }
 
 export function DocumentEditorSidebar({
   collapsed,
   onToggleCollapse,
+  widthClassName,
   ciDocumentId,
   ciCompanyId,
   productId,
@@ -36,6 +45,10 @@ export function DocumentEditorSidebar({
   onRecordIdChange,
   onNextReviewDateChange,
   onDocumentNumberChange,
+  onShowSectionNumbersChange,
+  showSectionNumbers,
+  isEditing,
+  onEditModeChange,
   controlPanelProps,
 }: DocumentEditorSidebarProps) {
   const { metadata: ciMetadata, updateField: updateCIField } = useCIDocumentMetadata(
@@ -84,7 +97,7 @@ export function DocumentEditorSidebar({
     <>
       {/* Collapsible Sidebar */}
       {!collapsed && (
-        <div className="w-80 min-w-[280px] max-w-[320px] h-full border-r flex flex-col overflow-y-auto shrink-0">
+        <div className={`${widthClassName || 'w-96 min-w-[320px] max-w-[384px]'} h-full border-r flex flex-col overflow-y-auto shrink-0`}>
           <ControlPanel
             {...controlPanelProps}
             selectedReferenceIds={selectedReferenceDocIds}
@@ -94,6 +107,8 @@ export function DocumentEditorSidebar({
                 updateCIField('reference_document_ids', ids);
               }
             }}
+            isEditing={isEditing}
+            onEditModeChange={onEditModeChange}
           />
           {showCIProperties && ciMetadata && (
             <CIPropertyPanel
@@ -119,14 +134,15 @@ export function DocumentEditorSidebar({
               recordId={ciMetadata.record_id || undefined}
               nextReviewDate={ciMetadata.next_review_date || undefined}
               documentNumber={ciMetadata.document_number || undefined}
-              onFieldChange={updateCIField}
+              showSectionNumbers={showSectionNumbers}
+              onFieldChange={async (field, value) => {
+                if (field === 'showSectionNumbers') {
+                  onShowSectionNumbersChange?.(value as boolean);
+                  return;
+                }
+                await updateCIField(field, value);
+              }}
               disabled={controlPanelProps.disabled}
-            />
-          )}
-          {ciDocumentId && ciCompanyId && (
-            <ReviewDraftsList
-              companyId={ciCompanyId}
-              documentId={ciDocumentId}
             />
           )}
         </div>

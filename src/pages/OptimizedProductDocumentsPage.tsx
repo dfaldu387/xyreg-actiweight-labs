@@ -1,4 +1,4 @@
-
+import { BulkDocumentUploadDialog } from "@/components/product/documents/BulkDocumentUploadDialog";
 import React, { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useProductDetails } from "@/hooks/useProductDetails";
@@ -25,6 +25,7 @@ import { documentLogger } from "@/utils/documentLogger";
 export default function OptimizedProductDocumentsPage() {
   const { productId } = useParams<{ productId: string }>();
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
   
   // Performance monitoring
   usePerformanceMonitor('ProductDocumentsPage');
@@ -274,6 +275,7 @@ export default function OptimizedProductDocumentsPage() {
           statusFilter={[]}
           onStatusFilterChange={() => {}}
           onAddDocumentClick={() => setShowAddDialog(true)}
+          onBulkUploadClick={() => setShowBulkUpload(true)}
           onSyncDocuments={enhancedSync}
           documentsCount={totalDocuments}
           isSyncing={isSyncing}
@@ -338,6 +340,15 @@ export default function OptimizedProductDocumentsPage() {
           productId={productId || ''}
           companyId={companyId || ''}
           onDocumentCreated={enhancedRefresh}
+        />
+
+        {/* Bulk Document Upload Dialog */}
+        <BulkDocumentUploadDialog
+          open={showBulkUpload}
+          onOpenChange={setShowBulkUpload}
+          productId={productId || ''}
+          companyId={companyId || ''}
+          onComplete={enhancedRefresh}
         />
       </div>
     </DocumentErrorBoundary>

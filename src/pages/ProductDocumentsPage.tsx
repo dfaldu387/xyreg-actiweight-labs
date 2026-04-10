@@ -19,12 +19,14 @@ import { RestrictedPreviewBanner } from "@/components/subscription/RestrictedPre
 
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, RefreshCw, Zap, Link } from "lucide-react";
+import { Plus, RefreshCw, Zap, Link, Upload } from "lucide-react";
 import { TemplatesSettings } from "@/components/settings/TemplatesSettings";
+import { ReferenceDocumentsTab } from "@/components/document-composer/ReferenceDocumentsTab";
 import { DocumentDependencyDialog } from "@/components/product/documents/DocumentDependencyDialog";
 import { ProductDocumentSyncPage } from "@/components/documents/ProductDocumentSyncPage";
 // import { DocumentDebugPanel } from "@/components/product/documents/DocumentDebugPanel";
 import { DocumentErrorBoundary } from "@/components/common/DocumentErrorBoundary";
+import { BulkDocumentUploadDialog } from "@/components/product/documents/BulkDocumentUploadDialog";
 import { queryClient } from "@/lib/query-client";
 import { toast } from "sonner";
 import { mapDBStatusToUI } from "@/utils/statusUtils";
@@ -41,6 +43,7 @@ export default function ProductDocumentsPage() {
   const statusFromUrl = searchParams.get('status');
   const mode = searchParams.get('mode');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [showDependencyDialog, setShowDependencyDialog] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [newlyCreatedDoc, setNewlyCreatedDoc] = useState<any>(null);
@@ -539,6 +542,7 @@ export default function ProductDocumentsPage() {
             >
               <TabsList className="mx-4 mt-2">
                 <TabsTrigger value="documents">Documents</TabsTrigger>
+                <TabsTrigger value="reference-documents">Reference Documents</TabsTrigger>
                 <TabsTrigger value="device-templates">Device Templates</TabsTrigger>
               </TabsList>
 
@@ -577,6 +581,7 @@ export default function ProductDocumentsPage() {
                         onDocumentsRefresh={enhancedRefresh}
                         onSyncRefresh={safeDocumentsRefresh}
                         onAddDocumentClick={() => setShowAddDialog(true)}
+                        onBulkUploadClick={() => setShowBulkUpload(true)}
                         statusFilter={statusFilter}
                         onStatusFilterChange={handleStatusFilterChange}
                         onPhaseDeadlineChange={operations.handlePhaseDeadlineChange}
@@ -602,6 +607,12 @@ export default function ProductDocumentsPage() {
                       />
                     )}
                   </DocumentStatusOperations>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="reference-documents">
+                <div className="py-2 sm:py-3 lg:py-4">
+                  <ReferenceDocumentsTab companyId={companyId} productId={productId} />
                 </div>
               </TabsContent>
 
@@ -663,6 +674,15 @@ export default function ProductDocumentsPage() {
             phaseId: doc.phaseId
           })) || []}
           onDependenciesChange={enhancedRefresh}
+        />
+
+        {/* Bulk Document Upload Dialog */}
+        <BulkDocumentUploadDialog
+          open={showBulkUpload}
+          onOpenChange={setShowBulkUpload}
+          productId={productId || ''}
+          companyId={companyId || ''}
+          onComplete={enhancedRefresh}
         />
       </div>
     </DocumentErrorBoundary>

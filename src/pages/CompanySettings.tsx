@@ -19,6 +19,7 @@ import {
   
   Microscope,
   Contact,
+  
 } from "lucide-react";
 import { hasAdminPrivileges } from "@/utils/roleUtils";
 import { useAuth } from "@/context/AuthContext";
@@ -366,6 +367,7 @@ export default function CompanySettings() {
                   companyName={companyName || ""}
                 />
               </TabsContent>
+
             </React.Suspense>
           </Tabs>
         </div>

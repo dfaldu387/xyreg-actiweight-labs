@@ -1,27 +1,32 @@
 
 
-## Plan: Add location tags + fix device doc deep-link
+## Fix: Missing Status Badges Due to Key Mismatches
 
-### A) Add location tags to My Documents widget
+### Root Cause
+The `standard_version_status` database table uses different `framework_key` values than the frontend. When `buildScopeProps('IEC_62366_1')` calls `getStatus('IEC_62366_1')`, it finds no match because the DB row has `framework_key = 'IEC_62366'`.
 
-**Problem**: Each document in the widget shows only its name, type, and timestamp — no indication of whether it belongs to an enterprise (company) document or a specific device/product.
+### Mismatched Keys
 
-**Fix in `src/components/mission-control/MyDocumentsWidget.tsx`**:
-- After fetching documents, collect all unique `product_id` values and batch-fetch product names from `products` table (`id`, `name`, `current_lifecycle_phase`)
-- Add `productName` and `phaseName` fields to the `DocItem` interface
-- Render a small muted tag below each doc's metadata line:
-  - If `productId` exists: show `"{productName} | {phaseName}"` (or just product name if no phase)
-  - If no `productId`: show `"Enterprise"` 
+```text
+DB key          →  Frontend key (used in buildScopeProps)
+─────────────────────────────────────────────────────────
+IEC_62366       →  IEC_62366_1      (no match!)
+ISO_15223       →  ISO_15223_1      (no match!)
+IEEE_14971      →  ISO_14971_DEVICE (no match!)
+```
 
-### B) Fix device doc deep-link not opening the CI drawer
+### Fix
+Update the three `framework_key` values in the database to match the frontend keys:
 
-**Problem**: Navigating to `/app/product/{id}/documents?docId={id}` lands on the documents list but the `docId` query param is never consumed — the deep-link auto-open logic only exists in `CompanyDocumentManager` (enterprise docs), not in `ProductDocumentsPage`.
+```sql
+UPDATE standard_version_status SET framework_key = 'IEC_62366_1'    WHERE framework_key = 'IEC_62366';
+UPDATE standard_version_status SET framework_key = 'ISO_15223_1'    WHERE framework_key = 'ISO_15223';
+UPDATE standard_version_status SET framework_key = 'ISO_14971_DEVICE' WHERE framework_key = 'IEEE_14971';
+```
 
-**Fix in `src/pages/ProductDocumentsPage.tsx`**:
-- Add a `useEffect` that reads `searchParams.get('docId')`, finds the matching document in the loaded `documents` array, and sets it as `newlyCreatedDoc` (which the `DocumentTabs`/`AllActivePhasesTab` already use to auto-open the drawer)
-- Clear the `docId` param from the URL after consumption (same pattern as `CompanyDocumentManager`)
+Also update the hardcoded standards list in `supabase/functions/check-standard-status/index.ts` to use the corrected keys so nightly checks continue to match.
 
 ### Files
-1. `src/components/mission-control/MyDocumentsWidget.tsx` — add product name fetch, add `productName`/`phaseName` to DocItem, render location tag
-2. `src/pages/ProductDocumentsPage.tsx` — add `docId` deep-link useEffect to auto-open document drawer
+- **Migrate**: SQL to update the 3 mismatched keys
+- **Modify**: `supabase/functions/check-standard-status/index.ts` — fix the 3 keys in the standards array
 

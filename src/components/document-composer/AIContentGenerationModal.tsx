@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Sparkles, Wand2, Lightbulb, FileText, Check, X, BookOpen, Shield } from 'lucide-react';
+import { Sparkles, Wand2, Lightbulb, FileText, Check, X, BookOpen, Shield, Pencil, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
@@ -50,6 +50,12 @@ export function AIContentGenerationModal({
   const [selectedRefDocIds, setSelectedRefDocIds] = useState<string[]>([]);
   const [selectedStandardIds, setSelectedStandardIds] = useState<Set<string>>(new Set());
   const [standardsInitialized, setStandardsInitialized] = useState(false);
+  const [mode, setMode] = useState<'generate' | 'edit'>(() => currentContent?.trim() ? 'edit' : 'generate');
+
+  // Sync mode when currentContent changes (e.g. switching sections)
+  React.useEffect(() => {
+    setMode(currentContent?.trim() ? 'edit' : 'generate');
+  }, [currentContent]);
   const { documents: refDocuments } = useReferenceDocuments(companyId);
 
   // Standards query
@@ -259,7 +265,8 @@ export function AIContentGenerationModal({
         body: {
           prompt: enhancedPrompt,
           sectionTitle,
-          currentContent,
+          currentContent: mode === 'edit' ? currentContent : undefined,
+          mode,
           referenceContext: referenceContext || undefined,
         }
       });
@@ -323,6 +330,51 @@ export function AIContentGenerationModal({
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Mode Toggle */}
+          <div className="flex gap-1 p-1 rounded-lg bg-muted">
+            <Button
+              size="sm"
+              variant={mode === 'generate' ? 'default' : 'ghost'}
+              className="flex-1 gap-1.5"
+              onClick={() => setMode('generate')}
+              disabled={isGenerating}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Generate New
+            </Button>
+            <Button
+              size="sm"
+              variant={mode === 'edit' ? 'default' : 'ghost'}
+              className="flex-1 gap-1.5"
+              onClick={() => setMode('edit')}
+              disabled={isGenerating || !currentContent?.trim()}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              Edit Existing
+            </Button>
+          </div>
+
+          {/* Quick edit chips (edit mode only) */}
+          {mode === 'edit' && currentContent?.trim() && (
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { label: 'Add detail', prompt: `Add more detail and specificity to the "${sectionTitle}" section. Expand on key points while preserving the existing structure.` },
+                { label: 'Fix grammar', prompt: `Fix grammar, spelling, and punctuation in the "${sectionTitle}" section. Preserve all content and meaning.` },
+                { label: 'Add compliance reference', prompt: `Add relevant regulatory compliance references (ISO 13485, FDA 21 CFR 820, EU MDR) to the "${sectionTitle}" section where appropriate.` },
+                { label: 'Simplify language', prompt: `Simplify the language in the "${sectionTitle}" section. Make it clearer and more concise while preserving technical accuracy.` },
+              ].map((chip) => (
+                <Badge
+                  key={chip.label}
+                  variant="outline"
+                  className="cursor-pointer hover:bg-primary/10 transition-colors text-xs py-1 px-2"
+                  onClick={() => { setCustomPrompt(chip.prompt); setSelectedSuggestion(null); }}
+                >
+                  {chip.label}
+                </Badge>
+              ))}
+            </div>
+          )}
+
           {/* AI Input Sources Indicator */}
           <div className="rounded-lg border bg-muted/30 p-3">
             <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
@@ -335,13 +387,17 @@ export function AIContentGenerationModal({
                 <span className="font-medium">Section</span>
                 <span className="text-muted-foreground truncate">{sectionTitle}</span>
               </div>
-              {currentContent && (
-                <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+              <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                {mode === 'edit' && currentContent?.trim() ? (
                   <Check className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
-                  <span className="font-medium">Existing Content</span>
-                  <span className="text-muted-foreground truncate">{currentContent.substring(0, 60)}...</span>
-                </div>
-              )}
+                ) : (
+                  <X className="h-3 w-3 text-muted-foreground shrink-0" />
+                )}
+                <span className="font-medium">Existing Content</span>
+                <span className="text-muted-foreground truncate">
+                  {mode === 'edit' && currentContent?.trim() ? `${currentContent.substring(0, 60)}...` : 'Not used (Generate New mode)'}
+                </span>
+              </div>
               {selectedRefDocIds.length > 0 && (
                 <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
                   <Check className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />

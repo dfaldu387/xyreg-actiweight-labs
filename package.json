@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "resolutions": {
-    "@isaacs/cliui": "9.0.0"
+    "sucrase": "3.35.1"
   },
   "overrides": {
-    "@isaacs/cliui": "9.0.0"
+    "sucrase": "3.35.1"
   },
   "scripts": {
     "dev": "vite",

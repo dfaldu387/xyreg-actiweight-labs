@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FileText, Calendar, User, File, Eye, Clock, FolderOpen } from "lucide-react";
 import { DocumentActionMenu } from "./DocumentActionMenu";
 import { DocumentReviewersList } from "./DocumentReviewersList";
-import { EditDocumentDialog } from "./EditDocumentDialog";
+import { DocumentDraftDrawer } from './DocumentDraftDrawer';
 // AssignReviewersDialog removed for template instances
 import { DocumentViewer } from "../DocumentViewer";
 import { useState } from "react";
@@ -28,7 +28,7 @@ export function SelectedPhaseDocuments({
   productId
 }: SelectedPhaseDocumentsProps) {
   const { activeRole } = useCompanyRole();
-  const [editingDocument, setEditingDocument] = useState<any>(null);
+  const [draftDrawerDocument, setDraftDrawerDocument] = useState<any>(null);
   const [assigningReviewers, setAssigningReviewers] = useState<any>(null);
   const [viewingDocument, setViewingDocument] = useState<any>(null);
   console.log('Selected phase:', selectedPhase);
@@ -170,7 +170,7 @@ export function SelectedPhaseDocuments({
   };
 
   const handleEditDocument = (document: any) => {
-    setEditingDocument(document);
+    setDraftDrawerDocument(document);
   };
 
   const handleAssignReviewers = (document: any) => {
@@ -179,7 +179,7 @@ export function SelectedPhaseDocuments({
 
   const handleDocumentUpdated = (updatedDocument: any) => {
     onDocumentUpdated(updatedDocument);
-    setEditingDocument(null);
+    setDraftDrawerDocument(null);
   };
 
   const handleReviewersUpdated = (updatedDocument: any) => {
@@ -352,19 +352,27 @@ export function SelectedPhaseDocuments({
         })}
       </div>
 
-      {/* Edit Document Dialog */}
-      {editingDocument && (
-        <EditDocumentDialog
-          open={!!editingDocument}
-          onOpenChange={(open) => !open && setEditingDocument(null)}
-          document={editingDocument}
-          onDocumentUpdated={handleDocumentUpdated}
-          documentType={getDocumentTypeInfo(editingDocument).type}
-          productId={productId}
-          companyId={companyId}
-          handleRefreshData={() => { }}
-        />
-      )}
+      {/* Document Draft Drawer */}
+      <DocumentDraftDrawer
+        open={!!draftDrawerDocument}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDraftDrawerDocument(null);
+            onDocumentUpdated({});
+          }
+        }}
+        documentId={draftDrawerDocument?.id || ''}
+        documentName={draftDrawerDocument?.name || ''}
+        documentType={draftDrawerDocument?.document_type || 'Standard'}
+        productId={productId || ''}
+        companyId={companyId || ''}
+        onDocumentSaved={() => {
+          setDraftDrawerDocument(null);
+          onDocumentUpdated({});
+        }}
+        filePath={draftDrawerDocument?.file_path}
+        fileName={draftDrawerDocument?.file_name}
+      />
 
       {/* Assign Reviewers Dialog removed for template instances */}
 

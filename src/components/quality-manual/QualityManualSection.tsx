@@ -20,8 +20,6 @@ import type { QualityManualSection as QMSection, QualityManualData } from '@/hoo
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { QMSubStep } from './QualityManualSidebar';
-import { ISO_13485_SECTIONS } from '@/config/gapISO13485Sections';
 import { format } from 'date-fns';
 import { useLanguage } from '@/context/LanguageContext';
 
@@ -39,17 +37,12 @@ interface QualityManualSectionProps {
   onGenerate: (sectionKey: string, options?: { outputLanguage?: string; additionalPrompt?: string }) => void;
   generating: string | null;
   saving: boolean;
-  currentStepIndex: number;
-  activeSteps: QMSubStep[];
-  subStepContents: Map<string, { content: string; lastUpdated?: string }>;
-  getSubStepKey: (sectionKey: string, subIndex: number) => string;
   companyId?: string;
   companyName?: string;
 }
 
 function getDataCards(section: QMSection, data: QualityManualData) {
   const cards: { label: string; value: string | number; icon: React.ReactNode }[] = [];
-
   const groupId = section.groupId;
   const clause = section.clause;
 
@@ -82,25 +75,15 @@ function buildSourceItems(section: QMSection, data: QualityManualData) {
   const items: { icon: React.ReactNode; label: string; value: string }[] = [];
 
   if (data.company) {
-    items.push({
-      icon: <Building2 className="h-4 w-4" />,
-      label: 'Company',
-      value: data.company.name,
-    });
+    items.push({ icon: <Building2 className="h-4 w-4" />, label: 'Company', value: data.company.name });
     if (data.company.country) {
-      items.push({
-        icon: <MapPin className="h-4 w-4" />,
-        label: 'Country / Market',
-        value: data.company.country,
-      });
+      items.push({ icon: <MapPin className="h-4 w-4" />, label: 'Country / Market', value: data.company.country });
     }
     if (data.company.description) {
       items.push({
         icon: <FileText className="h-4 w-4" />,
         label: 'Description',
-        value: data.company.description.length > 120
-          ? data.company.description.slice(0, 120) + '…'
-          : data.company.description,
+        value: data.company.description.length > 120 ? data.company.description.slice(0, 120) + '…' : data.company.description,
       });
     }
   }
@@ -110,33 +93,17 @@ function buildSourceItems(section: QMSection, data: QualityManualData) {
       const rc = p.risk_class ? ` (${p.risk_class})` : '';
       return `${p.name}${rc}`;
     });
-    items.push({
-      icon: <Package className="h-4 w-4" />,
-      label: `Products (${data.products.length})`,
-      value: productNames.join(', '),
-    });
+    items.push({ icon: <Package className="h-4 w-4" />, label: `Products (${data.products.length})`, value: productNames.join(', ') });
   }
 
   if (data.personnel.length > 0) {
-    items.push({
-      icon: <Users className="h-4 w-4" />,
-      label: 'Personnel',
-      value: `${data.personnel.length} team member${data.personnel.length > 1 ? 's' : ''}`,
-    });
+    items.push({ icon: <Users className="h-4 w-4" />, label: 'Personnel', value: `${data.personnel.length} team member${data.personnel.length > 1 ? 's' : ''}` });
   }
 
-  items.push({
-    icon: <ShieldCheck className="h-4 w-4" />,
-    label: 'Clause',
-    value: `§${section.clause} ${section.title}`,
-  });
+  items.push({ icon: <ShieldCheck className="h-4 w-4" />, label: 'Clause', value: `§${section.clause} ${section.title}` });
 
   if (section.description) {
-    items.push({
-      icon: <FileText className="h-4 w-4" />,
-      label: 'Requirement',
-      value: section.description,
-    });
+    items.push({ icon: <FileText className="h-4 w-4" />, label: 'Requirement', value: section.description });
   }
 
   return items;
@@ -149,10 +116,6 @@ export function QualityManualSectionView({
   onGenerate,
   generating,
   saving,
-  currentStepIndex,
-  activeSteps,
-  subStepContents,
-  getSubStepKey,
   companyId,
   companyName,
 }: QualityManualSectionProps) {
@@ -168,45 +131,7 @@ export function QualityManualSectionView({
 
   const sourceItems = buildSourceItems(section, companyData);
   const hasMissingData = !companyData.company;
-
-  // Determine if we're on a sub-step or the narrative step
-  const isoConfig = ISO_13485_SECTIONS.find(s => s.section === section.clause);
-  const hasSubItems = isoConfig?.subItems && isoConfig.subItems.length > 0;
-  const narrativeIndex = hasSubItems ? isoConfig!.subItems!.length : 0;
-  const isNarrativeStep = currentStepIndex >= narrativeIndex;
-
-  // Current sub-step info
-  const currentSubItem = !isNarrativeStep && hasSubItems
-    ? isoConfig!.subItems![currentStepIndex]
-    : null;
-
-  // Content key and content for the current step
-  const currentContentKey = useMemo(() => {
-    if (isNarrativeStep) return section.sectionKey;
-    return getSubStepKey(section.sectionKey, currentStepIndex);
-  }, [isNarrativeStep, section.sectionKey, currentStepIndex, getSubStepKey]);
-
-  const currentContent = useMemo(() => {
-    if (isNarrativeStep) return section.content;
-    return subStepContents.get(currentContentKey)?.content || '';
-  }, [isNarrativeStep, section.content, subStepContents, currentContentKey]);
-
-  const currentLastUpdated = useMemo(() => {
-    if (isNarrativeStep) return section.lastUpdated;
-    return subStepContents.get(currentContentKey)?.lastUpdated;
-  }, [isNarrativeStep, section.lastUpdated, subStepContents, currentContentKey]);
-
-  const isGenerating = generating === currentContentKey;
-
-  // Header text for current step
-  const stepClause = currentSubItem
-    ? `${section.clause}.${currentSubItem.letter}`
-    : section.clause;
-  const stepTitle = currentSubItem
-    ? currentSubItem.description
-    : isNarrativeStep && hasSubItems
-      ? 'Publish-Ready Narrative'
-      : section.title;
+  const isGenerating = generating === section.sectionKey;
 
   // Initialize all sources as selected
   React.useEffect(() => {
@@ -222,46 +147,39 @@ export function QualityManualSectionView({
 
   const handleConfirmGenerate = () => {
     setShowSourceDialog(false);
-    onGenerate(currentContentKey, {
+    onGenerate(section.sectionKey, {
       outputLanguage,
       additionalPrompt: additionalPrompt || undefined,
     });
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in-50 duration-300" key={currentContentKey}>
+    <div className="space-y-4 animate-in fade-in-50 duration-300" key={section.sectionKey}>
       {/* Section Header */}
       <div className="rounded-lg bg-gradient-to-r from-primary/5 via-primary/3 to-transparent border border-primary/10 p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1 flex-1">
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-xs font-mono">
-                §{stepClause}
+                §{section.clause}
               </Badge>
-              {currentSubItem && (
-                <Badge variant="secondary" className="text-[10px]">
-                  Part of §{section.clause}
-                </Badge>
-              )}
-              {currentLastUpdated && (
+              {section.lastUpdated && (
                 <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                   <Clock className="h-3 w-3" />
-                  {format(new Date(currentLastUpdated), 'MMM d, yyyy')}
+                  {format(new Date(section.lastUpdated), 'MMM d, yyyy')}
                 </span>
               )}
               {saving && (
                 <span className="text-[11px] text-muted-foreground">Saving…</span>
               )}
             </div>
-            <h2 className="text-xl font-semibold tracking-tight">{stepTitle}</h2>
+            <h2 className="text-xl font-semibold tracking-tight">{section.title}</h2>
             <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
-              {isNarrativeStep && hasSubItems
-                ? `Compile the full narrative for §${section.clause} ${section.title}`
-                : currentSubItem?.detailedDescription || currentSubItem?.description || section.description}
+              {section.description}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {companyId && companyName && currentContent && currentContent.length > 20 && (
+            {companyId && companyName && section.content && section.content.length > 20 && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -291,7 +209,7 @@ export function QualityManualSectionView({
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {isGenerating ? 'Generating…' : currentContent ? 'Regenerate' : 'Generate with AI'}
+              {isGenerating ? 'Generating…' : section.content ? 'Regenerate' : 'Generate with AI'}
             </Button>
           </div>
         </div>
@@ -319,10 +237,10 @@ export function QualityManualSectionView({
       {/* Content Editor */}
       <div>
         <RichTextField
-          key={currentContentKey}
-          value={currentContent}
-          onChange={(html) => onContentChange(currentContentKey, html)}
-          placeholder={`Write or generate the quality manual content for §${stepClause} ${stepTitle}…`}
+          key={section.sectionKey}
+          value={section.content}
+          onChange={(html) => onContentChange(section.sectionKey, html)}
+          placeholder={`Write or generate the quality manual content for §${section.clause} ${section.title}…`}
           minHeight="300px"
           disabled={isGenerating}
         />
@@ -334,7 +252,7 @@ export function QualityManualSectionView({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
-              {currentContent ? 'Regenerate' : 'Generate'} §{stepClause} {stepTitle}
+              {section.content ? 'Regenerate' : 'Generate'} §{section.clause} {section.title}
             </DialogTitle>
             <DialogDescription>
               The following data will be used as context for AI generation. Review the sources below before proceeding.
@@ -371,7 +289,7 @@ export function QualityManualSectionView({
               </div>
             )}
 
-            {currentContent && (
+            {section.content && (
               <div className="p-3 rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800/50 dark:bg-blue-950/20">
                 <div className="text-xs font-medium text-blue-800 dark:text-blue-300">
                   ℹ This section already has content. Generating will replace the existing text.
@@ -413,7 +331,7 @@ export function QualityManualSectionView({
             </Button>
             <Button onClick={handleConfirmGenerate} className="gap-1.5">
               <Sparkles className="h-4 w-4" />
-              {currentContent ? 'Regenerate' : 'Generate'}
+              {section.content ? 'Regenerate' : 'Generate'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -425,8 +343,8 @@ export function QualityManualSectionView({
           <SaveContentAsDocCIDialog
             open={showDocCIDialog}
             onOpenChange={setShowDocCIDialog}
-            title={`Quality Manual — §${stepClause} ${stepTitle}`}
-            htmlContent={currentContent}
+            title={`Quality Manual — §${section.clause} ${section.title}`}
+            htmlContent={section.content}
             templateIdKey={`QM-${section.clause.replace(/\./g, '_')}-${companyId}`}
             companyId={companyId}
             companyName={companyName}

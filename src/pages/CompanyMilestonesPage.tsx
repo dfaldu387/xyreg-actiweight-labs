@@ -1,12 +1,12 @@
-import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useCompanyRole } from '@/context/CompanyRoleContext';
-import { CompanyMilestonesOfficial } from '@/components/company/CompanyMilestonesOfficial';
-import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ConsistentPageHeader } from '@/components/layout/ConsistentPageHeader';
-import { buildCompanyBreadcrumbs } from '@/utils/breadcrumbUtils';
-import { useTranslation } from '@/hooks/useTranslation';
+import React from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useCompanyRole } from "@/context/CompanyRoleContext";
+import { CompanyMilestonesOfficial } from "@/components/company/CompanyMilestonesOfficial";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ConsistentPageHeader } from "@/components/layout/ConsistentPageHeader";
+import { buildCompanyBreadcrumbs } from "@/utils/breadcrumbUtils";
+import { useTranslation } from "@/hooks/useTranslation";
 
 export default function CompanyMilestonesPage() {
   const { companyName } = useParams<{ companyName: string }>();
@@ -22,14 +22,13 @@ export default function CompanyMilestonesPage() {
     );
   }
 
-  // Use companyName from URL params if available, otherwise use active company name
   const displayCompanyName = companyName || activeCompanyRole?.companyName;
 
   if (!displayCompanyName) {
     return (
       <Alert variant="destructive">
         <AlertDescription>
-          {lang('milestones.noCompanySelected')}
+          {lang("milestones.noCompanySelected")}
         </AlertDescription>
       </Alert>
     );
@@ -37,19 +36,24 @@ export default function CompanyMilestonesPage() {
 
   const breadcrumbs = buildCompanyBreadcrumbs(
     decodeURIComponent(displayCompanyName),
-    lang('milestones.enterpriseTitle'),
-    () => navigate('/app'),
-    () => navigate(`/app/company/${encodeURIComponent(displayCompanyName)}`)
+    lang("milestones.enterpriseTitle"),
+    () => navigate("/app"),
+    () => navigate(`/app/company/${encodeURIComponent(displayCompanyName)}`),
   );
 
   return (
     <div className="px-4 py-6">
       <ConsistentPageHeader
         breadcrumbs={breadcrumbs}
-        title={lang('milestones.pageTitle').replace('{{companyName}}', decodeURIComponent(displayCompanyName))}
-        subtitle={lang('milestones.subtitle')}
+        title={lang("milestones.pageTitle").replace(
+          "{{companyName}}",
+          decodeURIComponent(displayCompanyName),
+        )}
+        subtitle={lang("milestones.subtitle")}
       />
-      <CompanyMilestonesOfficial companyName={decodeURIComponent(displayCompanyName)} />
+      <CompanyMilestonesOfficial
+        companyName={decodeURIComponent(displayCompanyName)}
+      />
     </div>
   );
 }

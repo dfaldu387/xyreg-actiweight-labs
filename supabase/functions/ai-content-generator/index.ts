@@ -14,8 +14,8 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, sectionTitle, currentContent, companyId, referenceContext, outputLanguage } = await req.json();
-    console.log('[ai-content-generator] Request received:', { sectionTitle, hasPrompt: !!prompt, companyId, hasReferenceContext: !!referenceContext, outputLanguage });
+    const { prompt, sectionTitle, currentContent, companyId, referenceContext, outputLanguage, mode } = await req.json();
+    console.log('[ai-content-generator] Request received:', { sectionTitle, hasPrompt: !!prompt, companyId, hasReferenceContext: !!referenceContext, outputLanguage, mode });
 
     if (!prompt) {
       throw new Error('Prompt is required');
@@ -27,7 +27,48 @@ serve(async (req) => {
     }
 
     // Build the AI prompt with context
-    const systemPrompt = `You are an expert technical writer specializing in medical device documentation and quality management systems.
+    const isEditMode = mode === 'edit' && currentContent;
+    const isReviewMode = mode === 'review';
+
+    let systemPrompt: string;
+
+    if (isReviewMode) {
+      systemPrompt = `You are an expert regulatory and quality reviewer specializing in medical device documentation and quality management systems.
+
+You are REVIEWING existing document content. The user will ask a question about the content.
+Provide clear, actionable feedback. Do NOT rewrite the content — give advisory answers only.
+Structure your response with headings and bullet points for clarity.
+
+Guidelines:
+- Be specific about gaps, issues, or strengths
+- Reference relevant standards (ISO 13485, ISO 14971, FDA 21 CFR Part 820, MDR) when applicable
+- Use professional medical device industry language
+- Return your response as clean HTML with <p>, <ul>, <li>, <h4>, <strong> tags
+- Do NOT wrap in markdown code fences
+
+${referenceContext ? `REFERENCE DOCUMENTS:\n${referenceContext}` : ''}
+${outputLanguage && outputLanguage !== 'en' ? `CRITICAL: Generate ALL output in ${outputLanguage === 'de' ? 'German' : outputLanguage === 'fr' ? 'French' : outputLanguage === 'fi' ? 'Finnish' : 'English'}.` : ''}`;
+    } else if (isEditMode) {
+      systemPrompt = `You are an expert technical writer specializing in medical device documentation and quality management systems.
+
+You are EDITING an existing document section. The user will provide their current content and an instruction.
+Modify the existing content according to the instruction.
+Preserve the overall structure, tone, and formatting. Only change what the user asks for.
+Return the full updated section content.
+
+Guidelines:
+- Preserve existing content that is not affected by the instruction
+- Maintain professional medical device industry language
+- Follow ISO 13485 and FDA 21 CFR Part 820 standards
+- CRITICAL: Return ONLY raw HTML content - NO markdown, NO code blocks, NO \`\`\`html tags
+- Start your response directly with HTML tags like <p>, <ul>, <h3>, etc.
+- Do NOT wrap your response in markdown code fences
+- Do NOT include any preamble or explanations
+
+${referenceContext ? `REFERENCE DOCUMENTS:\n${referenceContext}` : ''}
+${outputLanguage && outputLanguage !== 'en' ? `CRITICAL: Generate ALL output in ${outputLanguage === 'de' ? 'German' : outputLanguage === 'fr' ? 'French' : outputLanguage === 'fi' ? 'Finnish' : 'English'}.` : ''}`;
+    } else {
+      systemPrompt = `You are an expert technical writer specializing in medical device documentation and quality management systems.
 
 Guidelines:
 - Use professional medical device industry language
@@ -56,8 +97,13 @@ ${outputLanguage && outputLanguage !== 'en' ? `CRITICAL LANGUAGE INSTRUCTION: Ge
   outputLanguage === 'fi' ? 'Finnish (Suomi)' :
   'English'
 }. Every heading, paragraph, list item, and label must be in this language. Do NOT mix languages.` : ''}`;
+    }
 
-    const userPrompt = prompt;
+    const userPrompt = isReviewMode
+      ? `Document "${sectionTitle}" content:\n${currentContent}\n\nQuestion: ${prompt}`
+      : isEditMode
+      ? `Current content of the "${sectionTitle}" section:\n${currentContent}\n\nInstruction: ${prompt}`
+      : prompt;
 
     console.log('[ai-content-generator] Calling Lovable AI...');
 

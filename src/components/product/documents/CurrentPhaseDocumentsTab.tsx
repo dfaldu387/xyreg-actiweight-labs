@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { FileText, RefreshCw, AlertCircle, File, Eye } from "lucide-react";
 import { DocumentActionMenu } from './DocumentActionMenu';
 import { DocumentReviewersList } from './DocumentReviewersList';
-import { EditDocumentDialog } from './EditDocumentDialog';
+import { DocumentDraftDrawer } from './DocumentDraftDrawer';
 import { DocumentViewer } from '../DocumentViewer';
 import { DueDateBadge } from './DueDateBadge';
 import { useIsolatedDocumentOperations } from '@/hooks/useIsolatedDocumentOperations';
@@ -40,7 +40,7 @@ export function CurrentPhaseDocumentsTab({
   handleRefreshData
 }: CurrentPhaseDocumentsTabProps) {
   const { activeRole } = useCompanyRole();
-  const [editingDocument, setEditingDocument] = useState<any>(null);
+  const [draftDrawerDocument, setDraftDrawerDocument] = useState<any>(null);
   // Removed assigningReviewers state - template instance reviewer assignment now in Edit dialog
   const [viewingDocument, setViewingDocument] = useState<any>(null);
   const [processingDocuments, setProcessingDocuments] = useState<Set<string>>(new Set());
@@ -166,18 +166,14 @@ export function CurrentPhaseDocumentsTab({
   };
 
   const handleEditDocument = (document: any) => {
-    // console.log("[CurrentPhaseDocumentsTab] Editing document:", document);
-    // console.log("[CurrentPhaseDocumentsTab] Document reviewer_group_ids:", document.reviewer_group_ids);
-    // console.log("[CurrentPhaseDocumentsTab] Document reviewer_group_id:", document.reviewer_group_id);
-    setEditingDocument(document);
+    setDraftDrawerDocument(document);
   };
 
   // Removed handleAssignReviewers for template instances - now handled in Edit Instance dialog
 
   const handleDocumentUpdated = (updatedDocument: any) => {
-    // console.log("[CurrentPhaseDocumentsTab] Document updated:", updatedDocument);
     onDocumentUpdated(updatedDocument);
-    setEditingDocument(null);
+    setDraftDrawerDocument(null);
   };
 
   // Removed handleReviewersUpdated - template instance reviewer assignment now in Edit dialog
@@ -375,19 +371,27 @@ export function CurrentPhaseDocumentsTab({
         </CardContent>
       </Card>
 
-      {/* Edit Document Dialog */}
-      {editingDocument && (
-        <EditDocumentDialog
-          open={!!editingDocument}
-          onOpenChange={(open) => !open && setEditingDocument(null)}
-          document={editingDocument}
-          onDocumentUpdated={handleDocumentUpdated}
-          documentType={editingDocument.template_source_id ? "template-instance" : "product-specific"}
-          productId={productId}
-          companyId={companyId}
-          handleRefreshData={handleRefreshData}
-        />
-      )}
+      {/* Document Draft Drawer */}
+      <DocumentDraftDrawer
+        open={!!draftDrawerDocument}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDraftDrawerDocument(null);
+            handleRefreshData();
+          }
+        }}
+        documentId={draftDrawerDocument?.id || ''}
+        documentName={draftDrawerDocument?.name || ''}
+        documentType={draftDrawerDocument?.document_type || 'Standard'}
+        productId={productId}
+        companyId={companyId}
+        onDocumentSaved={() => {
+          setDraftDrawerDocument(null);
+          handleRefreshData();
+        }}
+        filePath={draftDrawerDocument?.file_path}
+        fileName={draftDrawerDocument?.file_name}
+      />
 
       {/* Assign Reviewers Dialog removed for template instances - now handled in Edit Instance dialog */}
 

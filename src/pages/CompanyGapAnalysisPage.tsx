@@ -38,7 +38,7 @@ import { PORTFOLIO_MENU_ACCESS } from '@/constants/menuAccessKeys';
 import { RestrictedFeatureProvider } from '@/contexts/RestrictedFeatureContext';
 import { RestrictedPreviewBanner } from '@/components/subscription/RestrictedPreviewBanner';
 import { useTranslation } from '@/hooks/useTranslation';
-
+import { useStandardVersionStatus } from '@/hooks/useStandardVersionStatus';
 export default function CompanyGapAnalysisPage() {
   const { companyName } = useParams<{ companyName: string }>();
   const navigate = useNavigate();
@@ -50,6 +50,8 @@ export default function CompanyGapAnalysisPage() {
   const [statusFilter, setStatusFilter] = useState<string[]>(["compliant", "partially_compliant", "non_compliant", "not_applicable"]);
   const [activeTab, setActiveTab] = useState("iso-13485");
   const decodedCompanyName = companyName ? decodeURIComponent(companyName) : "";
+  const { data: standardStatuses } = useStandardVersionStatus();
+  const getStatus = (key: string) => standardStatuses?.find(s => s.framework_key === key);
 
   // Restriction check
   const { isMenuAccessKeyEnabled, planName } = usePlanMenuAccess();
@@ -230,7 +232,7 @@ export default function CompanyGapAnalysisPage() {
 
               <TabsContent value="iso-13485">
                 <div className="relative">
-                  <GapISO13485LaunchView items={filteredGapItems} disabled={isRestricted} companyId={companyId || undefined} companyName={decodedCompanyName} />
+                  <GapISO13485LaunchView items={filteredGapItems} disabled={isRestricted} companyId={companyId || undefined} companyName={decodedCompanyName} standardStatus={getStatus('ISO_13485')} />
                   <GapISO13485Sidebar items={filteredGapItems} disabled={isRestricted} />
                 </div>
               </TabsContent>
@@ -246,6 +248,7 @@ export default function CompanyGapAnalysisPage() {
                     standardIcon={Shield}
                     bannerDescription="Enterprise-level risk management process requirements: defining the organizational risk management process, management responsibilities, and personnel qualification."
                     disabled={isRestricted}
+                    standardStatus={getStatus('ISO_14971')}
                   />
                   <GenericGapSidebar
                     sections={ISO_14971_ENTERPRISE_SECTIONS}

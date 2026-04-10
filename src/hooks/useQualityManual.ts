@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { CompanyDataIntegrationService, type CompanyData, type PersonnelData, type ProductData, type MissingDataIndicator } from '@/services/companyDataIntegrationService';
-import { ISO_13485_SECTIONS, type ISO13485SectionItem } from '@/config/gapISO13485Sections';
+import { ISO_13485_SECTIONS } from '@/config/gapISO13485Sections';
 import { toast } from 'sonner';
 import { simpleDebounce } from '@/utils/simpleDebounce';
+import { getClassBasedExclusions } from '@/config/classBasedExclusions';
 
 export interface QualityManualSection {
   sectionKey: string;
@@ -41,7 +42,6 @@ function exclusionKeyFromClause(clause: string): string {
 export function useQualityManual(companyId: string | undefined) {
   const [sections, setSections] = useState<QualityManualSection[]>([]);
   const [exclusions, setExclusions] = useState<Map<string, string>>(new Map());
-  const [subStepContents, setSubStepContents] = useState<Map<string, { content: string; lastUpdated?: string }>>(new Map());
   const [companyData, setCompanyData] = useState<QualityManualData>({
     company: null, personnel: [], products: [], missingData: [],
   });
@@ -65,7 +65,7 @@ export function useQualityManual(companyId: string | undefined) {
     setSections(built);
   }, []);
 
-  // Load company data + saved content + exclusions + sub-step content
+  // Load company data + saved content + exclusions
   useEffect(() => {
     if (!companyId) return;
     let cancelled = false;
@@ -93,17 +93,10 @@ export function useQualityManual(companyId: string | undefined) {
 
         const savedMap = new Map<string, { content: string; updated: string }>();
         const loadedExclusions = new Map<string, string>();
-        const loadedSubSteps = new Map<string, { content: string; lastUpdated?: string }>();
 
         if (settingsResult.data) {
           for (const row of settingsResult.data) {
-            if (row.setting_key.includes('_sub_')) {
-              // Sub-step content
-              loadedSubSteps.set(row.setting_key, {
-                content: typeof row.setting_value === 'string' ? row.setting_value : JSON.stringify(row.setting_value),
-                lastUpdated: row.updated_at,
-              });
-            } else if (row.setting_key.startsWith('qm_section_')) {
+            if (row.setting_key.startsWith('qm_section_') && !row.setting_key.includes('_sub_')) {
               savedMap.set(row.setting_key, {
                 content: typeof row.setting_value === 'string' ? row.setting_value : JSON.stringify(row.setting_value),
                 updated: row.updated_at,
@@ -117,7 +110,6 @@ export function useQualityManual(companyId: string | undefined) {
         }
 
         setExclusions(loadedExclusions);
-        setSubStepContents(loadedSubSteps);
 
         setSections(prev => prev.map(s => {
           const saved = savedMap.get(s.sectionKey);
@@ -211,7 +203,7 @@ export function useQualityManual(companyId: string | undefined) {
     }
   }, [companyId, exclusions]);
 
-  // Save section content (top-level or sub-step)
+  // Save section content
   const saveContent = useCallback(async (settingKey: string, content: string) => {
     if (!companyId) return;
     setSaving(true);
@@ -228,20 +220,11 @@ export function useQualityManual(companyId: string | undefined) {
 
       if (error) throw error;
 
-      // Update the right state
-      if (settingKey.includes('_sub_')) {
-        setSubStepContents(prev => {
-          const next = new Map(prev);
-          next.set(settingKey, { content, lastUpdated: new Date().toISOString() });
-          return next;
-        });
-      } else {
-        setSections(prev => prev.map(s =>
-          s.sectionKey === settingKey
-            ? { ...s, content, lastUpdated: new Date().toISOString() }
-            : s
-        ));
-      }
+      setSections(prev => prev.map(s =>
+        s.sectionKey === settingKey
+          ? { ...s, content, lastUpdated: new Date().toISOString() }
+          : s
+      ));
     } catch (err) {
       console.error('Save failed:', err);
       toast.error('Failed to save section');
@@ -255,19 +238,11 @@ export function useQualityManual(companyId: string | undefined) {
     [saveContent]
   );
 
-  // Update local content (for editor) + debounced save
+  // Update local content + debounced save
   const updateSectionContent = useCallback((sectionKey: string, content: string) => {
-    if (sectionKey.includes('_sub_')) {
-      setSubStepContents(prev => {
-        const next = new Map(prev);
-        next.set(sectionKey, { content, lastUpdated: prev.get(sectionKey)?.lastUpdated });
-        return next;
-      });
-    } else {
-      setSections(prev => prev.map(s =>
-        s.sectionKey === sectionKey ? { ...s, content } : s
-      ));
-    }
+    setSections(prev => prev.map(s =>
+      s.sectionKey === sectionKey ? { ...s, content } : s
+    ));
     debouncedSave(sectionKey, content);
   }, [debouncedSave]);
 
@@ -278,21 +253,8 @@ export function useQualityManual(companyId: string | undefined) {
       return;
     }
 
-    // Determine if this is a sub-step or top-level
-    const isSubStep = sectionKey.includes('_sub_');
-    const baseSectionKey = isSubStep ? sectionKey.replace(/_sub_\d+$/, '') : sectionKey;
-    const section = sections.find(s => s.sectionKey === baseSectionKey);
+    const section = sections.find(s => s.sectionKey === sectionKey);
     if (!section) return;
-
-    let subStepLabel = '';
-    if (isSubStep) {
-      const subIndex = parseInt(sectionKey.split('_sub_')[1], 10);
-      const isoConfig = ISO_13485_SECTIONS.find(s => s.section === section.clause);
-      const subItem = isoConfig?.subItems?.[subIndex];
-      if (subItem) {
-        subStepLabel = `§${section.clause}.${subItem.letter} ${subItem.description}`;
-      }
-    }
 
     setGenerating(sectionKey);
     try {
@@ -304,9 +266,7 @@ export function useQualityManual(companyId: string | undefined) {
         companyData.personnel.length > 0 ? `Personnel count: ${companyData.personnel.length}` : null,
       ].filter(Boolean).join('\n');
 
-      const targetTitle = isSubStep
-        ? `${subStepLabel} (part of §${section.clause} ${section.title})`
-        : `§${section.clause} ${section.title}`;
+      const targetTitle = `§${section.clause} ${section.title}`;
 
       let prompt = `Write the Quality Manual section for ISO 13485:2016 clause ${targetTitle}.
 
@@ -332,9 +292,7 @@ Do NOT use markdown. Return only the HTML content.`;
         body: {
           prompt,
           sectionTitle: targetTitle,
-          currentContent: isSubStep
-            ? (subStepContents.get(sectionKey)?.content || undefined)
-            : (section.content || undefined),
+          currentContent: section.content || undefined,
           companyId,
           outputLanguage: options?.outputLanguage,
         },
@@ -354,14 +312,52 @@ Do NOT use markdown. Return only the HTML content.`;
     } finally {
       setGenerating(null);
     }
-  }, [companyId, companyData, sections, subStepContents, saveContent]);
+  }, [companyId, companyData, sections, saveContent]);
 
-  // Helper to get sub-step key
-  const getSubStepKey = useCallback((sectionKey: string, subIndex: number) => {
-    return `${sectionKey}_sub_${subIndex}`;
-  }, []);
+  // Apply class-based exclusions in batch
+  const applyClassBasedExclusions = useCallback(async (deviceClass: string) => {
+    if (!companyId) return;
+    const suggested = getClassBasedExclusions(deviceClass);
+    if (suggested.length === 0) return;
 
-  // Completeness stats (exclude N/A sections)
+    setSaving(true);
+    let applied = 0;
+    try {
+      for (const item of suggested) {
+        if (exclusions.has(item.clause)) continue; // already excluded
+        const key = exclusionKeyFromClause(item.clause);
+        const { error } = await supabase
+          .from('template_settings')
+          .upsert({
+            company_id: companyId,
+            setting_key: key,
+            setting_value: item.justification,
+            setting_type: 'string',
+            category: 'quality_manual' as any,
+          }, { onConflict: 'company_id,setting_key' });
+        if (!error) {
+          setExclusions(prev => {
+            const next = new Map(prev);
+            next.set(item.clause, item.justification);
+            return next;
+          });
+          applied++;
+        }
+      }
+      if (applied > 0) {
+        toast.success(`Applied ${applied} class-based exclusion${applied > 1 ? 's' : ''}`);
+      } else {
+        toast.info('All suggested exclusions were already applied');
+      }
+    } catch (err) {
+      console.error('Failed to apply class-based exclusions:', err);
+      toast.error('Failed to apply exclusions');
+    } finally {
+      setSaving(false);
+    }
+  }, [companyId, exclusions]);
+
+  // Completeness stats
   const completeness = {
     total: sections.length,
     excluded: exclusions.size,
@@ -377,7 +373,6 @@ Do NOT use markdown. Return only the HTML content.`;
   return {
     sections,
     exclusions,
-    subStepContents,
     companyData,
     loading,
     saving,
@@ -388,6 +383,6 @@ Do NOT use markdown. Return only the HTML content.`;
     saveSection: saveContent,
     toggleExclusion,
     updateExclusionJustification,
-    getSubStepKey,
+    applyClassBasedExclusions,
   };
 }

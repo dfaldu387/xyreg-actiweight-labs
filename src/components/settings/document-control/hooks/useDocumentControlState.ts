@@ -45,7 +45,7 @@ export function useDocumentControlState() {
     return documents.filter(doc => {
       const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesType = activeTab === "all" || 
-        (activeTab === "core" && (doc.type === "Core" || doc.type === "core")) ||
+        (activeTab === "governance" && (doc.type === "Governance" || doc.type === "governance" || doc.type === "Core" || doc.type === "core")) ||
         (activeTab === "standard" && doc.type === "Standard") ||
         (activeTab === "regulatory" && doc.type === "Regulatory") ||
         (activeTab === "technical" && doc.type === "Technical") ||
@@ -59,7 +59,7 @@ export function useDocumentControlState() {
 
   const countByType = useCallback((type: string) => {
     if (type === "all") return documents.length;
-    if (type === "Core") return documents.filter(doc => doc.type === "Core" || doc.type === "core").length;
+    if (type === "Governance") return documents.filter(doc => doc.type === "Governance" || doc.type === "governance" || doc.type === "Core" || doc.type === "core").length;
     return documents.filter(doc => doc.type.toLowerCase() === type.toLowerCase()).length;
   }, [documents]);
 

@@ -50,7 +50,40 @@ export function usePhaseCIData(phaseId: string, productId: string, companyId: st
     return dueDate < today && !['completed', 'compliant', 'Completed', 'Approved'].includes(status);
   };
 
-  const fetchDocuments = async (): Promise<PhaseCIData['documents']> => {
+  /**
+   * Fetch the set of document IDs that are excluded for this product
+   * via document_ci_exclusion_scopes in field_scope_overrides.
+   */
+  const fetchExcludedDocIds = async (): Promise<Set<string>> => {
+    try {
+      // Check if this product is a variant
+      const { data: productData } = await supabase
+        .from('products')
+        .select('parent_product_id, parent_relationship_type, field_scope_overrides')
+        .eq('id', productId)
+        .maybeSingle();
+
+      const isVariant = !!productData?.parent_product_id && productData?.parent_relationship_type === 'variant';
+      if (!isVariant) return new Set();
+
+      const overrides = (productData?.field_scope_overrides as Record<string, any>) || {};
+      const exclusionScopes = overrides.document_ci_exclusion_scopes;
+      if (!exclusionScopes || typeof exclusionScopes !== 'object') return new Set();
+
+      const excludedIds = new Set<string>();
+      for (const [docId, scope] of Object.entries(exclusionScopes)) {
+        const s = scope as any;
+        if (s?.excludedProductIds?.includes(productId)) {
+          excludedIds.add(docId);
+        }
+      }
+      return excludedIds;
+    } catch {
+      return new Set();
+    }
+  };
+
+  const fetchDocuments = async (excludedDocIds: Set<string>): Promise<PhaseCIData['documents']> => {
     try {
       const { data: phaseDocsData, error } = await supabase
         .from('phase_assigned_document_template')
@@ -61,7 +94,8 @@ export function usePhaseCIData(phaseId: string, productId: string, companyId: st
 
       if (error) throw error;
 
-      const documents = phaseDocsData || [];
+      // Filter out excluded documents
+      const documents = (phaseDocsData || []).filter(doc => !excludedDocIds.has(doc.id));
       const total = documents.length;
       const completed = documents.filter(doc => 
         ['Completed', 'Approved'].includes(doc.status || '')
@@ -161,8 +195,9 @@ export function usePhaseCIData(phaseId: string, productId: string, companyId: st
       setError(null);
 
       try {
+        const excludedDocIds = await fetchExcludedDocIds();
         const [documents, gapAnalysis, activities, audits] = await Promise.all([
-          fetchDocuments(),
+          fetchDocuments(excludedDocIds),
           fetchGapAnalysis(),
           fetchActivities(),
           fetchAudits()
@@ -192,12 +227,14 @@ export function usePhaseCIData(phaseId: string, productId: string, companyId: st
       setIsLoading(true);
       setError(null);
       
-      Promise.all([
-        fetchDocuments(),
-        fetchGapAnalysis(),
-        fetchActivities(),
-        fetchAudits()
-      ]).then(([documents, gapAnalysis, activities, audits]) => {
+      fetchExcludedDocIds().then(excludedDocIds => {
+        return Promise.all([
+          fetchDocuments(excludedDocIds),
+          fetchGapAnalysis(),
+          fetchActivities(),
+          fetchAudits()
+        ]);
+      }).then(([documents, gapAnalysis, activities, audits]) => {
         setData({
           documents,
           gapAnalysis,

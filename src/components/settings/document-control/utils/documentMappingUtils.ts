@@ -37,6 +37,11 @@ export const mapToAllowedType = (type: any): string => {
   const normalizedType = type.trim();
   
   // List of common document types
+  // Backward compatibility: map legacy "Core" to "Governance"
+  if (normalizedType.toLowerCase() === "core") {
+    return "Governance";
+  }
+
   const allowedTypes = [
     "Standard", 
     "Regulatory", 
@@ -44,7 +49,8 @@ export const mapToAllowedType = (type: any): string => {
     "Clinical",
     "Quality",
     "Manufacturing",
-    "Design"
+    "Design",
+    "Governance"
   ];
   
   return allowedTypes.includes(normalizedType) ? normalizedType : "Standard";

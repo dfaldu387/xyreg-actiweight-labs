@@ -65,6 +65,8 @@ export function SendToReviewGroupDialog({
   const [isSending, setIsSending] = useState(false);
   const [isLoadingExisting, setIsLoadingExisting] = useState(false);
   const [dialogStep, setDialogStep] = useState<'form' | 'sign'>('form');
+  const [alreadyReviewedUserIds, setAlreadyReviewedUserIds] = useState<string[]>([]);
+  const [alreadyApprovedUserIds, setAlreadyApprovedUserIds] = useState<string[]>([]);
 
   // Load existing reviewer/approver data when dialog opens
   React.useEffect(() => {
@@ -73,11 +75,35 @@ export function SendToReviewGroupDialog({
     const cleanId = documentId.replace(/^template-/, '');
     (async () => {
       try {
-        const { data } = await supabase
-          .from('phase_assigned_document_template')
-          .select('approved_by, reviewer_group_ids, reviewer_user_ids, approver_user_ids, approver_group_ids, approver_due_date, due_date')
-          .eq('id', cleanId)
-          .maybeSingle();
+        // Fetch document data, decisions, and review notes in parallel
+        const [docResult, decisionsResult, notesResult] = await Promise.all([
+          supabase
+            .from('phase_assigned_document_template')
+            .select('approved_by, reviewer_group_ids, reviewer_user_ids, approver_user_ids, approver_group_ids, approver_due_date, due_date')
+            .eq('id', cleanId)
+            .maybeSingle(),
+          supabase
+            .from('document_reviewer_decisions')
+            .select('reviewer_id, reviewer_group_id, decision')
+            .eq('document_id', cleanId),
+          supabase
+            .from('document_review_notes')
+            .select('reviewer_id')
+            .or(`document_id.eq.${cleanId},template_document_id.eq.${cleanId}`),
+        ]);
+        const data = docResult.data;
+        const decisions = decisionsResult.data || [];
+        const reviewNotes = notesResult.data || [];
+
+        // Build set of already-reviewed user IDs: include both decisions and review notes
+        const reviewedUserIds = new Set([
+          ...decisions.map(d => d.reviewer_id).filter(Boolean),
+          ...reviewNotes.map((n: any) => n.reviewer_id).filter(Boolean),
+        ]);
+        const approvedUserIds = new Set(decisions.filter(d => d.decision === 'approved').map(d => d.reviewer_id).filter(Boolean));
+        setAlreadyReviewedUserIds(Array.from(reviewedUserIds));
+        setAlreadyApprovedUserIds(Array.from(approvedUserIds));
+
         if (data) {
           const existingReviewerUsers = Array.isArray((data as any).reviewer_user_ids) ? (data as any).reviewer_user_ids : [];
           const groupMemberIds = new Set<string>(existingReviewerUsers);
@@ -93,22 +119,28 @@ export function SendToReviewGroupDialog({
               });
             }
           }
-          setReviewerUserIds(Array.from(groupMemberIds));
+          // Remove already-reviewed users from selection
+          const eligibleUserIds = Array.from(groupMemberIds).filter(uid => !reviewedUserIds.has(uid));
+          setReviewerUserIds(eligibleUserIds);
           const existingApproverUsers = Array.isArray((data as any).approver_user_ids) ? (data as any).approver_user_ids : [];
           if (existingApproverUsers.length > 0) {
-            setApproverUserIds(existingApproverUsers);
-          } else if (data.approved_by) {
+            setApproverUserIds(existingApproverUsers.filter((uid: string) => !approvedUserIds.has(uid)));
+          } else if (data.approved_by && !approvedUserIds.has(data.approved_by)) {
             setApproverUserIds([data.approved_by]);
           }
           const existingApproverGroups = Array.isArray((data as any).approver_group_ids) ? (data as any).approver_group_ids : [];
-          if (existingApproverGroups.length > 0) {
-            setApproverGroupIds(existingApproverGroups);
-            const approverMemberIds = new Set<string>(existingApproverUsers.length > 0 ? existingApproverUsers : (data.approved_by ? [data.approved_by] : []));
-            for (const gid of existingApproverGroups) {
+          const approvedGroupIds = new Set(decisions.filter(d => d.decision === 'approved' && d.reviewer_group_id).map(d => d.reviewer_group_id));
+          const eligibleApproverGroups = existingApproverGroups.filter((gid: string) => !approvedGroupIds.has(gid));
+          if (eligibleApproverGroups.length > 0) {
+            setApproverGroupIds(eligibleApproverGroups);
+            const approverMemberIds = new Set<string>(existingApproverUsers.length > 0
+              ? existingApproverUsers.filter((uid: string) => !approvedUserIds.has(uid))
+              : (data.approved_by && !approvedUserIds.has(data.approved_by) ? [data.approved_by] : []));
+            for (const gid of eligibleApproverGroups) {
               const group = reviewerGroups.find(g => g.id === gid);
               if (group?.members) {
                 group.members.forEach((m: any) => {
-                  if (m.is_active !== false) approverMemberIds.add(m.user_id);
+                  if (m.is_active !== false && !approvedUserIds.has(m.user_id)) approverMemberIds.add(m.user_id);
                 });
               }
             }
@@ -296,7 +328,7 @@ export function SendToReviewGroupDialog({
         }
       }
 
-      // 4. Send notifications (deduplicated)
+      // 4. Send notifications — separate for reviewers and approvers
       try {
         const actorName = user?.user_metadata?.first_name && user?.user_metadata?.last_name
           ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
@@ -309,57 +341,67 @@ export function SendToReviewGroupDialog({
           .eq('id', companyId)
           .single();
         if (companyData?.name) companyNameForUrl = encodeURIComponent(companyData.name);
+        const actionUrl = companyNameForUrl ? `/app/company/${companyNameForUrl}/review` : undefined;
 
-        // Collect all recipient IDs (deduplicated)
-        const allRecipientIds = new Set<string>();
-
-        // From reviewer groups
+        // Collect reviewer recipient IDs
+        const reviewerRecipientIds = new Set<string>();
         for (const groupId of reviewerGroupIds) {
           const { data: members } = await supabase
             .from('reviewer_group_members_new')
             .select('user_id')
             .eq('group_id', groupId)
             .eq('is_active', true);
-          members?.forEach(m => allRecipientIds.add(m.user_id));
+          members?.forEach(m => reviewerRecipientIds.add(m.user_id));
         }
+        reviewerUserIds.forEach(id => reviewerRecipientIds.add(id));
+        reviewerRecipientIds.delete(user?.id || '');
 
-        // Individual reviewers
-        reviewerUserIds.forEach(id => allRecipientIds.add(id));
-
-        // Individual approvers
-        approverUserIds.forEach(id => allRecipientIds.add(id));
-
-        // From approver groups
+        // Collect approver recipient IDs
+        const approverRecipientIds = new Set<string>();
         for (const groupId of approverGroupIds) {
           const { data: members } = await supabase
             .from('reviewer_group_members_new')
             .select('user_id')
             .eq('group_id', groupId)
             .eq('is_active', true);
-          members?.forEach(m => allRecipientIds.add(m.user_id));
+          members?.forEach(m => approverRecipientIds.add(m.user_id));
         }
+        approverUserIds.forEach(id => approverRecipientIds.add(id));
+        approverRecipientIds.delete(user?.id || '');
 
-        // Remove current user
-        allRecipientIds.delete(user?.id || '');
+        const notifications: any[] = [];
 
-        if (allRecipientIds.size > 0) {
-          const notifications = Array.from(allRecipientIds).map(userId => ({
-            user_id: userId,
-            actor_id: user?.id,
-            actor_name: actorName,
-            company_id: companyId,
-            product_id: productId,
-            category: 'review' as const,
-            action: 'review_assigned' as const,
+        // Reviewer notifications
+        Array.from(reviewerRecipientIds).forEach(userId => {
+          notifications.push({
+            user_id: userId, actor_id: user?.id, actor_name: actorName,
+            company_id: companyId, product_id: productId,
+            category: 'review' as const, action: 'review_assigned' as const,
             title: `Review requested: ${documentName}`,
-            message: `${actorName} assigned you to review/approve "${documentName}"`,
-            priority: 'normal' as const,
-            entity_type: 'document',
-            entity_id: cleanDocumentId,
-            entity_name: documentName,
-            action_url: companyNameForUrl ? `/app/company/${companyNameForUrl}/review` : undefined,
-            metadata: { reviewer_due_date: reviewerDueDate || null, approver_due_date: approverDueDate || null },
-          }));
+            message: `${actorName} assigned you to review "${documentName}"`,
+            priority: 'normal' as const, entity_type: 'document',
+            entity_id: cleanDocumentId, entity_name: documentName,
+            action_url: actionUrl,
+            metadata: { role: 'reviewer', reviewer_due_date: reviewerDueDate || null },
+          });
+        });
+
+        // Approver notifications (sent separately even if user is also a reviewer)
+        Array.from(approverRecipientIds).forEach(userId => {
+          notifications.push({
+            user_id: userId, actor_id: user?.id, actor_name: actorName,
+            company_id: companyId, product_id: productId,
+            category: 'review' as const, action: 'approval_assigned' as const,
+            title: `Approval requested: ${documentName}`,
+            message: `${actorName} assigned you to approve "${documentName}"`,
+            priority: 'normal' as const, entity_type: 'document',
+            entity_id: cleanDocumentId, entity_name: documentName,
+            action_url: actionUrl,
+            metadata: { role: 'approver', approver_due_date: approverDueDate || null },
+          });
+        });
+
+        if (notifications.length > 0) {
           await appNotificationService.createBulkNotifications(notifications);
         }
       } catch (notifErr) {
@@ -418,6 +460,7 @@ export function SendToReviewGroupDialog({
                 onGroupIdsChange={setReviewerGroupIds}
                 selectedUserIds={reviewerUserIds}
                 onUserIdsChange={setReviewerUserIds}
+                disabledUserIds={alreadyReviewedUserIds}
               />
 
               {/* Approvers */}
@@ -429,6 +472,7 @@ export function SendToReviewGroupDialog({
                 onGroupIdsChange={setApproverGroupIds}
                 selectedUserIds={approverUserIds}
                 onUserIdsChange={setApproverUserIds}
+                disabledUserIds={alreadyApprovedUserIds}
               />
 
               {/* Due Dates */}

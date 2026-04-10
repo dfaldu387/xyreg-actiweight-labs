@@ -7,7 +7,7 @@ import { Extension } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
 import { DocumentContent } from '@/types/documentComposer';
 import { Button } from '@/components/ui/button';
-import { Edit3, X, Bold, Italic, Strikethrough, List, ListOrdered, Undo, Redo, Quote, Code, Type, ImagePlus, Trash2 } from 'lucide-react';
+import { Edit3, X, Check, Bold, Italic, Strikethrough, List, ListOrdered, Undo, Redo, Quote, Code, Type, ImagePlus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { HighlightedContent } from './HighlightedContent';
 import { DocumentTemplatePersistenceService } from '@/services/documentTemplatePersistenceService';
@@ -120,6 +120,7 @@ interface EditableContentProps {
   companyId?: string;
   templateId?: string;
   refreshTrigger?: number;
+  isEditing?: boolean;
 }
 
 export function EditableContent({
@@ -128,9 +129,12 @@ export function EditableContent({
   onContentUpdate,
   companyId,
   templateId,
-  refreshTrigger
+  refreshTrigger,
+  isEditing: isEditingProp,
 }: EditableContentProps) {
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditingLocal, setIsEditingLocal] = useState(false);
+  const isEditing = isEditingProp !== undefined ? isEditingProp : isEditingLocal;
+  const setIsEditing = (val: boolean) => { if (isEditingProp === undefined) setIsEditingLocal(val); };
   const editorRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -186,7 +190,7 @@ export function EditableContent({
     content: content.content,
     editorProps: {
       attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[100px] p-3 prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-gray-800',
+        class: 'prose prose-sm max-w-none focus:outline-none min-h-[100px] p-3 prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-gray-800',
       },
       handleDrop: (view, event, slice, moved) => {
         if (!moved && event.dataTransfer?.files?.length) {
@@ -214,12 +218,8 @@ export function EditableContent({
         return false;
       },
     },
-    onUpdate: ({ editor }) => {
-      // Auto-save on content change (optional)
-      const newContent = editor.getHTML();
-      if (onContentUpdate && newContent !== content.content) {
-        onContentUpdate(content.id, newContent);
-      }
+    onUpdate: () => {
+      // No auto-save — changes are committed only on explicit Save
     },
   });
 
@@ -247,6 +247,10 @@ export function EditableContent({
   const handleCancel = () => {
     // Reset editor content to original
     editor?.commands.setContent(content.content);
+    // Revert parent state to original content
+    if (onContentUpdate) {
+      onContentUpdate(content.id, content.content);
+    }
     setIsEditing(false);
   };
 
@@ -257,12 +261,7 @@ export function EditableContent({
       handleSave();
     }
 
-    // Save on Enter (when not in a list or other special context)
-    if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-      // Simple approach: save on Enter when editing
-      event.preventDefault();
-      handleSave();
-    }
+    // Enter key is handled by TipTap (new paragraphs) — no interception needed
 
     // Cancel on Escape
     if (event.key === 'Escape') {
@@ -281,40 +280,22 @@ export function EditableContent({
   if (!isEditing) {
     return (
       <div
-        className={`group relative ${className}`}
-        onDoubleClick={handleEdit}
+        className={`group relative cursor-pointer ${className}`}
+        onClick={handleEdit}
+        title="Click to edit"
       >
-        <div className="prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto p-3 min-h-[100px] border border-transparent hover:border-gray-200 rounded-md transition-colors cursor-pointer prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-gray-800">
+        <div className="prose prose-sm max-w-none p-3 rounded-md border border-transparent hover:border-primary/20 transition-colors prose-headings:font-semibold prose-headings:text-foreground prose-p:text-foreground/80 prose-strong:text-foreground prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg prose-li:text-foreground/80 prose-table:text-sm prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-2 prose-th:border prose-th:border-border prose-th:px-3 prose-th:py-2 prose-th:bg-muted/50 prose-th:font-semibold">
           <HighlightedContent
             content={content.content}
             contentId={content.id}
             onContentUpdate={onContentUpdate}
             refreshTrigger={refreshTrigger}
             onAIGenerate={(prompt) => {
-              // You could trigger a modal or direct generation here
               if (onContentUpdate) {
-                // For now, just update with a placeholder showing AI is generating
                 onContentUpdate(content.id, `Generating AI content for: ${prompt}...`);
               }
             }}
           />
-        </div>
-
-        {/* Edit button - appears on hover */}
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleEdit}
-            className="h-8 w-8 p-0 bg-white/90 backdrop-blur-sm"
-          >
-            <Edit3 className="w-4 h-4" />
-          </Button>
-        </div>
-
-        {/* Double-click hint */}
-        <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-60 transition-opacity text-xs text-muted-foreground">
-          Double-click to edit
         </div>
       </div>
     );
@@ -329,6 +310,9 @@ export function EditableContent({
             <span>Editing content</span>
           </div>
            <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              Ctrl+Enter to save
+            </span>
             <Button
               variant="outline"
               size="sm"
@@ -336,6 +320,14 @@ export function EditableContent({
             >
               <X className="w-4 h-4 mr-1" />
               Cancel
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleSave}
+            >
+              <Check className="w-4 h-4 mr-1" />
+              Save
             </Button>
           </div>
         </div>

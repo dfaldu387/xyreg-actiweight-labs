@@ -512,7 +512,9 @@ export class CompanyInitializationService {
 
         // Batch insert all templates into phase_assigned_document_template table with No Phase ID
         if (defaultTemplates.length > 0 && noPhaseId) {
-          const templateInserts = defaultTemplates.map(template => ({
+          const templateInserts = defaultTemplates
+            .filter(template => template.document_type !== 'SOP' && !template.name?.startsWith('SOP-'))
+            .map(template => ({
             name: template.name,
             document_type: template.document_type || 'SOP',
             document_scope: 'company_template' as const, // Changed from 'company_document' to 'company_template'

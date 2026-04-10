@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { GapAnnexIISectionGroup } from '@/components/product/gap-analysis/GapAnnexIISectionGroup';
 import { QualityManualStepRow } from './QualityManualStepRow';
 import { Progress } from '@/components/ui/progress';
-import { ChevronRight, BookOpen, Ban, AlertTriangle, FileEdit } from 'lucide-react';
+import { BookOpen, Ban, AlertTriangle, FileEdit, ShieldCheck, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ISO_13485_GROUPS } from '@/config/gapISO13485Sections';
-import type { QualityManualSection } from '@/hooks/useQualityManual';
+import type { QualityManualSection, QualityManualData } from '@/hooks/useQualityManual';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { getClassBasedExclusions, getHighestDeviceClass, getExclusionSummaryLabel } from '@/config/classBasedExclusions';
 
 interface QualityManualLaunchViewProps {
   sections: QualityManualSection[];
@@ -17,11 +18,23 @@ interface QualityManualLaunchViewProps {
   onToggleExclusion: (clause: string) => void;
   companyId?: string;
   companyName?: string;
+  companyData?: QualityManualData;
+  applyClassBasedExclusions?: (deviceClass: string) => void;
 }
 
-export function QualityManualLaunchView({ sections, exclusions, onSelectSection, onToggleExclusion, companyId, companyName }: QualityManualLaunchViewProps) {
+export function QualityManualLaunchView({
+  sections,
+  exclusions,
+  onSelectSection,
+  onToggleExclusion,
+  companyId,
+  companyName,
+  companyData,
+  applyClassBasedExclusions,
+}: QualityManualLaunchViewProps) {
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
   const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
+  const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
   const groups = ISO_13485_GROUPS;
 
   const totalSteps = sections.length;
@@ -30,6 +43,24 @@ export function QualityManualLaunchView({ sections, exclusions, onSelectSection,
   const completedCount = sections.filter(s => !exclusions.has(s.clause) && s.content && s.content.length > 20).length;
   const progress = applicableCount > 0 ? Math.round((completedCount / applicableCount) * 100) : 0;
   const nextIncomplete = sections.find(s => !exclusions.has(s.clause) && (!s.content || s.content.length <= 20));
+
+  // Determine highest device class from company products
+  const highestClass = useMemo(() => {
+    if (!companyData?.products || companyData.products.length === 0) return null;
+    const riskClasses = companyData.products
+      .map(p => p.risk_class)
+      .filter((rc): rc is string => !!rc);
+    return getHighestDeviceClass(riskClasses);
+  }, [companyData?.products]);
+
+  const suggestedExclusions = useMemo(() => {
+    if (!highestClass) return [];
+    return getClassBasedExclusions(highestClass);
+  }, [highestClass]);
+
+  // Only show banner if there are unapplied suggestions
+  const hasUnappliedSuggestions = suggestedExclusions.some(e => !exclusions.has(e.clause));
+  const showExclusionBanner = highestClass && hasUnappliedSuggestions && !exclusionBannerDismissed;
 
   // Build exclusion summary for §4.2.2 compliance
   const exclusionEntries = Array.from(exclusions.entries());
@@ -67,6 +98,56 @@ export function QualityManualLaunchView({ sections, exclusions, onSelectSection,
           </div>
         </div>
       </div>
+
+      {/* Class-Based Exclusion Banner */}
+      {showExclusionBanner && (
+        <div className="mb-6 p-4 rounded-lg border border-primary/20 bg-primary/5">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-primary/10 flex-shrink-0">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-sm font-semibold text-foreground mb-1">
+                Suggested Exclusions for {highestClass}
+              </h3>
+              <p className="text-xs text-muted-foreground mb-2">
+                {getExclusionSummaryLabel(highestClass)}
+              </p>
+              <div className="space-y-1 mb-3">
+                {suggestedExclusions.filter(e => !exclusions.has(e.clause)).map(e => {
+                  const section = sections.find(s => s.clause === e.clause);
+                  return (
+                    <div key={e.clause} className="flex items-start gap-2 text-xs">
+                      <span className="font-mono font-semibold text-primary flex-shrink-0">§{e.clause}</span>
+                      <span className="text-muted-foreground">
+                        {section?.title}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => applyClassBasedExclusions?.(highestClass)}
+                  className="gap-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Apply Suggested Exclusions
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setExclusionBannerDismissed(true)}
+                  className="text-muted-foreground"
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scope & Exclusions Summary (§4.2.2 compliance) */}
       {exclusionEntries.length > 0 && (

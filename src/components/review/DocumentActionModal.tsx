@@ -112,7 +112,24 @@ export function DocumentActionModal({
 
       if (updateError) throw updateError;
 
-      // Save review note (no assignments/decisions)
+      // Save reviewer decision
+      const decisionMap: Record<string, string> = {
+        approve: 'approved',
+        reject: 'rejected',
+        request_changes: 'changes_requested',
+      };
+      await supabase
+        .from('document_reviewer_decisions')
+        .upsert({
+          document_id: actualDocId,
+          reviewer_id: user.id,
+          reviewer_group_id: reviewerGroupId || null,
+          decision: decisionMap[selectedAction],
+          comment: comments.trim() || `Status changed to ${newStatus}`,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'document_id,reviewer_id' });
+
+      // Save review note
       if (comments.trim()) {
         const noteData = isTemplateDocument
           ? {

@@ -12,7 +12,8 @@ import { MyDocumentsWidget } from "./MyDocumentsWidget";
 import { CommunicationHub } from "./CommunicationHub";
 import { KnowledgeBotWidget } from "./KnowledgeBotWidget";
 import { FeedbackTrackerWidget } from "./widgets/FeedbackTrackerWidget";
-import { ReviewActionItemsWidget } from "./widgets/ReviewActionItemsWidget";
+import { TaskListWidget } from "./widgets/TaskListWidget";
+
 import { TrainingStatusCard } from "./TrainingStatusCard";
 
 import { CompanySelector } from "./CompanySelector";
@@ -125,10 +126,10 @@ export function SingleCompanyDashboard() {
         return <CommunicationHub key={widgetId} scope="company" companyId={currentCompanyId} />;
       case 'my-documents':
         return <MyDocumentsWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
+      case 'task-list':
+        return <TaskListWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
       case 'knowledge-bot':
         return <KnowledgeBotWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
-      case 'review-action-items':
-        return <ReviewActionItemsWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
       case 'feedback-tracker':
         return <FeedbackTrackerWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} readOnly={!isAdmin} />;
       default:

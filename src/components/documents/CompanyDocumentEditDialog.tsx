@@ -465,49 +465,6 @@ export function CompanyDocumentEditDialog({
           <Typography variant="h6">
             {isGapAnalysisItem ? lang('documentDialog.editGapAnalysisItem') : lang('documentDialog.editDocument')}
           </Typography>
-            <FormControl size="small" disabled={isUpdating} sx={{ minWidth: 140 }}>
-              <Select
-                value={formData.status}
-                onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                displayEmpty
-                sx={{ height: 32, fontSize: '0.8125rem' }}
-                MenuProps={{
-                  disablePortal: false,
-                  PaperProps: { style: { zIndex: 1400 } }
-                }}
-              >
-                <MenuItem value="Not Started">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#9e9e9e' }}></Box>
-                    Not Started
-                  </Box>
-                </MenuItem>
-                <MenuItem value="In Review">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#ff9800' }}></Box>
-                    In Review
-                  </Box>
-                </MenuItem>
-                <MenuItem value="Approved">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#4caf50' }}></Box>
-                    Approved
-                  </Box>
-                </MenuItem>
-                <MenuItem value="Rejected">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#f44336' }}></Box>
-                    Rejected
-                  </Box>
-                </MenuItem>
-                <MenuItem value="N/A">
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: '#bdbdbd' }}></Box>
-                    N/A
-                  </Box>
-                </MenuItem>
-              </Select>
-            </FormControl>
           </Box>
           {!isGapAnalysisItem && (
             <FormControl component="fieldset" disabled={isUpdating} sx={{ ml: 2 }}>
@@ -624,21 +581,6 @@ export function CompanyDocumentEditDialog({
             </>
           )}
 
-          {/* Approval Note - shown when status is Approved */}
-          {formData.status === 'Approved' && (
-            <TextField
-              fullWidth
-              label="Approval Note"
-              value={approvalNote}
-              onChange={(e) => setApprovalNote(e.target.value)}
-              placeholder="e.g., Talked to author John, he says this is fine"
-              multiline
-              rows={2}
-              disabled={isUpdating}
-              variant="outlined"
-              helperText="Optional: Add a note about the approval (e.g., who was consulted, reason for approval)"
-            />
-          )}
 
           {!isGapAnalysisItem && (
             <TextField
@@ -926,17 +868,6 @@ export function CompanyDocumentEditDialog({
                 )}
               </FormControl>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #e0e0e0', borderRadius: '4px', p: 2 }}>
-                <Typography variant="body2">Current Effective Version</Typography>
-                <input
-                  type="checkbox"
-                  checked={formData.isCurrentEffectiveVersion}
-                  onChange={(e) => setFormData(prev => ({ ...prev, isCurrentEffectiveVersion: e.target.checked }))}
-                  disabled={isUpdating}
-                  style={{ width: '20px', height: '20px' }}
-                />
-              </Box>
-
               <MultiAuthorSelector
                 value={formData.authorsIds}
                 onChange={(value) => setFormData(prev => ({ ...prev, authorsIds: value }))}
@@ -946,16 +877,6 @@ export function CompanyDocumentEditDialog({
                 onPendingAuthorsChange={setPendingAuthors}
               />
 
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #e0e0e0', borderRadius: '4px', p: 2 }}>
-                <Typography variant="body2">Need Template Update?</Typography>
-                <input
-                  type="checkbox"
-                  checked={formData.needTemplateUpdate}
-                  onChange={(e) => setFormData(prev => ({ ...prev, needTemplateUpdate: e.target.checked }))}
-                  disabled={isUpdating}
-                  style={{ width: '20px', height: '20px' }}
-                />
-              </Box>
             </>
           )}
 

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Clock, FileCheck, AlertTriangle, Search, GraduationCap, Shield, Calendar, MessageSquare, CheckCircle2, ArrowUpCircle } from "lucide-react";
+import { Clock, FileCheck, AlertTriangle, Search, GraduationCap, Shield, Calendar, MessageSquare, CheckCircle2, ArrowUpCircle, Eye } from "lucide-react";
 import { useMissionControlData } from "@/hooks/useMissionControlData";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -50,7 +50,7 @@ export interface ActionItem {
   id: string;
   title: string;
   description: string;
-  type: "approval" | "deadline" | "training" | "audit" | "communication" | "system";
+  type: "approval" | "deadline" | "training" | "audit" | "communication" | "system" | "review";
   priority: "high" | "medium" | "low";
   dueDate?: Date;
   productName?: string;
@@ -66,7 +66,7 @@ interface MyActionItemsProps {
   showDeadlinesOnly?: boolean;
 }
 
-const TYPE_FILTERS = ['all', 'approval', 'deadline', 'training', 'audit', 'communication'] as const;
+const TYPE_FILTERS = ['all', 'approval', 'review', 'deadline', 'training', 'audit', 'communication'] as const;
 type TypeFilter = typeof TYPE_FILTERS[number];
 
 export function MyActionItems({ className, productId, companyId, showDeadlinesOnly }: MyActionItemsProps) {
@@ -304,6 +304,7 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
   const getTypeIcon = (type: string) => {
     switch (type) {
       case "approval": return <FileCheck className="h-3.5 w-3.5" />;
+      case "review": return <Eye className="h-3.5 w-3.5" />;
       case "deadline": return <Clock className="h-3.5 w-3.5" />;
       case "training": return <GraduationCap className="h-3.5 w-3.5" />;
       case "audit": return <Shield className="h-3.5 w-3.5" />;
@@ -325,6 +326,7 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
   const filterLabels: Record<TypeFilter, string> = {
     all: lang('missionControl.widgets.filterAll'),
     approval: lang('missionControl.widgets.filterApprovals'),
+    review: 'Reviews',
     deadline: lang('missionControl.widgets.filterDeadlines'),
     training: lang('missionControl.widgets.filterTraining'),
     audit: lang('missionControl.widgets.filterAudits'),
@@ -428,9 +430,11 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
                         </div>
                       </div>
                       <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
-                        <Badge className={`text-xs ${getPriorityColor(item.priority)}`}>
-                          {item.priority}
-                        </Badge>
+                        {(item.priority === 'high') && (
+                          <Badge className={`text-xs ${getPriorityColor(item.priority)}`}>
+                            {item.priority}
+                          </Badge>
+                        )}
                         {item.dueDate && (
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Clock className="h-3 w-3" />

@@ -7,14 +7,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { FileText, Save, Plus, Edit, Trash2, ChevronDown } from 'lucide-react';
+import { FileText, Save, Plus, Edit, Trash2, ChevronDown, Tags } from 'lucide-react';
 import { TEMPLATE_CATEGORIES } from '@/types/templateManagement';
-import { CategoryNumberingConfig, DEFAULT_NUMBERING_CONFIG, NUMBER_FORMATS, VERSION_FORMATS } from '@/types/documentCategories';
+import { CategoryNumberingConfig, DEFAULT_NUMBERING_CONFIG, NUMBER_FORMATS, VERSION_FORMATS, SubPrefixEntry, DEFAULT_SUB_PREFIXES } from '@/types/documentCategories';
 import { CategoryEditDialog } from './CategoryEditDialog';
 import { fetchTemplateSettings, saveTemplateSettings } from '@/utils/templateSettingsQueries';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useSubPrefixes } from '@/hooks/useSubPrefixes';
 
 interface DocumentCategoryNumberingSystemProps {
   companyId: string;
@@ -32,6 +33,12 @@ export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryN
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const { user, session } = useAuth();
+  const { subPrefixes, setSubPrefixes, isLoading: subPrefixesLoading, save: saveSubPrefixes, reload: reloadSubPrefixes } = useSubPrefixes(companyId, user, session);
+  const [newSubCode, setNewSubCode] = useState('');
+  const [newSubLabel, setNewSubLabel] = useState('');
+  const [editingSubPrefix, setEditingSubPrefix] = useState<string | null>(null);
+  const [editSubCode, setEditSubCode] = useState('');
+  const [editSubLabel, setEditSubLabel] = useState('');
 
   useEffect(() => {
     loadConfigurations();
@@ -127,8 +134,45 @@ export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryN
     const numberExample = config.numberFormat === 'XXX' ? '001' : 
                          config.numberFormat === 'XXXX' ? '0001' : 
                          config.numberFormat === 'XX-XX' ? '01-01' : '001';
-    
-    return `${config.prefix}-${numberExample} ${config.versionFormat}`;
+    const subCode = subPrefixes.length > 0 ? subPrefixes[0].code : 'XX';
+    return `${config.prefix}-${subCode}-${numberExample} ${config.versionFormat}`;
+  };
+
+  const handleAddSubPrefix = () => {
+    const code = newSubCode.trim().toUpperCase();
+    const label = newSubLabel.trim();
+    if (!code || !label) return;
+    if (subPrefixes.some(sp => sp.code === code)) {
+      toast.error('Sub-prefix code already exists');
+      return;
+    }
+    const key = code.toLowerCase();
+    setSubPrefixes([...subPrefixes, { key, label, code }]);
+    setNewSubCode('');
+    setNewSubLabel('');
+    setHasUnsavedChanges(true);
+  };
+
+  const handleDeleteSubPrefix = (key: string) => {
+    setSubPrefixes(subPrefixes.filter(sp => sp.key !== key));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleStartEditSubPrefix = (sp: SubPrefixEntry) => {
+    setEditingSubPrefix(sp.key);
+    setEditSubCode(sp.code);
+    setEditSubLabel(sp.label);
+  };
+
+  const handleSaveEditSubPrefix = () => {
+    if (!editingSubPrefix) return;
+    setSubPrefixes(subPrefixes.map(sp =>
+      sp.key === editingSubPrefix
+        ? { ...sp, code: editSubCode.trim().toUpperCase(), label: editSubLabel.trim() }
+        : sp
+    ));
+    setEditingSubPrefix(null);
+    setHasUnsavedChanges(true);
   };
 
   const handleAddCategory = () => {
@@ -206,7 +250,11 @@ export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryN
       console.log('Settings to save:', settingsToSave);
       console.log('About to call saveTemplateSettings with auth context...');
       
-      await saveTemplateSettings(companyId, settingsToSave, user, session);
+      // Save sub-prefixes alongside category settings
+      await Promise.all([
+        saveTemplateSettings(companyId, settingsToSave, user, session),
+        saveSubPrefixes(subPrefixes),
+      ]);
       console.log('saveTemplateSettings completed successfully');
       toast.success(lang('settings.documentNumbering.saveSuccess'));
       setHasUnsavedChanges(false);
@@ -277,6 +325,7 @@ export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryN
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="space-y-6 pt-0">
+            {/* Document Categories Section */}
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-lg font-medium">{lang('settings.documentNumbering.sectionTitle')}</h3>
@@ -420,6 +469,92 @@ export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryN
             </TableBody>
           </Table>
         </div>
+
+            {/* Global Sub-Prefixes Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Tags className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-lg font-medium">Functional Sub-Prefixes</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Global departmental codes inserted between the category prefix and document number (e.g. SOP-<strong>QA</strong>-001).
+              </p>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-28">Code</TableHead>
+                      <TableHead>Label</TableHead>
+                      <TableHead className="w-24">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {subPrefixes.map((sp) => (
+                      <TableRow key={sp.key}>
+                        <TableCell>
+                          {editingSubPrefix === sp.key ? (
+                            <Input value={editSubCode} onChange={e => setEditSubCode(e.target.value)} className="w-20" />
+                          ) : (
+                            <code className="text-sm bg-muted px-2 py-1 rounded">{sp.code}</code>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {editingSubPrefix === sp.key ? (
+                            <Input value={editSubLabel} onChange={e => setEditSubLabel(e.target.value)} />
+                          ) : (
+                            sp.label
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {editingSubPrefix === sp.key ? (
+                              <Button variant="ghost" size="sm" onClick={handleSaveEditSubPrefix} className="h-8 px-2 text-xs">Save</Button>
+                            ) : (
+                              <Button variant="ghost" size="sm" onClick={() => handleStartEditSubPrefix(sp)} className="h-8 w-8 p-0">
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => handleDeleteSubPrefix(sp.key)} className="h-8 w-8 p-0 text-destructive hover:text-destructive">
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {/* Add row */}
+                    <TableRow>
+                      <TableCell>
+                        <Input
+                          value={newSubCode}
+                          onChange={e => setNewSubCode(e.target.value)}
+                          placeholder="XX"
+                          className="w-20"
+                          maxLength={4}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          value={newSubLabel}
+                          onChange={e => setNewSubLabel(e.target.value)}
+                          placeholder="Department name"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleAddSubPrefix}
+                          disabled={!newSubCode.trim() || !newSubLabel.trim()}
+                          className="h-8"
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Add
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
 
         <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
           <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">{lang('settings.documentNumbering.standards.title')}</h4>

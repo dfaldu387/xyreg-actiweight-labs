@@ -521,7 +521,8 @@ export async function getGanttChartStructuredData(
               phaseId: phase.id,
               subTaskType: "document",
               dueDate: doc.due_date || undefined,
-              assigned: getRandomAssignee(),
+              author: (doc as any).author_name || (doc as any).author || undefined,
+              authors_ids: (doc as any).authors_ids || [],
               duration: calculatedDuration,
               companyPhaseId: phase.phase_id,
             });

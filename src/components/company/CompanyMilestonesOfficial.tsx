@@ -5,6 +5,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useCompanyRole } from "@/context/CompanyRoleContext";
 import { Gantt, Willow } from "@/components/gantt-chart/src";
@@ -131,6 +132,23 @@ interface CompanyMilestonesProps {
   companyName: string;
 }
 
+interface EnterpriseAudit {
+  id: string;
+  audit_name: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  deadline_date: string | null;
+}
+
+interface EnterpriseActivity {
+  id: string;
+  name: string;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+}
+
 interface ProductPhaseData {
   id: string;
   name: string;
@@ -172,9 +190,23 @@ interface ProductPhaseData {
   }[];
 }
 
+interface EnterpriseDocument {
+  id: string;
+  name: string;
+  status: string;
+  phase_id: string | null;
+  phase_name: string | null;
+  start_date: string | null;
+  date: string | null;
+  due_date: string | null;
+  deadline: string | null;
+  document_type: string | null;
+}
+
 export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProps) {
   const { activeCompanyRole } = useCompanyRole();
   const { lang } = useTranslation();
+  const navigate = useNavigate();
   const [companyData, setCompanyData] = useState<ProductPhaseData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +222,9 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
   const [taskExpansionState, setTaskExpansionState] = useState<
     Record<string, boolean>
   >({});
+  const [enterpriseDocuments, setEnterpriseDocuments] = useState<EnterpriseDocument[]>([]);
+  const [enterpriseAudits, setEnterpriseAudits] = useState<EnterpriseAudit[]>([]);
+  const [enterpriseActivities, setEnterpriseActivities] = useState<EnterpriseActivity[]>([]);
   const [companyDependencies, setCompanyDependencies] = useState<any[]>([]);
   const [productDependencies, setProductDependencies] = useState<any[]>([]);
   const dependenciesFetchedRef = useRef<string | null>(null);
@@ -292,6 +327,112 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
         );
 
         setCompanyData(enrichedProducts);
+
+        // Fetch enterprise-level documents (SOPs, etc.) — same query as company documents page
+        const { data: enterpriseDocsData } = await supabase
+          .from('phase_assigned_document_template')
+          .select('id, name, status, phase_id, start_date, date, due_date, deadline, document_type')
+          .eq('company_id', activeCompanyRole.companyId)
+          .eq('document_scope', 'company_document')
+          .order('created_at', { ascending: false });
+
+        // Also fetch from document_studio_templates (same as company documents page)
+        const { data: studioDocsData } = await supabase
+          .from('document_studio_templates')
+          .select('id, name, created_at, updated_at, metadata, type, template_id')
+          .eq('company_id', activeCompanyRole.companyId)
+          .is('product_id', null)
+          .order('created_at', { ascending: false });
+
+        // Fetch phase names for grouping
+        const phaseIds = [...new Set((enterpriseDocsData || []).map((d: any) => d.phase_id).filter(Boolean))];
+        let phaseNameMap = new Map<string, string>();
+        if (phaseIds.length > 0) {
+          const { data: cpData } = await supabase
+            .from('company_phases')
+            .select('id, name')
+            .in('id', phaseIds);
+          if (cpData) cpData.forEach((p: any) => phaseNameMap.set(p.id, p.name));
+
+          const missingIds = phaseIds.filter(id => !phaseNameMap.has(id));
+          if (missingIds.length > 0) {
+            const { data: pData } = await supabase
+              .from('phases')
+              .select('id, name')
+              .in('id', missingIds);
+            if (pData) pData.forEach((p: any) => phaseNameMap.set(p.id, p.name));
+          }
+        }
+
+        // Merge: keep all phase_assigned docs, add studio docs that aren't drafts of existing CI docs
+        const ciDocIds = new Set((enterpriseDocsData || []).map((d: any) => d.id));
+        const studioDocIds = new Set((studioDocsData || []).map((d: any) => d.id));
+        const extraStudioDocs = (studioDocsData || [])
+          .filter((doc: any) => !ciDocIds.has(doc.template_id) && !studioDocIds.has(doc.template_id))
+          .map((doc: any) => {
+            const meta = (doc.metadata as any) || {};
+            return {
+              id: doc.id,
+              name: doc.name || 'Untitled Document',
+              status: meta.status || 'Draft',
+              phase_id: meta.phase_id || null,
+              phase_name: null as string | null,
+              start_date: meta.start_date || null,
+              date: meta.date || doc.created_at || null,
+              due_date: meta.due_date || null,
+              deadline: null as string | null,
+              document_type: doc.type || null,
+            };
+          });
+
+        const allEnterpriseDocs: EnterpriseDocument[] = [
+          ...((enterpriseDocsData || []).map((doc: any) => ({
+            id: doc.id,
+            name: doc.name || 'Untitled Document',
+            status: doc.status || 'Not Started',
+            phase_id: doc.phase_id || null,
+            phase_name: doc.phase_id ? (phaseNameMap.get(doc.phase_id) || null) : null,
+            start_date: doc.start_date || null,
+            date: doc.date || null,
+            due_date: doc.due_date || null,
+            deadline: doc.deadline || null,
+            document_type: doc.document_type || null,
+          }))),
+          ...extraStudioDocs,
+        ];
+
+        setEnterpriseDocuments(allEnterpriseDocs);
+
+        // Fetch enterprise-level audits
+        const { data: auditsData } = await supabase
+          .from('company_audits')
+          .select('id, audit_name, status, start_date, end_date, deadline_date')
+          .eq('company_id', activeCompanyRole.companyId)
+          .order('start_date', { ascending: true });
+
+        setEnterpriseAudits((auditsData || []).map((a: any) => ({
+          id: a.id,
+          audit_name: a.audit_name || 'Untitled Audit',
+          status: a.status || 'planned',
+          start_date: a.start_date || null,
+          end_date: a.end_date || null,
+          deadline_date: a.deadline_date || null,
+        })));
+
+        // Fetch enterprise-level activities (all activities for this company's products)
+        const { data: activitiesData } = await supabase
+          .from('activities')
+          .select('id, name, status, start_date, end_date, product_id')
+          .in('product_id', (productsData || []).map((p: any) => p.id))
+          .order('start_date', { ascending: true });
+
+        setEnterpriseActivities((activitiesData || []).map((a: any) => ({
+          id: a.id,
+          name: a.name || 'Untitled Activity',
+          status: a.status || 'not_started',
+          start_date: a.start_date || null,
+          end_date: a.end_date || null,
+        })));
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to fetch company data"
@@ -433,16 +574,31 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
       }
     });
 
+    // Click on device row → navigate to device Gantt
+    const unsubscribeSelectTask = api.on("select-task", (ev: any) => {
+      console.log('[Enterprise Gantt] select-task event:', ev);
+      if (ev && ev.id) {
+        const taskId = ev.id.toString();
+        console.log('[Enterprise Gantt] Task clicked:', taskId);
+        if (taskId.startsWith('product-')) {
+          const productId = taskId.replace('product-', '');
+          console.log('[Enterprise Gantt] Navigating to device Gantt:', productId);
+          navigate(`/app/product/${productId}/milestones?tab=gantt`);
+        }
+      }
+    });
+
     // Prevent link deletion and addition in company milestones
     const unsubscribeDeleteLink = api.intercept("delete-link", () => false);
     const unsubscribeAddLink = api.intercept("add-link", () => false);
 
     return () => {
       if (unsubscribeOpenTask) unsubscribeOpenTask();
+      if (unsubscribeSelectTask) unsubscribeSelectTask();
       if (unsubscribeDeleteLink) unsubscribeDeleteLink();
       if (unsubscribeAddLink) unsubscribeAddLink();
     };
-  }, [apiReady]);
+  }, [apiReady, navigate]);
 
   // Transform data for Gantt chart - wx-react-gantt expects GanttTask objects
   const ganttTasks = useMemo((): GanttTask[] => {
@@ -504,6 +660,18 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
       }
     }
 
+    // Helper: resolve best start/end dates for an enterprise document
+    const getEntDocDates = (doc: EnterpriseDocument, fallbackStart: Date) => {
+      const docStart = doc.start_date ? new Date(doc.start_date)
+        : doc.date ? new Date(doc.date)
+        : fallbackStart;
+      const docEnd = doc.due_date ? new Date(doc.due_date)
+        : doc.deadline ? new Date(doc.deadline)
+        : doc.date ? new Date(new Date(doc.date).getTime() + 30 * 24 * 60 * 60 * 1000) // 1 week from date
+        : new Date(docStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+      return { docStart, docEnd };
+    };
+
     // Company root summary
     tasks.push({
       id: "company",
@@ -512,6 +680,123 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
       end: companyEnd,
       type: "summary",
       open: true,
+    });
+
+    // === 1. DOCUMENTS ===
+    if (enterpriseDocuments.length > 0) {
+      const allEntDates = enterpriseDocuments.map(d => {
+        const { docStart, docEnd } = getEntDocDates(d, companyStart);
+        return { start: docStart, end: docEnd };
+      });
+      const entStart = new Date(Math.min(...allEntDates.map(d => d.start.getTime())));
+      const entEnd = new Date(Math.max(...allEntDates.map(d => d.end.getTime())));
+
+      tasks.push({
+        id: 'enterprise-docs',
+        text: `Documents (${enterpriseDocuments.length})`,
+        start: entStart,
+        end: entEnd,
+        type: 'summary',
+        parent: 'company',
+        open: taskExpansionState['enterprise-docs'] === true,
+      });
+
+      enterpriseDocuments.forEach(doc => {
+        const { docStart, docEnd } = getEntDocDates(doc, entStart);
+        tasks.push({
+          id: `ent-doc-${doc.id}`,
+          text: doc.name,
+          start: docStart,
+          end: docEnd,
+          type: calculateTaskTypeFromDates(docStart, docEnd, doc.status === 'Completed' ? 'completed' : 'running'),
+          parent: 'enterprise-docs',
+        });
+      });
+    }
+
+    // === 2. AUDITS ===
+    if (enterpriseAudits.length > 0) {
+      const auditDates = enterpriseAudits.map(a => {
+        const aStart = a.start_date ? new Date(a.start_date) : companyStart;
+        const aEnd = a.end_date ? new Date(a.end_date)
+          : a.deadline_date ? new Date(a.deadline_date)
+          : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+        return { start: aStart, end: aEnd };
+      });
+      const auditsStart = new Date(Math.min(...auditDates.map(d => d.start.getTime())));
+      const auditsEnd = new Date(Math.max(...auditDates.map(d => d.end.getTime())));
+
+      tasks.push({
+        id: 'enterprise-audits',
+        text: `Audits (${enterpriseAudits.length})`,
+        start: auditsStart,
+        end: auditsEnd,
+        type: 'summary',
+        parent: 'company',
+        open: taskExpansionState['enterprise-audits'] === true,
+      });
+
+      enterpriseAudits.forEach(audit => {
+        const aStart = audit.start_date ? new Date(audit.start_date) : auditsStart;
+        const aEnd = audit.end_date ? new Date(audit.end_date)
+          : audit.deadline_date ? new Date(audit.deadline_date)
+          : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+        tasks.push({
+          id: `ent-audit-${audit.id}`,
+          text: audit.audit_name,
+          start: aStart,
+          end: aEnd,
+          type: calculateTaskTypeFromDates(aStart, aEnd, audit.status === 'completed' ? 'completed' : 'running'),
+          parent: 'enterprise-audits',
+        });
+      });
+    }
+
+    // === 3. ACTIVITIES ===
+    if (enterpriseActivities.length > 0) {
+      const actDates = enterpriseActivities.map(a => {
+        const aStart = a.start_date ? new Date(a.start_date) : companyStart;
+        const aEnd = a.end_date ? new Date(a.end_date)
+          : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+        return { start: aStart, end: aEnd };
+      });
+      const activitiesStart = new Date(Math.min(...actDates.map(d => d.start.getTime())));
+      const activitiesEnd = new Date(Math.max(...actDates.map(d => d.end.getTime())));
+
+      tasks.push({
+        id: 'enterprise-activities',
+        text: `Activities (${enterpriseActivities.length})`,
+        start: activitiesStart,
+        end: activitiesEnd,
+        type: 'summary',
+        parent: 'company',
+        open: taskExpansionState['enterprise-activities'] === true,
+      });
+
+      enterpriseActivities.forEach(activity => {
+        const aStart = activity.start_date ? new Date(activity.start_date) : activitiesStart;
+        const aEnd = activity.end_date ? new Date(activity.end_date)
+          : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+        tasks.push({
+          id: `ent-activity-${activity.id}`,
+          text: activity.name,
+          start: aStart,
+          end: aEnd,
+          type: calculateTaskTypeFromDates(aStart, aEnd, activity.status === 'completed' ? 'completed' : 'running'),
+          parent: 'enterprise-activities',
+        });
+      });
+    }
+
+    // === 4. DEVICES (collapsed, no expand on individual devices) ===
+    tasks.push({
+      id: 'devices-container',
+      text: `Devices (${companyData.length})`,
+      start: companyStart,
+      end: companyEnd,
+      type: 'summary',
+      parent: 'company',
+      open: taskExpansionState['devices-container'] === true,
     });
 
     companyData.forEach((product) => {
@@ -546,139 +831,23 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
         }
       }
 
-      // Product level summary
+      // Product level — non-expandable task (click to navigate to device Gantt)
       tasks.push({
         id: `product-${product.id}`,
         text: product.name,
         start: productStart,
         end: productEnd,
-        type: "summary",
-        parent: "company",
-        open: taskExpansionState[`product-${product.id}`] === true,
+        type: "task",
+        parent: "devices-container",
       });
 
-      // Phase level tasks — filter out "No Phase" placeholder phases
-      const visiblePhases = productPhases.filter(
-        (phase) => phase?.name?.toLowerCase() !== 'no phase'
-      );
-      if (visiblePhases.length > 0) {
-        visiblePhases.forEach((phase) => {
-          // Skip if phase is null/undefined
-          if (!phase || !phase.id) return;
-
-          const phaseStart = phase.start_date
-            ? new Date(phase.start_date)
-            : productStart;
-          const phaseEnd = phase.end_date
-            ? new Date(phase.end_date)
-            : productEnd;
-          // Use document counts instead of individual documents
-          const documentCount = documentCounts[phase.phase_id || phase.id] || 0;
-          const phaseName = phase.name || 'Unnamed Phase';
-
-          // Calculate status-based task type from phase dates
-          const phaseTaskType = calculateTaskTypeFromDates(phaseStart, phaseEnd, 'running');
-
-          tasks.push({
-            id: `phase-${phase.id}`,
-            text: phaseName,
-            start: phaseStart,
-            end: phaseEnd,
-            type: phaseTaskType,
-            parent: `product-${product.id}`,
-            open: taskExpansionState[`phase-${phase.id}`] === true,
-          });
-
-          // Sub-tasks: Documents, Gap Analysis, Activities, Audits
-          const subTasks = [
-            {
-              type: "document" as const,
-              name: lang('milestones.subTasks.documents').replace('{{count}}', String(documentCount)),
-              duration: 3,
-              hasNested: false, // No nested documents - just show count
-            },
-            {
-              type: "gap-analysis" as const,
-              name: lang('milestones.subTasks.gapAnalysis'),
-              duration: 5,
-              hasNested: false,
-            },
-            {
-              type: "activities" as const,
-              name: lang('milestones.subTasks.activities'),
-              duration: 4,
-              hasNested: false,
-            },
-            {
-              type: "audit" as const,
-              name: lang('milestones.subTasks.audit'),
-              duration: 4,
-              hasNested: false,
-            },
-          ];
-
-          let currentDate = new Date(phaseStart);
-
-          subTasks.forEach((subTask) => {
-            const subTaskEndDate = new Date(
-              currentDate.getTime() + subTask.duration * 24 * 60 * 60 * 1000
-            );
-            if (subTaskEndDate > phaseEnd) {
-              subTaskEndDate.setTime(phaseEnd.getTime());
-            }
-
-            if (subTask.type === "document" && subTask.hasNested) {
-              // Create document container task - SIMPLIFIED (no nested documents)
-              const documentContainerTask: GanttTask = {
-                id: `documents-${phase.id}`,
-                text: subTask.name,
-                start: new Date(currentDate),
-                end: subTaskEndDate,
-                type: "summary",
-                parent: `phase-${phase.id}`,
-                open: taskExpansionState[`documents-${phase.id}`] === true,
-              };
-
-              tasks.push(documentContainerTask);
-              // No individual document tasks - just show count
-            } else {
-              const subTaskItem: GanttTask = {
-                id: `${subTask.type}-${phase.id}`,
-                text: subTask.name,
-                start: new Date(currentDate),
-                end: subTaskEndDate,
-                type: "summary",
-                parent: `phase-${phase.id}`,
-                open:
-                  taskExpansionState[`${subTask.type}-${phase.id}`] === true,
-              };
-
-              tasks.push(subTaskItem);
-            }
-
-            currentDate = new Date(
-              subTaskEndDate.getTime() + 24 * 60 * 60 * 1000
-            );
-          });
-        });
-      } else {
-        // Placeholder task if no phases
-        tasks.push({
-          id: `${product.id}_placeholder`,
-          text: lang('milestones.noPhaseDefined'),
-          start: productStart,
-          end: productEnd,
-          parent: `product-${product.id}`,
-          type: "task",
-        });
-      }
+      // No phase/sub-task children at enterprise level — click device to navigate to device Gantt
     });
-
     return tasks;
     } catch (error) {
       return [];
     }
-  }, [companyData, companyName, documentCounts, taskExpansionState, lang]);
+  }, [companyData, companyName, documentCounts, taskExpansionState, enterpriseDocuments, enterpriseAudits, enterpriseActivities, lang]);
 
   // Generate task links for dependencies
   const generateTaskLinks = useMemo(() => {

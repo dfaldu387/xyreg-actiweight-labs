@@ -63,7 +63,10 @@ export default function ProductMilestonesPage() {
   const shouldOpenDates = searchParams.get('openDates') === 'true';
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { defaultMilestonesView, isLoading: preferencesLoading } = useUserPreferences();
-  const [activeTab, setActiveTab] = useState<MilestonesViewType>("milestones");
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<MilestonesViewType>(
+    tabParam === 'gantt' || tabParam === 'gantt-v2' || tabParam === 'costs' ? tabParam : "milestones"
+  );
   const [showBulkBudget, setShowBulkBudget] = useState(false);
   const [isReinitializing, setIsReinitializing] = useState(false);
   const [isUpdatingDates, setIsUpdatingDates] = useState(false);
@@ -83,9 +86,14 @@ export default function ProductMilestonesPage() {
   useEffect(() => {
     if (!preferencesLoading && !initialTabSetRef.current) {
       initialTabSetRef.current = true;
-      setActiveTab(defaultMilestonesView);
+      // URL tab param takes priority over saved preference
+      if (tabParam === 'gantt' || tabParam === 'gantt-v2' || tabParam === 'costs') {
+        setActiveTab(tabParam);
+      } else {
+        setActiveTab(defaultMilestonesView);
+      }
     }
-  }, [defaultMilestonesView, preferencesLoading]);
+  }, [defaultMilestonesView, preferencesLoading, tabParam]);
 
   // Auto-open dates dialog when coming from investor flow
   useEffect(() => {
@@ -1202,8 +1210,13 @@ export default function ProductMilestonesPage() {
           </TabsContent> */}
 
               <TabsContent value="gantt" className="mt-4">
-                {/* <ProductGanttV3Page /> */}
-                <ProductGanttV23Page />
+                {hasUnscheduledPhases ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+                    <Calendar className="h-12 w-12 mb-4 text-muted-foreground/50" />
+                    <p className="text-lg font-medium">Timeline not configured</p>
+                    <p className="text-sm mt-1">Please initialize the timeline first to view the Gantt chart.</p>
+                  </div>
+                ) : <ProductGanttV23Page />}
               </TabsContent>
 
               <TabsContent value="costs" className="mt-4">

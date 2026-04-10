@@ -16,6 +16,7 @@ import { SectionSelector } from '@/components/common/SectionSelector';
 import { ReferenceDocumentPicker } from '@/components/common/ReferenceDocumentPicker';
 import { useDocumentTypes } from '@/hooks/useDocumentTypes';
 import { useDocumentCategoryConfigs } from '@/hooks/useDocumentCategoryConfigs';
+import { useSubPrefixes } from '@/hooks/useSubPrefixes';
 import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
 import { useCompanyActivePhases } from '@/hooks/useCompanyActivePhases';
 import { useReviewerGroups } from '@/hooks/useReviewerGroups';
@@ -49,6 +50,7 @@ interface CIPropertyPanelProps {
   recordId?: string;
   nextReviewDate?: string;
   documentNumber?: string;
+  showSectionNumbers?: boolean;
   // Callback to persist changes
   onFieldChange: (field: string, value: any) => Promise<void>;
   disabled?: boolean;
@@ -80,11 +82,14 @@ export function CIPropertyPanel({
   recordId,
   nextReviewDate,
   documentNumber,
+  showSectionNumbers,
   onFieldChange,
   disabled = false,
 }: CIPropertyPanelProps) {
   const { documentTypes } = useDocumentTypes(companyId);
   const { configs: categoryConfigs, isLoading: isCategoryConfigsLoading, getNextDocumentNumber, getUsedNumbers } = useDocumentCategoryConfigs(companyId);
+  const { subPrefixes } = useSubPrefixes(companyId);
+  const [selectedSubPrefix, setSelectedSubPrefix] = useState<string>('');
   const [usedNumbersSet, setUsedNumbersSet] = useState<Set<string>>(new Set());
   const [isLoadingUsedNumbers, setIsLoadingUsedNumbers] = useState(false);
   const { documents: refDocuments } = useReferenceDocuments(companyId);
@@ -126,13 +131,23 @@ export function CIPropertyPanel({
     }
   }, [documentNumber]);
 
+  // Parse sub-prefix from existing document number on mount
+  useEffect(() => {
+    if (!documentNumber || !documentType || subPrefixes.length === 0) return;
+    const withoutPrefix = documentNumber.replace(`${documentType}-`, '');
+    const subMatch = subPrefixes.find(sp => withoutPrefix.startsWith(`${sp.code}-`));
+    if (subMatch && selectedSubPrefix !== subMatch.code) {
+      setSelectedSubPrefix(subMatch.code);
+    }
+  }, [documentNumber, documentType, subPrefixes]);
+
   // Fetch used numbers when category prefix changes
   useEffect(() => {
     if (!documentType) return;
     setIsLoadingUsedNumbers(true);
-    getUsedNumbers(documentType).then(used => {
+    getUsedNumbers(documentType, companyId).then(used => {
       if (documentNumber) {
-        const ownMatch = documentNumber.match(new RegExp(`^${documentType}-(\\d+)`));
+        const ownMatch = documentNumber.match(new RegExp(`^${documentType}-(?:[A-Z]+-)?([\\d]+)`));
         if (ownMatch) used.delete(ownMatch[1]);
       }
       setUsedNumbersSet(used);
@@ -345,10 +360,75 @@ export function CIPropertyPanel({
 
             {documentType && documentType !== 'NONE' && <span className="text-muted-foreground text-sm">-</span>}
 
+            {/* Sub-prefix dropdown */}
+            {documentType && documentType !== 'NONE' && subPrefixes.length > 0 && (
+              <>
+                <Select
+                  value={selectedSubPrefix || 'NONE'}
+                  onValueChange={async (val) => {
+                    const newSub = val === 'NONE' ? '' : val;
+                    setSelectedSubPrefix(newSub);
+                    // Rebuild document number if one exists
+                    if (documentNumber) {
+                      // Extract just the numeric part
+                      const parts = documentNumber.split('-');
+                      const numPart = parts[parts.length - 1];
+                      const fullId = newSub ? `${documentType}-${newSub}-${numPart}` : `${documentType}-${numPart}`;
+                      await handleFieldSave('document_number', fullId);
+                    }
+                  }}
+                  disabled={disabled}
+                >
+                  <SelectTrigger className="h-8 text-sm font-mono w-16">
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <SelectItem value="NONE">
+                            <span className="text-muted-foreground italic">—</span>
+                          </SelectItem>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>No sub-prefix</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      {subPrefixes.map(sp => (
+                        <Tooltip key={sp.key}>
+                          <TooltipTrigger asChild>
+                            <SelectItem value={sp.code}>
+                              <span className="font-mono font-medium">{sp.code}</span>
+                            </SelectItem>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            <p>{sp.label}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </TooltipProvider>
+                  </SelectContent>
+                </Select>
+                <span className="text-muted-foreground text-sm">-</span>
+              </>
+            )}
+
             <Select
-              value={documentNumber ? (documentType === 'NONE' ? documentNumber : documentNumber.replace(`${documentType}-`, '')) : undefined}
+              value={documentNumber ? (() => {
+                if (documentType === 'NONE') return documentNumber;
+                let stripped = documentNumber.replace(`${documentType}-`, '');
+                if (selectedSubPrefix) stripped = stripped.replace(`${selectedSubPrefix}-`, '');
+                return stripped;
+              })() : undefined}
               onValueChange={async (num) => {
-                const fullId = documentType === 'NONE' ? num : `${documentType}-${num}`;
+                let fullId: string;
+                if (documentType === 'NONE') {
+                  fullId = num;
+                } else if (selectedSubPrefix) {
+                  fullId = `${documentType}-${selectedSubPrefix}-${num}`;
+                } else {
+                  fullId = `${documentType}-${num}`;
+                }
                 await handleFieldSave('document_number', fullId);
               }}
               disabled={disabled || isLoadingUsedNumbers || !documentType}
@@ -399,20 +479,27 @@ export function CIPropertyPanel({
           />
         </div>
 
-
-        {/* Status */}
+        {/* Chapter Numbering Toggle */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <Label className="text-xs text-muted-foreground">Status</Label>
-            {renderSaveIndicator('status')}
+            <Label className="text-xs text-muted-foreground">Formatting</Label>
+            {renderSaveIndicator('showSectionNumbers')}
           </div>
-          <DocumentStatusDropdown
-            value={status}
-            onValueChange={(val) => handleFieldSave('status', val)}
-            label=""
-            disabled={disabled}
-          />
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={showSectionNumbers ?? false}
+              onCheckedChange={async (checked) => {
+                await handleFieldSave('showSectionNumbers', checked);
+              }}
+              disabled={disabled}
+              id="chapter-numbering"
+            />
+            <Label htmlFor="chapter-numbering" className="text-sm text-foreground cursor-pointer">
+              Chapter numbering (1.0, 2.0…)
+            </Label>
+          </div>
         </div>
+
 
         <Separator />
 
@@ -612,34 +699,6 @@ export function CIPropertyPanel({
             {reviewerGroups.length === 0 && (
               <p className="text-xs text-muted-foreground">No reviewer groups configured</p>
             )}
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Current Effective Version */}
-        <div className="flex items-center justify-between">
-          <Label className="text-xs text-muted-foreground">Current Effective Version</Label>
-          <div className="flex items-center gap-2">
-            {renderSaveIndicator('is_current_effective_version')}
-            <Checkbox
-              checked={isCurrentEffectiveVersion ?? false}
-              onCheckedChange={(checked) => handleFieldSave('is_current_effective_version', !!checked)}
-              disabled={disabled}
-            />
-          </div>
-        </div>
-
-        {/* Need Template Update */}
-        <div className="flex items-center justify-between">
-          <Label className="text-xs text-muted-foreground">Need Template Update</Label>
-          <div className="flex items-center gap-2">
-            {renderSaveIndicator('need_template_update')}
-            <Checkbox
-              checked={needTemplateUpdate ?? false}
-              onCheckedChange={(checked) => handleFieldSave('need_template_update', !!checked)}
-              disabled={disabled}
-            />
           </div>
         </div>
 

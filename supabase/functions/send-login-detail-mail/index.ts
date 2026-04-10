@@ -354,8 +354,29 @@ serve(async (req)=>{
           // Update invitation status
           await supabaseAdmin.from('user_invitations').update({ status: 'accepted' }).eq('id', invitation.id);
 
-          // Create department assignment
-          if (invitation.functional_area && invitation.functional_area !== 'none') {
+          // Create department assignments from invitation_department_assignments table
+          const { data: fallbackDeptAssignments, error: fallbackDeptError } = await supabaseAdmin
+            .from('invitation_department_assignments')
+            .select('*')
+            .eq('invitation_id', invitation.id);
+
+          if (!fallbackDeptError && fallbackDeptAssignments && fallbackDeptAssignments.length > 0) {
+            console.log('Creating department assignments for fallback user from invitation_department_assignments:', fallbackDeptAssignments.length);
+            for (const assignment of fallbackDeptAssignments) {
+              const { error: deptError } = await supabaseAdmin.from('user_department_assignments').upsert({
+                user_id: fallbackUser.id,
+                company_id: companyId,
+                department_name: assignment.department_name,
+                fte_allocation: assignment.fte_allocation,
+                role: assignment.role && assignment.role.length > 0 ? assignment.role : null,
+              }, { onConflict: 'user_id,company_id,department_name' });
+              if (deptError) {
+                console.error('Error creating department assignment for fallback user:', deptError);
+              }
+            }
+          } else if (invitation.functional_area && invitation.functional_area !== 'none') {
+            // Backward compat: fall back to single functional_area from invitation
+            console.log('Creating department assignment for fallback user (legacy):', invitation.functional_area);
             await supabaseAdmin.from('user_department_assignments').upsert({
               user_id: fallbackUser.id,
               company_id: companyId,
@@ -410,10 +431,14 @@ serve(async (req)=>{
       console.error('Invitation update error:', updateError);
     }
     // Create department assignments from invitation_department_assignments table
+    console.log('Looking up invitation_department_assignments for invitation_id:', invitation.id);
     const { data: newUserDeptAssignments, error: newUserDeptError } = await supabaseAdmin
       .from('invitation_department_assignments')
       .select('*')
       .eq('invitation_id', invitation.id);
+
+    console.log('invitation_department_assignments query result:', JSON.stringify({ data: newUserDeptAssignments, error: newUserDeptError }));
+    console.log('invitation functional_area:', invitation.functional_area, 'department_role:', invitation.department_role);
 
     if (!newUserDeptError && newUserDeptAssignments && newUserDeptAssignments.length > 0) {
       console.log('Creating department assignments from invitation_department_assignments:', newUserDeptAssignments.length);

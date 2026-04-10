@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils';
 import type { GapAnalysisItem } from '@/types/client';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { StandardStatusBadge } from './StandardStatusBadge';
+import type { StandardVersionStatus } from '@/hooks/useStandardVersionStatus';
 
 export interface GenericSectionSubItem {
   letter: string;
@@ -50,6 +52,7 @@ interface GenericGapLaunchViewProps {
   isFrameworkShared?: boolean;
   clauseExclusions?: Record<string, string[]>;
   onClauseExclusionChange?: (framework: string, section: string, excludedIds: string[]) => void;
+  standardStatus?: StandardVersionStatus;
 }
 
 function getCompletionMap(items: GapAnalysisItem[]): Map<string, { isComplete: boolean; itemId: string; isInherited: boolean; inheritedFromName: string | null }> {
@@ -85,6 +88,7 @@ export function GenericGapLaunchView({
   isFrameworkShared = false,
   clauseExclusions = {},
   onClauseExclusionChange,
+  standardStatus,
 }: GenericGapLaunchViewProps) {
   const { productId, companyName } = useParams();
   const resolvedBaseUrl = baseUrl || (productId ? `/app/product/${productId}` : `/app/company/${companyName}`);
@@ -114,6 +118,7 @@ export function GenericGapLaunchView({
             <div className="flex items-center gap-2 mb-1">
               <h2 className="text-lg font-bold text-foreground">{standardName}</h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-600 text-white uppercase tracking-wider">{standardTag}</span>
+              <StandardStatusBadge status={standardStatus} />
               {headerActions && <div className="ml-auto">{headerActions}</div>}
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">{bannerDescription}</p>

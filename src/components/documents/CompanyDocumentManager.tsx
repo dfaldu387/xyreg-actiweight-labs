@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, LayoutGrid, List, RefreshCw, CheckSquare, Trash2, CalendarDays, Sparkles, Layers, Settings2 } from "lucide-react";
+import { Plus, FileText, LayoutGrid, List, RefreshCw, Trash2, CalendarDays, Sparkles, Layers, Settings2, ShieldCheck } from "lucide-react";
 import { ColumnVisibilitySettings, type ColumnDefinition } from '@/components/shared/ColumnVisibilitySettings';
 import { useListColumnPreferences } from '@/hooks/useListColumnPreferences';
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useQuery } from '@tanstack/react-query';
 import { useBulkOperationProgress } from '@/hooks/useBulkOperationProgress';
 import { CompanyDocumentStatusSummary } from './CompanyDocumentStatusSummary';
+import { BulkDocumentValidationDialog, BulkValidationFinding } from './BulkDocumentValidationDialog';
+import { DocumentValidationService } from '@/services/documentValidationService';
 
 interface CompanyDocumentManagerProps {
   companyId: string;
@@ -81,7 +83,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
   const [sectionFilter, setSectionFilterState] = useState<string[]>(() => parseArrayParam(searchParams.get(URL_PARAM_KEYS.SECTIONS)));
   const [tagFilter, setTagFilterState] = useState<string[]>(() => parseArrayParam(searchParams.get(URL_PARAM_KEYS.TAGS)));
   const [refTagFilter, setRefTagFilterState] = useState<string[]>(() => parseArrayParam(searchParams.get(URL_PARAM_KEYS.REF_TAGS)));
-  const [sortByDate, setSortByDateState] = useState<SortByDateOption>(() => (searchParams.get(URL_PARAM_KEYS.SORT_BY_DATE) as SortByDateOption) || 'updated_newest');
+  const [sortByDate, setSortByDateState] = useState<SortByDateOption>(() => (searchParams.get(URL_PARAM_KEYS.SORT_BY_DATE) as SortByDateOption) || 'none');
   const [viewMode, setViewModeState] = useState<'card' | 'list'>(() => (searchParams.get(URL_PARAM_KEYS.LAYOUT) as 'card' | 'list') || 'list');
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -94,13 +96,12 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [draftDrawerDocument, setDraftDrawerDocument] = useState<CompanyDocument | null>(null);
 
-  // Bulk mode state
-  const [bulkMode, setBulkMode] = useState(false);
+  // Bulk mode state (always on - checkboxes always visible)
 
   // Column visibility
   const COMPANY_DOC_COLUMNS: ColumnDefinition[] = [
     { key: 'name', label: 'Name', required: true },
-    { key: 'phase_name', label: 'Phase' },
+    
     { key: 'sub_section', label: 'Section' },
     { key: 'authors_ids', label: 'Author' },
     { key: 'document_type', label: 'Document Type' },
@@ -129,6 +130,12 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
   const [bulkSummarySidebarOpen, setBulkSummarySidebarOpen] = useState(false);
   const [selectedDocsForSummary, setSelectedDocsForSummary] = useState<Set<string>>(new Set());
 
+  // Bulk validation state
+  const [bulkValidationOpen, setBulkValidationOpen] = useState(false);
+  const [bulkValidationLoading, setBulkValidationLoading] = useState(false);
+  const [bulkValidationFindings, setBulkValidationFindings] = useState<any[]>([]);
+  const [bulkValidationDocCount, setBulkValidationDocCount] = useState(0);
+
   const documentCategories = ['Standard', 'Template', 'Record', 'Form', 'Report', 'Policy', 'Procedure', 'Work Instruction', 'SOP', 'Other'];
 
   const { progress: bulkProgress, startOperation, updateProgress: updateBulkProgress, completeOperation } = useBulkOperationProgress();
@@ -156,7 +163,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
     const urlSections = parseArrayParam(searchParams.get(URL_PARAM_KEYS.SECTIONS));
     const urlTags = parseArrayParam(searchParams.get(URL_PARAM_KEYS.TAGS));
     const urlRefTags = parseArrayParam(searchParams.get(URL_PARAM_KEYS.REF_TAGS));
-    const urlSort = (searchParams.get(URL_PARAM_KEYS.SORT_BY_DATE) as SortByDateOption) || 'updated_newest';
+    const urlSort = (searchParams.get(URL_PARAM_KEYS.SORT_BY_DATE) as SortByDateOption) || 'none';
     const urlLayout = (searchParams.get(URL_PARAM_KEYS.LAYOUT) as 'card' | 'list') || 'list';
 
     if (urlSearch !== searchTerm) setSearchTermState(urlSearch);
@@ -564,7 +571,6 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
 
     completeOperation();
     setBulkSelectedDocs(new Set());
-    setBulkMode(false);
     refetch();
 
     if (failCount === 0) {
@@ -581,7 +587,8 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
       // Search filter
       const matchesSearch = !searchTerm ||
         doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        doc.description?.toLowerCase().includes(searchTerm.toLowerCase());
+        doc.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doc.document_number?.toLowerCase().includes(searchTerm.toLowerCase());
 
       // Status filter
       const matchesStatus = statusFilter.length === 0 ||
@@ -858,27 +865,6 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                     onHiddenColumnsChange={setHiddenColumns}
                   />
                 )}
-                <Button
-                  onClick={() => setBulkSummarySidebarOpen(true)}
-                  size="sm"
-                  variant="outline"
-                  className="border-purple-200 hover:bg-purple-50 text-purple-700"
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  AI Summary
-                </Button>
-                <Button
-                  onClick={() => {
-                    setBulkMode(!bulkMode);
-                    if (bulkMode) { setBulkSelectedDocs(new Set()); setSelectedBulkAction(""); setSelectedBulkValue(""); setBulkDueDateValue(undefined); }
-                  }}
-                  size="sm"
-                  variant={bulkMode ? "default" : "outline"}
-                  disabled={disabled}
-                >
-                  <CheckSquare className="h-4 w-4 mr-2" />
-                  {bulkMode ? 'Cancel Bulk' : 'Bulk'}
-                </Button>
                 <Button size="sm" onClick={() => !disabled && setCreateDialogOpen(true)} disabled={disabled}>
                   <Plus className="h-4 w-4 mr-2" />
                   {lang('companyDocumentManager.addDocument')}
@@ -887,7 +873,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
             </div>
 
             {/* Bulk Action Bar */}
-            {bulkMode && (
+            {bulkSelectedDocs.size > 0 && (
               <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg sticky top-0 z-10 mb-4">
                 {bulkProgress.isRunning && (
                   <div className="flex items-center gap-3 w-full">
@@ -921,11 +907,13 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                       <SelectValue placeholder="Select action..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="delete">Delete</SelectItem>
+                      <SelectItem value="validate">Validate</SelectItem>
                       <SelectItem value="status">Set Status</SelectItem>
                       <SelectItem value="category">Set Category</SelectItem>
                       <SelectItem value="authors">Set Authors</SelectItem>
                       <SelectItem value="due_date">Set Due Date</SelectItem>
+                      <SelectItem value="ai_summary">AI Summary</SelectItem>
+                      <SelectItem value="delete">Delete</SelectItem>
                     </SelectContent>
                   </Select>
 
@@ -983,6 +971,71 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                     <Button size="sm" variant="destructive" disabled={bulkSelectedDocs.size === 0} onClick={() => setBulkDeleteConfirmOpen(true)} className="h-8 text-xs">
                       <Trash2 className="h-3 w-3 mr-1" /> Delete
                     </Button>
+                  ) : selectedBulkAction === 'validate' ? (
+                    <Button
+                      size="sm"
+                      disabled={bulkSelectedDocs.size === 0 || bulkValidationLoading}
+                      onClick={async () => {
+                        const selectedIds = Array.from(bulkSelectedDocs);
+                        setBulkValidationLoading(true);
+                        setBulkValidationFindings([]);
+                        setBulkValidationDocCount(selectedIds.length);
+                        setBulkValidationOpen(true);
+                        try {
+                          // Fetch document studio drafts for selected documents
+                          const selectedDocs = documents.filter(d => selectedIds.includes(d.id));
+                          const { data: drafts } = await supabase
+                            .from('document_studio_drafts' as any)
+                            .select('key, content')
+                            .in('key', selectedIds.map(id => `company-doc-${id}`));
+
+                          const docsForValidation = selectedDocs.map(doc => {
+                            const draft = (drafts as any[])?.find((d: any) => d.key === `company-doc-${doc.id}`);
+                            let sections: any[] = [];
+                            if (draft?.content) {
+                              try {
+                                const parsed = typeof draft.content === 'string' ? JSON.parse(draft.content) : draft.content;
+                                sections = (parsed.sections || []).map((s: any) => ({
+                                  id: s.id,
+                                  title: s.title,
+                                  content: (s.content || []).map((c: any) => ({ type: c.type, content: c.content })),
+                                }));
+                              } catch { /* ignore parse errors */ }
+                            }
+                            return {
+                              documentName: doc.name,
+                              documentNumber: doc.document_number || '',
+                              documentType: doc.document_type || '',
+                              sections,
+                            };
+                          });
+
+                          const result = await DocumentValidationService.validateMultipleDocuments(
+                            companyId,
+                            docsForValidation
+                          );
+                          setBulkValidationFindings(result.findings);
+                        } catch (error: any) {
+                          toast.error('Bulk validation failed', { description: error.message });
+                        } finally {
+                          setBulkValidationLoading(false);
+                        }
+                      }}
+                      className="h-8 text-xs gap-1"
+                    >
+                      <ShieldCheck className="h-3 w-3" /> Validate
+                    </Button>
+                  ) : selectedBulkAction === 'ai_summary' ? (
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setSelectedDocsForSummary(new Set(bulkSelectedDocs));
+                        setBulkSummarySidebarOpen(true);
+                      }}
+                      className="h-8 text-xs gap-1"
+                    >
+                      <Sparkles className="h-3 w-3" /> Summarize
+                    </Button>
                   ) : selectedBulkAction && (
                     <Button
                       size="sm"
@@ -1018,7 +1071,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                   companyId={companyId}
                   hiddenColumns={hiddenColumns}
                   externalSortActive={sortByDate !== 'none'}
-                  bulkMode={bulkMode}
+                  bulkMode={true}
                   bulkSelectedDocs={bulkSelectedDocs}
                   onToggleBulkDoc={(docId: string) => {
                     setBulkSelectedDocs(prev => {
@@ -1027,13 +1080,15 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                       return next;
                     });
                   }}
+                  onSelectAll={(ids: string[]) => {
+                    setBulkSelectedDocs(new Set(ids));
+                  }}
                 />
               ) : (
                 <div className="space-y-3">
                   {filteredDocuments.map((document) => (
                     <div key={document.id} className="flex items-start gap-3">
-                      {bulkMode && (
-                        <div className="pt-5">
+                      <div className="pt-5">
                           <Checkbox
                             checked={bulkSelectedDocs.has(document.id)}
                             onCheckedChange={() => {
@@ -1045,7 +1100,6 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                             }}
                           />
                         </div>
-                      )}
                       <div className="flex-1">
                         <CompanyDocumentCard
                           document={document}
@@ -1200,6 +1254,15 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
           onToggleDocSelection={handleToggleDocForSummary}
         />
       )}
+
+      {/* Bulk Validation Dialog */}
+      <BulkDocumentValidationDialog
+        open={bulkValidationOpen}
+        onOpenChange={setBulkValidationOpen}
+        isValidating={bulkValidationLoading}
+        findings={bulkValidationFindings}
+        documentCount={bulkValidationDocCount}
+      />
     </>
   );
 }

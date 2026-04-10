@@ -31,6 +31,7 @@ interface SectionSelectorProps {
   label?: string;
   placeholder?: string;
   phaseId?: string;
+  compact?: boolean;
 }
 
 export function SectionSelector({
@@ -40,7 +41,8 @@ export function SectionSelector({
   disabled = false,
   label = 'Section',
   placeholder = 'Select or create a section',
-  phaseId
+  phaseId,
+  compact = false
 }: SectionSelectorProps) {
   const { sections, isLoading, createSection, deleteSection, refetch } = useComplianceSections(companyId, { phaseId });
   const [searchQuery, setSearchQuery] = useState('');
@@ -189,15 +191,24 @@ export function SectionSelector({
 
   return (
     <>
-      <FormControl fullWidth disabled={disabled}>
-        <InputLabel id="section-select-label" shrink={true}>{label}</InputLabel>
+      <FormControl fullWidth disabled={disabled} sx={compact ? { '& .MuiInputLabel-root': { display: 'none' } } : undefined}>
+        {!compact && <InputLabel id="section-select-label" shrink={true}>{label}</InputLabel>}
         <Select
           labelId="section-select-label"
           value={resolvedValue}
-          label={label}
+          label={compact ? undefined : label}
           onChange={handleSelectChange}
           displayEmpty
-          notched
+          notched={!compact}
+          sx={compact ? {
+            height: 32,
+            fontSize: '0.75rem',
+            bgcolor: 'white',
+            borderRadius: '6px',
+            '& .MuiSelect-select': { py: '4px', px: '8px' },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'hsl(214.3, 31.8%, 91.4%)' },
+            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'hsl(214.3, 31.8%, 91.4%)' },
+          } : undefined}
           renderValue={(selected) => {
             if (!selected || selected === '') {
               return <span style={{ color: 'rgba(0, 0, 0, 0.6)' }}>{placeholder}</span>;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, RefreshCw } from "lucide-react";
+import { Plus, RefreshCw, Upload } from "lucide-react";
 import { ConsistentPageHeader } from "@/components/layout/ConsistentPageHeader";
 import { useNavigate } from "react-router-dom";
 import { useSimpleClients } from "@/hooks/useSimpleClients";
@@ -14,6 +14,7 @@ interface ProductHeaderProps {
   statusFilter: string[];
   onStatusFilterChange: (status: string) => void;
   onAddDocumentClick: () => void;
+  onBulkUploadClick?: () => void;
   onSyncDocuments?: () => void;
   documentsCount: number;
   isSyncing?: boolean;
@@ -27,6 +28,7 @@ export function ProductHeader({
   statusFilter, 
   onStatusFilterChange, 
   onAddDocumentClick,
+  onBulkUploadClick,
   onSyncDocuments,
   documentsCount,
   isSyncing = false
@@ -156,6 +158,12 @@ export function ProductHeader({
         >
           <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
           {isSyncing ? 'Syncing...' : 'Sync Company Docs'}
+        </Button>
+      )}
+      {onBulkUploadClick && (
+        <Button onClick={onBulkUploadClick} variant="outline" className="flex items-center gap-2">
+          <Upload className="h-4 w-4" />
+          Bulk Upload
         </Button>
       )}
       <Button onClick={onAddDocumentClick} className="flex items-center gap-2">

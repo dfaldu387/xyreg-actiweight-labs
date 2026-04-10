@@ -199,6 +199,12 @@ export class ProductSpecificDocumentService {
             return false;
           }
 
+          // Re-link any Document Studio drafts to the new UUID before deleting the old record
+          await supabase
+            .from("document_studio_templates")
+            .update({ template_id: newDoc.id })
+            .eq("template_id", cleanId);
+
           // Delete from documents table to avoid duplicates
           await supabase.from("documents").delete().eq("id", cleanId);
 

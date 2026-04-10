@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from "react-router-dom";
@@ -69,6 +70,7 @@ const columnHelper = createColumnHelper<any>();
 export function ProductDataTable({ products, getProductCardBg, refetch }: ProductGridProps) {
   const { lang } = useTranslation();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
@@ -368,6 +370,37 @@ export function ProductDataTable({ products, getProductCardBg, refetch }: Produc
       }
     }
     
+    if (action === "archive") {
+      const count = selectedProductIds.length;
+      const confirmed = await confirm({
+        title: "Archive Products",
+        description: `Are you sure you want to archive ${count} product${count > 1 ? 's' : ''}? This action can be reversed later.`,
+        confirmLabel: "Archive",
+        variant: "destructive",
+      });
+      if (!confirmed) {
+        setIsUpdating(false);
+        return;
+      }
+      try {
+        for (const id of selectedProductIds) {
+          await ProductDataTableService.archiveProduct(id);
+        }
+        toast.success(`Successfully archived ${count} product${count > 1 ? 's' : ''}`);
+        if (refetch) await refetch();
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['sidebarCompanyProducts'] });
+        setSelectedAction("");
+        table.toggleAllPageRowsSelected(false);
+      } catch (error) {
+        console.error('Error archiving products:', error);
+        toast.error('Failed to archive products. Please try again.');
+      } finally {
+        setIsUpdating(false);
+      }
+      return;
+    }
+
     if (action === "platform") {
       setIsUpdating(true);
       try {
@@ -1174,6 +1207,7 @@ export function ProductDataTable({ products, getProductCardBg, refetch }: Produc
                 <SelectItem value="product_platform">{lang('productDataTable.platform')}</SelectItem>
                 <SelectItem value="product_variant">{lang('productDataTable.productVariant')}</SelectItem>
                 <SelectItem value="create_family" disabled={table.getFilteredSelectedRowModel().rows.length < 2}>Create Product Family</SelectItem>
+                <SelectItem value="archive">Archive</SelectItem>
               </SelectContent>
             </Select>
 

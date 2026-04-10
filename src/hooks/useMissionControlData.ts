@@ -10,7 +10,7 @@ interface ActionItem {
   id: string;
   title: string;
   description: string;
-  type: "approval" | "deadline" | "training" | "audit" | "communication" | "system";
+  type: "approval" | "deadline" | "training" | "audit" | "communication" | "system" | "review";
   priority: "high" | "medium" | "low";
   dueDate?: Date;
   productName?: string;
@@ -511,7 +511,7 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
                 id: `review-phase-${doc.id}`,
                 title: `Review: ${doc.name}`,
                 description: `Document awaiting review (${doc.status || 'Pending'})`,
-                type: 'approval',
+                type: 'review',
                 priority: doc.status === 'Changes Requested' ? 'high' : 'medium',
                 dueDate: doc.due_date || doc.deadline ? new Date(doc.due_date || doc.deadline) : undefined,
                 url: '/app/review',
@@ -523,7 +523,7 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
                 id: `review-doc-${doc.id}`,
                 title: `Review: ${doc.name}`,
                 description: `Document awaiting review (${doc.status || 'Pending'})`,
-                type: 'approval',
+                type: 'review',
                 priority: doc.status === 'Changes Requested' ? 'high' : 'medium',
                 dueDate: doc.due_date ? new Date(doc.due_date) : undefined,
                 url: '/app/review',
@@ -531,62 +531,7 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
             });
           }
 
-          // Fetch documents where current user is assigned as author
-          if (user?.id) {
-            const AUTHOR_STATUSES = ['Not Started', 'In Progress', 'Under Review', 'In Review', 'Pending', 'Changes Requested', 'Draft'];
-
-            // Phase-assigned docs where user is author
-            const { data: authorPhaseDocs } = await supabase
-              .from('phase_assigned_document_template')
-              .select('id, name, status, due_date, deadline, company_phases!inner(company_id)')
-              .eq('company_phases.company_id', targetCompanyId)
-              .eq('is_excluded', false)
-              .in('status', AUTHOR_STATUSES)
-              .contains('authors_ids', JSON.stringify([user.id]))
-              .limit(20);
-
-            // Regular docs where user is author
-            const { data: authorRegularDocs } = await supabase
-              .from('documents')
-              .select('id, name, status, due_date')
-              .eq('company_id', targetCompanyId)
-              .in('status', AUTHOR_STATUSES)
-              .contains('authors_ids', JSON.stringify([user.id]))
-              .limit(20);
-
-            // Deduplicate — don't add if already in action items as review
-            const existingIds = new Set(actionItems.map(a => a.id));
-
-            (authorPhaseDocs || []).forEach((doc: any) => {
-              const itemId = `author-phase-${doc.id}`;
-              if (!existingIds.has(itemId) && !existingIds.has(`review-phase-${doc.id}`)) {
-                actionItems.push({
-                  id: itemId,
-                  title: `Author: ${doc.name}`,
-                  description: `Assigned as document author (${doc.status || 'Draft'})`,
-                  type: 'deadline',
-                  priority: 'medium',
-                  dueDate: doc.due_date || doc.deadline ? new Date(doc.due_date || doc.deadline) : undefined,
-                  url: '/app/review',
-                });
-              }
-            });
-
-            (authorRegularDocs || []).forEach((doc: any) => {
-              const itemId = `author-doc-${doc.id}`;
-              if (!existingIds.has(itemId) && !existingIds.has(`review-doc-${doc.id}`)) {
-                actionItems.push({
-                  id: itemId,
-                  title: `Author: ${doc.name}`,
-                  description: `Assigned as document author (${doc.status || 'Draft'})`,
-                  type: 'deadline',
-                  priority: 'medium',
-                  dueDate: doc.due_date ? new Date(doc.due_date) : undefined,
-                  url: '/app/review',
-                });
-              }
-            });
-          }
+          // Author-assigned documents are shown in the My Documents widget, not here
         }
       }
 

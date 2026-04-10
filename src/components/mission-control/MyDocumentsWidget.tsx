@@ -15,6 +15,7 @@ interface DocItem {
   id: string;
   name: string;
   type: string;
+  documentNumber?: string;
   status: string;
   updated_at: string;
   companyName: string;
@@ -23,6 +24,7 @@ interface DocItem {
   isStarred?: boolean;
   productName?: string;
   phaseName?: string;
+  roles: ('Author' | 'Reviewer' | 'Approver')[];
 }
 
 interface ReviewDoc {
@@ -68,6 +70,7 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
         `approved_by.eq.${user.id}`,
         `approver_user_ids.cs.{${user.id}}`,
         `reviewer_user_ids.cs.{${user.id}}`,
+        `authors_ids.cs.["${user.id}"]`,
       ];
       if (userGroupIds.length > 0) {
         orParts.push(`reviewer_group_ids.ov.{${userGroupIds.join(',')}}`);
@@ -76,7 +79,7 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
 
       let query = supabase
         .from('phase_assigned_document_template')
-        .select('id, name, document_type, status, updated_at, company_id, product_id')
+        .select('id, name, document_type, document_number, status, updated_at, company_id, product_id, authors_ids, reviewer_user_ids, reviewer_group_ids, approver_user_ids, approver_group_ids, uploaded_by')
         .eq('is_excluded', false)
         .or(orParts.join(','))
         .order('updated_at', { ascending: false })
@@ -147,10 +150,27 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
 
       return top10.map(doc => {
         const prod = doc.product_id ? productMap.get(doc.product_id) : undefined;
+        // Determine user's roles on this document
+        const roles: ('Author' | 'Reviewer' | 'Approver')[] = [];
+        const authorsArr = Array.isArray(doc.authors_ids) ? doc.authors_ids : [];
+        if (authorsArr.includes(user.id) || doc.uploaded_by === user.id) {
+          roles.push('Author');
+        }
+        const reviewerUsers = Array.isArray(doc.reviewer_user_ids) ? doc.reviewer_user_ids : [];
+        const reviewerGroups = Array.isArray(doc.reviewer_group_ids) ? doc.reviewer_group_ids : [];
+        if (reviewerUsers.includes(user.id) || reviewerGroups.some((g: string) => userGroupIds.includes(g))) {
+          roles.push('Reviewer');
+        }
+        const approverUsers = Array.isArray(doc.approver_user_ids) ? doc.approver_user_ids : [];
+        const approverGroups = Array.isArray(doc.approver_group_ids) ? doc.approver_group_ids : [];
+        if (approverUsers.includes(user.id) || approverGroups.some((g: string) => userGroupIds.includes(g))) {
+          roles.push('Approver');
+        }
         return {
           id: doc.id,
           name: doc.name || 'Untitled',
           type: doc.document_type || 'document',
+          documentNumber: (doc as any).document_number || undefined,
           status: doc.status || 'Not Started',
           updated_at: doc.updated_at || '',
           companyName: companyMap.get(doc.company_id || '') || 'Unknown',
@@ -159,6 +179,7 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
           isStarred: starredIds.has(doc.id),
           productName: prod?.name,
           phaseName: prod?.phase || undefined,
+          roles,
         };
       });
     },
@@ -248,7 +269,28 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
     );
   }
 
-  if (totalCount === 0) return null;
+  if (totalCount === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
+              <FileText className="w-5 h-5 text-primary" />
+              My Documents
+            </CardTitle>
+            {onRemove && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onRemove}>
+                <X className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No documents assigned to you yet.</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const currentCompanyRole = companyId
     ? companyRoles.find(r => r.companyId === companyId)
@@ -297,7 +339,12 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
                     <div className="min-w-0 flex-1">
                        <p className="text-sm font-medium truncate">{item.name}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{item.type}</span>
+                        <span>{item.documentNumber || item.type}</span>
+                        {item.roles.length > 0 && item.roles.map(role => (
+                          <Badge key={role} variant="secondary" className="text-[10px] px-1.5 py-0">
+                            {role}
+                          </Badge>
+                        ))}
                         {item.updated_at && (
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
@@ -305,11 +352,6 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground/70">
-                        {item.productName
-                          ? `${item.productName}${item.phaseName ? ` | ${item.phaseName}` : ''}`
-                          : 'Enterprise'}
-                      </p>
                     </div>
                   </div>
                   <Badge variant="outline" className="text-xs shrink-0">{displayStatus(item.status)}</Badge>

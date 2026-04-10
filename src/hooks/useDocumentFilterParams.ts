@@ -411,7 +411,7 @@ export function useDocumentFilterParams(
   );
 
   const resetSort = useCallback(() => {
-    setSortByDate('updated_newest');
+    setSortByDate('none');
   }, [setSortByDate]);
 
   // ============================================================================
@@ -490,7 +490,7 @@ export function useDocumentFilterParams(
       authors: [],
       segmentPhase: undefined,
       segmentStatus: undefined,
-      sortByDate: 'updated_newest',
+      sortByDate: 'none',
       searchQuery: '',
     }));
     setTableSortState({ column: null, direction: 'asc' });

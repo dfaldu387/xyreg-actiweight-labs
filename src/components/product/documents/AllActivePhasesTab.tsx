@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { useBulkOperationProgress } from "@/hooks/useBulkOperationProgress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FileText, Layers, File, Eye, Trash2, Plus, Copy, RefreshCw, CircleCheckBig, Sparkles, BookOpen, CheckSquare, FileEdit, Link, Send, Pencil, MoreHorizontal, Calendar, Users, FolderOpen, UserPlus, CalendarDays, FileDown, Loader2, Settings2 } from "lucide-react";
+import { FileText, Layers, File, Eye, Trash2, Plus, Copy, RefreshCw, CircleCheckBig, Sparkles, BookOpen, CheckSquare, FileEdit, Link, Send, Pencil, MoreHorizontal, Calendar, Users, FolderOpen, UserPlus, CalendarDays, FileDown, Loader2, Settings2, Upload, ShieldCheck } from "lucide-react";
 import { ColumnVisibilitySettings, type ColumnDefinition } from '@/components/shared/ColumnVisibilitySettings';
 import { useListColumnPreferences } from '@/hooks/useListColumnPreferences';
 import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
@@ -28,11 +28,14 @@ import { DocumentActionMenu } from './DocumentActionMenu';
 import { DocumentReviewersList } from './DocumentReviewersList';
 import { EditDocumentDialog } from './EditDocumentDialog';
 import { DocumentViewer } from '../DocumentViewer';
+import { ProductSpecificDocumentService } from '@/services/productSpecificDocumentService';
 import { DueDateBadge } from './DueDateBadge';
 import { OnlyOfficeEditorDialog } from './OnlyOfficeEditorDialog';
 // BulkCopyDocumentsDialog removed — scope popup handles cross-device copying
 import { BulkStatusUpdateDialog } from './BulkStatusUpdateDialog';
 import { BulkDocumentSummarySidebar } from './BulkDocumentSummarySidebar';
+import { BulkDocumentValidationDialog } from '@/components/documents/BulkDocumentValidationDialog';
+import { DocumentValidationService } from '@/services/documentValidationService';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,6 +64,7 @@ import { mirrorScopeToFamilyProducts } from "@/hooks/useAutoSyncScope";
 import { InheritanceExclusionPopover } from "@/components/shared/InheritanceExclusionPopover";
 import { DocumentDraftDrawer } from './DocumentDraftDrawer';
 import { CopyDocumentDialog } from './CopyDocumentDialog';
+import { SectionSelector } from "@/components/common/SectionSelector";
 import { Switch } from "@/components/ui/switch";
 
 interface AllActivePhasesTabProps {
@@ -85,6 +89,7 @@ interface AllActivePhasesTabProps {
   refDocTagMap?: Record<string, string[]>;
   sortByDate?: SortByDateOption;
   onAddDocumentClick?: () => void;
+  onBulkUploadClick?: () => void;
   viewMode?: 'card' | 'list';
   // Table sorting props
   tableSort?: TableSortState;
@@ -723,6 +728,7 @@ export function AllActivePhasesTab({
   refTagFilter = [],
   refDocTagMap = {},
   onAddDocumentClick,
+  onBulkUploadClick,
   viewMode = 'card',
   tableSort,
   onTableSortChange,
@@ -795,7 +801,7 @@ export function AllActivePhasesTab({
   // Removed assigningReviewers state - template instance reviewer assignment now in Edit dialog
   const [viewingDocument, setViewingDocument] = useState<any>(null);
   const [bulkCopyDialogOpen, setBulkCopyDialogOpen] = useState(false); // kept for BulkStatusUpdate
-  const [bulkMode, setBulkMode] = useState(false);
+  // bulkMode removed — checkboxes always visible, amber bar driven by selection count
 
   // Column visibility
   const DOCUMENT_COLUMNS: ColumnDefinition[] = [
@@ -826,6 +832,13 @@ export function AllActivePhasesTab({
   const [selectedBulkAction, setSelectedBulkAction] = useState<string>("");
   const [selectedBulkValue, setSelectedBulkValue] = useState<string>("");
   const [bulkDueDateValue, setBulkDueDateValue] = useState<Date | undefined>(undefined);
+  const [bulkPhaseForSection, setBulkPhaseForSection] = useState<string>("");
+  const [bulkSectionValue, setBulkSectionValue] = useState<string>("");
+  const [bulkSectionId, setBulkSectionId] = useState<string>("");
+  const [bulkValidationOpen, setBulkValidationOpen] = useState(false);
+  const [bulkValidationLoading, setBulkValidationLoading] = useState(false);
+  const [bulkValidationFindings, setBulkValidationFindings] = useState<any[]>([]);
+  const [bulkValidationDocCount, setBulkValidationDocCount] = useState(0);
   const [draftDrawerDocument, setDraftDrawerDocument] = useState<DocumentCICard | null>(null);
   const [editingTemplateWithOnlyOffice, setEditingTemplateWithOnlyOffice] = useState<any>(null);
   const [processingDocuments, setProcessingDocuments] = useState<Set<string>>(new Set());
@@ -875,6 +888,23 @@ export function AllActivePhasesTab({
     loading: lifecycleLoading,
     refetch: refetchPhaseDocuments
   } = usePhaseDocuments(companyId || '', productId);
+
+  // Fetch company chosen phases locally for bulk action dropdowns
+  const [localPhases, setLocalPhases] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!companyId) return;
+    const fetchLocalPhases = async () => {
+      const { data, error } = await (await import("@/integrations/supabase/client")).supabase
+        .from('company_chosen_phases')
+        .select(`position, company_phases!inner(id, name)`)
+        .eq('company_id', companyId)
+        .order('position');
+      if (!error && data) {
+        setLocalPhases(data.map(cp => ({ id: (cp.company_phases as any).id, name: (cp.company_phases as any).name })));
+      }
+    };
+    fetchLocalPhases();
+  }, [companyId]);
 
   // Clear optimistic state when lifecyclePhaseDocuments updates (real data arrived)
   const lifecyclePhaseDocsRef = React.useRef(lifecyclePhaseDocuments);
@@ -946,11 +976,21 @@ export function AllActivePhasesTab({
 
     startOperation(ids.length);
 
+    // Build a set of document IDs that come from the documents table (no phase_id)
+    const docsTableIds = new Set<string>();
+    Object.values(lifecyclePhaseDocuments).forEach((documents: any[]) => {
+      documents.forEach((doc: any) => {
+        if (!doc.phase_id && !doc.phaseId) {
+          docsTableIds.add(doc.id);
+        }
+      });
+    });
+
     for (let i = 0; i < ids.length; i++) {
       const docId = ids[i];
-      const isTemplate = docId.startsWith('template-');
-      const cleanId = isTemplate ? docId.replace(/^template-/, '') : docId;
-      const table = isTemplate ? 'phase_assigned_document_template' : 'documents';
+      const cleanId = docId.startsWith('template-') ? docId.replace(/^template-/, '') : docId;
+      // Route to correct table: documents without phase_id live in `documents` table
+      const table = docsTableIds.has(cleanId) ? 'documents' : 'phase_assigned_document_template';
 
       updateBulkProgress({ completed: i, currentItem: cleanId });
 
@@ -980,7 +1020,7 @@ export function AllActivePhasesTab({
     } else {
       toast.error(`All ${failCount} updates failed`);
     }
-  }, [bulkSelectedDocs, refetchPhaseDocuments, handleRefreshData, startOperation, updateBulkProgress, completeOperation]);
+  }, [bulkSelectedDocs, lifecyclePhaseDocuments, refetchPhaseDocuments, handleRefreshData, startOperation, updateBulkProgress, completeOperation]);
 
   useEffect(() => {
     const loadDocumentDueDateConfig = async () => {
@@ -1261,6 +1301,8 @@ export function AllActivePhasesTab({
           ? existingDueDate
           : (documentDueDateConfig && calculatedDueDate ? calculatedDueDate : null);
 
+        // Documents without a phase_id come from the `documents` table, not phase_assigned_document_template
+        const isFromDocumentsTable = !doc.phase_id && !doc.phaseId;
         docs.push({
           id: `template-${doc.id}`,
           name: doc.name,
@@ -1278,8 +1320,8 @@ export function AllActivePhasesTab({
           description: doc.description || doc.description,
           template_source_id: doc.template_source_id,
           reviewers: doc.reviewers,
-          reviewer_group_ids: doc.reviewer_group_ids, // Add reviewer group data
-          reviewer_group_id: doc.reviewer_group_id, // Add single reviewer group for backward compatibility
+          reviewer_group_ids: doc.reviewer_group_ids,
+          reviewer_group_id: doc.reviewer_group_id,
           // Compliance fields
           sub_section: doc.sub_section,
           document_reference: doc.document_reference,
@@ -1294,6 +1336,7 @@ export function AllActivePhasesTab({
           reference_document_ids: doc.reference_document_ids,
           tags: doc.tags || [],
           isTemplate: true,
+          sourceTable: isFromDocumentsTable ? 'documents' : 'phase_assigned_document_template',
           isInheritedFromMaster: doc._isInheritedFromMaster || doc.isInheritedFromMaster || false,
           masterProductName: doc._masterProductName || doc.masterProductName,
           masterProductId: doc._masterProductId || doc.masterProductId,
@@ -1674,7 +1717,8 @@ export function AllActivePhasesTab({
     }
   };
   const handleEditDocument = (document: DocumentCICard) => {
-    setEditingDocument(document);
+    // Open the Document Draft Drawer (Create Draft view) instead of the Edit dialog
+    setDraftDrawerDocument(document);
   };
 
   const handleEditTemplateWithOnlyOffice = (document: DocumentCICard) => {
@@ -1906,7 +1950,7 @@ export function AllActivePhasesTab({
                 await handleDeleteDocument(docId);
               }
               setBulkSelectedDocs(new Set());
-              setBulkMode(false);
+              setSelectedBulkAction("");
               toast.success(`Deleted ${ids.length} document(s)`);
             }}
           >
@@ -1947,29 +1991,14 @@ export function AllActivePhasesTab({
                       onHiddenColumnsChange={setHiddenColumns}
                     />
                   )}
-                  <Button
-                    onClick={() => setBulkSummaryDialogOpen(true)}
-                    size="sm"
-                    variant="outline"
-                    disabled={disabled}
-                    className="hover:bg-purple-50 hover:border-purple-300"
-                  >
-                    <Sparkles className="h-4 w-4 mr-2 text-purple-600" />
-                    AI Summary
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setBulkMode(!bulkMode);
-                      if (bulkMode) setBulkSelectedDocs(new Set());
-                    }}
-                    size="sm"
-                    variant={bulkMode ? "default" : "outline"}
-                    disabled={disabled}
-                  >
-                    <CheckSquare className="h-4 w-4 mr-2" />
-                    {bulkMode ? 'Cancel Bulk' : 'Bulk'}
-                  </Button>
+                  {/* Bulk button removed — checkboxes always visible */}
                 </>
+              )}
+              {onBulkUploadClick && (
+                <Button onClick={onBulkUploadClick} size="sm" variant="outline" disabled={disabled}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Bulk Upload
+                </Button>
               )}
               {onAddDocumentClick && (
                 <Button onClick={onAddDocumentClick} size="sm" disabled={disabled}>
@@ -1983,7 +2012,7 @@ export function AllActivePhasesTab({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Bulk Action Bar */}
-        {bulkMode && (
+        {bulkSelectedDocs.size > 0 && (
           <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg sticky top-0 z-10">
             {/* Progress indicator */}
             {bulkProgress.isRunning && (
@@ -2016,17 +2045,23 @@ export function AllActivePhasesTab({
                 setSelectedBulkAction(val);
                 setSelectedBulkValue("");
                 setBulkDueDateValue(undefined);
+                setBulkPhaseForSection("");
+                setBulkSectionValue("");
+                setBulkSectionId("");
               }}
             >
               <SelectTrigger className="h-8 w-[180px] text-xs">
                 <SelectValue placeholder="Select action..." />
               </SelectTrigger>
               <SelectContent>
-                {isAdmin && <SelectItem value="delete">Delete</SelectItem>}
+                <SelectItem value="phase_section">Phase & Section</SelectItem>
+                <SelectItem value="validate">Validate</SelectItem>
                 <SelectItem value="status">Set Status</SelectItem>
                 <SelectItem value="category">Set Category</SelectItem>
                 <SelectItem value="authors">Set Authors</SelectItem>
                 <SelectItem value="due_date">Set Due Date</SelectItem>
+                <SelectItem value="ai_summary">AI Summary</SelectItem>
+                {isAdmin && <SelectItem value="delete">Delete</SelectItem>}
               </SelectContent>
             </Select>
 
@@ -2091,6 +2126,42 @@ export function AllActivePhasesTab({
               </Popover>
             )}
 
+            {selectedBulkAction === 'phase_section' && (
+              <div className="flex items-center gap-2">
+                <Select value={selectedBulkValue} onValueChange={(val) => {
+                  setSelectedBulkValue(val);
+                  setBulkSectionValue("");
+                  setBulkSectionId("");
+                }}>
+                  <SelectTrigger className="h-8 w-[200px] text-xs">
+                    <SelectValue placeholder="Select phase..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__CORE__">Core Documents</SelectItem>
+                    {localPhases.map(phase => (
+                      <SelectItem key={phase.id} value={phase.id}>{phase.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedBulkValue && selectedBulkValue !== '__CORE__' && companyId && (
+                  <div className="w-[200px]">
+                    <SectionSelector
+                      value={bulkSectionValue}
+                      onChange={(value, sectionId) => {
+                        setBulkSectionValue(value);
+                        setBulkSectionId(sectionId || '');
+                      }}
+                      companyId={companyId}
+                      phaseId={selectedBulkValue}
+                      label=""
+                      placeholder="Section (optional)"
+                      compact
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Action button */}
             {selectedBulkAction === 'delete' ? (
               <Button
@@ -2103,12 +2174,88 @@ export function AllActivePhasesTab({
                 <Trash2 className="h-3 w-3 mr-1" />
                 Delete
               </Button>
+            ) : selectedBulkAction === 'validate' ? (
+              <Button
+                size="sm"
+                disabled={bulkSelectedDocs.size === 0 || bulkValidationLoading}
+                onClick={async () => {
+                  const selectedIds = Array.from(bulkSelectedDocs);
+                  setBulkValidationLoading(true);
+                  setBulkValidationFindings([]);
+                  setBulkValidationDocCount(selectedIds.length);
+                  setBulkValidationOpen(true);
+                  try {
+                    const allDocs = Object.values(lifecyclePhaseDocuments).flat() as any[];
+                    const selectedDocs = allDocs.filter(d => selectedIds.includes(d.id));
+                    const { data: drafts } = await supabase
+                      .from('document_studio_drafts' as any)
+                      .select('key, content')
+                      .in('key', selectedIds.map(id => `company-doc-${id}`));
+
+                    const docsForValidation = selectedDocs.map(doc => {
+                      const draft = (drafts as any[])?.find((d: any) => d.key === `company-doc-${doc.id}`);
+                      let sections: any[] = [];
+                      if (draft?.content) {
+                        try {
+                          const parsed = typeof draft.content === 'string' ? JSON.parse(draft.content) : draft.content;
+                          sections = (parsed.sections || []).map((s: any) => ({
+                            id: s.id,
+                            title: s.title,
+                            content: (s.content || []).map((c: any) => ({ type: c.type, content: c.content })),
+                          }));
+                        } catch { /* ignore parse errors */ }
+                      }
+                      return {
+                        documentName: doc.name,
+                        documentNumber: doc.document_number || '',
+                        documentType: doc.document_type || '',
+                        sections,
+                      };
+                    });
+
+                    const result = await DocumentValidationService.validateMultipleDocuments(
+                      companyId,
+                      docsForValidation
+                    );
+                    setBulkValidationFindings(result.findings);
+                  } catch (error: any) {
+                    toast.error('Bulk validation failed', { description: error.message });
+                  } finally {
+                    setBulkValidationLoading(false);
+                  }
+                }}
+                className="h-8 text-xs gap-1"
+              >
+                <ShieldCheck className="h-3 w-3" /> Validate
+              </Button>
+            ) : selectedBulkAction === 'ai_summary' ? (
+              <Button
+                size="sm"
+                disabled={bulkSelectedDocs.size === 0}
+                onClick={() => {
+                  // Sync bulk selection to summary selection
+                  if (externalToggleDoc) {
+                    // Clear existing, then select bulk docs via external handler
+                    bulkSelectedDocs.forEach(id => {
+                      if (!selectedDocsForSummary.has(id)) externalToggleDoc(id);
+                    });
+                  } else {
+                    setInternalSelectedDocs(new Set(bulkSelectedDocs));
+                  }
+                  setBulkSummaryDialogOpen(true);
+                }}
+                className="h-8 text-xs gap-1"
+              >
+                <Sparkles className="h-3 w-3" /> Summarize
+              </Button>
             ) : selectedBulkAction && (
               <Button
                 size="sm"
                 disabled={
                   bulkSelectedDocs.size === 0 ||
-                  (selectedBulkAction === 'due_date' ? !bulkDueDateValue : !selectedBulkValue)
+                   (selectedBulkAction === 'due_date' ? !bulkDueDateValue :
+                    selectedBulkAction === 'phase_section' ? !selectedBulkValue :
+                    !selectedBulkValue)
                 }
                 onClick={async () => {
                   if (selectedBulkAction === 'status') {
@@ -2119,10 +2266,63 @@ export function AllActivePhasesTab({
                     await bulkUpdateField('authors_ids', [selectedBulkValue]);
                   } else if (selectedBulkAction === 'due_date' && bulkDueDateValue) {
                     await bulkUpdateField('due_date', bulkDueDateValue.toISOString());
+                   } else if (selectedBulkAction === 'phase_section') {
+                    // Combined phase & section action
+                    const ids = Array.from(bulkSelectedDocs);
+                    const docsTableIds = new Set<string>();
+                    Object.values(lifecyclePhaseDocuments).forEach((documents: any[]) => {
+                      documents.forEach((doc: any) => {
+                        if (!doc.phase_id && !doc.phaseId) {
+                          docsTableIds.add(doc.id);
+                        }
+                      });
+                    });
+
+                    if (selectedBulkValue === '__CORE__') {
+                      await bulkUpdateField('phase_id', null);
+                    } else if (productId && companyId) {
+                      const service = new ProductSpecificDocumentService(productId, companyId);
+                      let successCount = 0;
+                      let failCount = 0;
+                      startOperation(ids.length);
+                      for (let i = 0; i < ids.length; i++) {
+                        const docId = ids[i];
+                        const cleanId = docId.startsWith('template-') ? docId.replace(/^template-/, '') : docId;
+                        const isCoreDoc = docsTableIds.has(cleanId);
+                        updateBulkProgress({ completed: i, currentItem: cleanId });
+
+                        const updates: any = { phase_id: selectedBulkValue };
+                        if (bulkSectionValue) {
+                          updates.sub_section = bulkSectionValue;
+                          if (bulkSectionId) updates.section_ids = [bulkSectionId];
+                        }
+
+                        if (isCoreDoc) {
+                          const ok = await service.updateDocument(docId, updates);
+                          if (ok) successCount++; else failCount++;
+                        } else {
+                          const { error } = await supabase
+                            .from('phase_assigned_document_template')
+                            .update(updates)
+                            .eq('id', cleanId);
+                          if (error) { console.error('Bulk phase/section update error:', error); failCount++; } else successCount++;
+                        }
+                        updateBulkProgress({ completed: i + 1, succeeded: successCount, failed: failCount });
+                      }
+                      completeOperation();
+                      refetchPhaseDocuments?.();
+                      handleRefreshData?.();
+                      if (failCount === 0) toast.success(`Updated ${successCount} documents`);
+                      else if (successCount > 0) toast.warning(`${successCount} updated, ${failCount} failed`);
+                      else toast.error(`All ${failCount} updates failed`);
+                    }
                   }
                   setSelectedBulkAction("");
                   setSelectedBulkValue("");
                   setBulkDueDateValue(undefined);
+                  setBulkPhaseForSection("");
+                  setBulkSectionValue("");
+                  setBulkSectionId("");
                 }}
                 className="h-8 text-xs"
               >
@@ -2130,19 +2330,6 @@ export function AllActivePhasesTab({
               </Button>
             )}
             </div>
-          </div>
-        )}
-        {/* Select All button - only visible when AI Summary sidebar is open */}
-        {bulkSummarySidebarOpen && selectableDocIds.length > 0 && (
-          <div className="flex items-center gap-2 pb-2 border-b border-gray-200">
-            <Button
-              onClick={handleSelectAllDocs}
-              size="sm"
-              variant="outline"
-              className="text-blue-600 border-blue-300 hover:bg-blue-50"
-            >
-              {allSelectableSelected ? 'Deselect All' : `Select All (${selectableDocIds.length})`}
-            </Button>
           </div>
         )}
         {(lifecycleLoading || positionsLoading) && filteredDocuments.length === 0 ? (
@@ -2180,7 +2367,7 @@ export function AllActivePhasesTab({
             getDocExclusionScope={(docId: string) => getDocExclusionScope(docId.replace(/^template-/, ''))}
             onSetDocExclusionScope={handleDocScopeChange}
             familyProductIds={effectiveFamilyProductIds}
-            bulkMode={bulkMode}
+            bulkMode={true}
             bulkSelectedDocs={bulkSelectedDocs}
             onToggleBulkDoc={(docId: string) => {
               setBulkSelectedDocs(prev => {
@@ -2189,13 +2376,16 @@ export function AllActivePhasesTab({
                 return next;
               });
             }}
+            onSelectAllBulkDocs={(ids: string[]) => {
+              setBulkSelectedDocs(new Set(ids));
+            }}
           />
         ) : (
           /* Card View */
           <div className="space-y-3">
             {filteredDocuments.map((doc) => (
               <div key={doc.id} className="flex items-start gap-3">
-                {bulkMode && (
+                {(
                   <div className="pt-5">
                     <Checkbox
                       checked={bulkSelectedDocs.has(doc.id)}
@@ -2230,9 +2420,9 @@ export function AllActivePhasesTab({
                     isSelected={selectedDocsForSummary.has(doc.id)}
                     onToggleSelect={handleToggleDocForSummary}
                     onCreateDraft={handleCreateInStudio}
-                    isExcludedFromVariant={isDocExcluded(doc.id.replace(/^template-/, ''), productId)}
-                    onToggleExclusion={(docId: string) => toggleDocExclusion(docId.replace(/^template-/, ''))}
-                    exclusionScope={getDocExclusionScope(doc.id.replace(/^template-/, ''))}
+                    isExcludedFromVariant={isVariantDevice && !!(doc as any).isInheritedFromMaster && isDocExcluded(doc.id.replace(/^template-/, ''), productId)}
+                    onToggleExclusion={isVariantDevice && !!(doc as any).isInheritedFromMaster ? (docId: string) => toggleDocExclusion(docId.replace(/^template-/, '')) : undefined}
+                    exclusionScope={isVariantDevice && !!(doc as any).isInheritedFromMaster ? getDocExclusionScope(doc.id.replace(/^template-/, '')) : undefined}
                     onSetExclusionScope={handleDocScopeChange}
                     familyProductIds={effectiveFamilyProductIds}
                   />
@@ -2361,6 +2551,13 @@ export function AllActivePhasesTab({
       }}
       filePath={draftDrawerDocument?.file_path}
       fileName={draftDrawerDocument?.file_name}
+    />
+    <BulkDocumentValidationDialog
+      open={bulkValidationOpen}
+      onOpenChange={setBulkValidationOpen}
+      isValidating={bulkValidationLoading}
+      findings={bulkValidationFindings}
+      documentCount={bulkValidationDocCount}
     />
   </div>;
 }

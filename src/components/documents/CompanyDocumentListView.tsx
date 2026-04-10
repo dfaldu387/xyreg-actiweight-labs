@@ -83,6 +83,7 @@ interface CompanyDocumentListViewProps {
   bulkMode?: boolean;
   bulkSelectedDocs?: Set<string>;
   onToggleBulkDoc?: (docId: string) => void;
+  onSelectAll?: (allIds: string[]) => void;
 }
 
 const getStatusBadgeStyles = (status: string) => {
@@ -126,6 +127,7 @@ export function CompanyDocumentListView({
   bulkMode = false,
   bulkSelectedDocs,
   onToggleBulkDoc,
+  onSelectAll,
 }: CompanyDocumentListViewProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [pendingDeleteDoc, setPendingDeleteDoc] = React.useState<CompanyDocument | null>(null);
@@ -257,7 +259,19 @@ export function CompanyDocumentListView({
   const columns: ColumnDef<CompanyDocument>[] = React.useMemo(() => [
     ...(bulkMode ? [{
       id: "bulk_select",
-      header: () => null,
+      header: () => {
+        const allIds = documents.map(d => d.id);
+        const allSelected = allIds.length > 0 && allIds.every(id => bulkSelectedDocs?.has(id));
+        const someSelected = allIds.some(id => bulkSelectedDocs?.has(id));
+        return (
+          <Checkbox
+            checked={allSelected ? true : someSelected ? "indeterminate" : false}
+            onCheckedChange={(checked) => {
+              onSelectAll?.(checked ? allIds : []);
+            }}
+          />
+        );
+      },
       cell: ({ row }: { row: any }) => (
         <Checkbox
           checked={bulkSelectedDocs?.has(row.original.id) ?? false}
@@ -269,7 +283,12 @@ export function CompanyDocumentListView({
       size: 40,
     } as ColumnDef<CompanyDocument>] : []),
     {
-      accessorKey: "name",
+      accessorFn: (row) => {
+        const docNumber = row.document_number;
+        const name = row.name;
+        return docNumber ? `${docNumber} ${name}` : name;
+      },
+      id: "name",
       header: ({ column }) => {
         return (
           <Button
@@ -284,49 +303,29 @@ export function CompanyDocumentListView({
       },
       cell: ({ row }) => {
         const doc = row.original;
+        const docNumber = doc.document_number;
+        // Strip the document number prefix from the name if it already starts with it
+        let cleanName = doc.name;
+        if (docNumber && cleanName.startsWith(docNumber)) {
+          cleanName = cleanName.slice(docNumber.length).replace(/^\s+/, '');
+        }
+        const displayName = docNumber ? `${docNumber} ${cleanName}` : cleanName;
         return (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span className="font-medium max-w-[180px] truncate block cursor-default">
-                  {doc.name}
+                <span
+                  className={`font-medium max-w-[240px] truncate block ${onCreateInStudio ? 'cursor-pointer hover:underline text-primary' : 'cursor-default'}`}
+                  onClick={onCreateInStudio ? (e) => { e.stopPropagation(); onCreateInStudio(doc); } : undefined}
+                >
+                  {docNumber && (
+                    <span className="text-muted-foreground font-mono text-xs mr-1.5">{docNumber}</span>
+                  )}
+                  {cleanName}
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                <span className="text-sm">{doc.name}</span>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      },
-    },
-    {
-      accessorKey: "phase_name",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="p-0 hover:bg-transparent"
-          >
-            Phase
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
-      cell: ({ row }) => {
-        const rawPhaseName = row.getValue("phase_name") as string | null;
-        const phaseName = !rawPhaseName || rawPhaseName.toLowerCase() === 'no phase' ? 'Core' : rawPhaseName;
-        return (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="max-w-[120px] truncate rounded-full border text-center text-xs font-semibold w-fit px-3 py-1 bg-primary/10 text-primary border-primary/30 cursor-default">
-                  {phaseName}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                <span className="text-sm">{phaseName}</span>
+                <span className="text-sm">{displayName}</span>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

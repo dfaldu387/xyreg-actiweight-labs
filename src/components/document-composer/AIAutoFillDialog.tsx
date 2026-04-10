@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X, BookOpen, ChevronDown, Eye, Circle, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { DocumentTemplate } from '@/types/documentComposer';
 import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
 import { ReferenceDocumentService } from '@/services/referenceDocumentService';
+import { fetchFullAIContext, type AIContextSources } from '@/services/aiContextAggregatorService';
 
 /** Standards that should always be pre-checked */
 const ALWAYS_PRECHECK = ['ISO 13485', 'ISO 14971', 'IEC 62366'];
@@ -21,6 +22,7 @@ interface AIAutoFillDialogProps {
   onOpenChange: (open: boolean) => void;
   template: DocumentTemplate;
   companyId?: string;
+  productId?: string;
   onContentUpdate: (contentId: string, newContent: string) => void;
 }
 
@@ -41,6 +43,7 @@ export function AIAutoFillDialog({
   onOpenChange,
   template,
   companyId,
+  productId,
   onContentUpdate,
 }: AIAutoFillDialogProps) {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -53,7 +56,36 @@ export function AIAutoFillDialog({
   const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [selectedStandardIds, setSelectedStandardIds] = useState<Set<string>>(new Set());
   const [standardsInitialized, setStandardsInitialized] = useState(false);
+  const [contextSources, setContextSources] = useState<AIContextSources | null>(null);
+  const isMountedRef = useRef(true);
   const { documents: refDocuments } = useReferenceDocuments(companyId);
+
+  const isAborted = () => !isMountedRef.current || !!abortControllerRef.current?.signal.aborted;
+
+  const safelySetGeneratingState = (generating: boolean) => {
+    if (!isMountedRef.current) return;
+    setIsGenerating(generating);
+  };
+
+  const safelySetDoneState = (done: boolean) => {
+    if (!isMountedRef.current) return;
+    setIsDone(done);
+  };
+
+  const safelySetCurrentGeneratingTitle = (title: string) => {
+    if (!isMountedRef.current) return;
+    setCurrentGeneratingTitle(title);
+  };
+
+  const safelySetContextSources = (sources: AIContextSources | null) => {
+    if (!isMountedRef.current) return;
+    setContextSources(sources);
+  };
+
+  const safelyUpdateSections = (updater: React.SetStateAction<SectionState[]>) => {
+    if (!isMountedRef.current) return;
+    setSections(updater);
+  };
 
   // ── Standards query (same pattern as AIContextSourcesPanel) ──
   const { data: standards = [] } = useQuery({
@@ -119,6 +151,7 @@ export function AIAutoFillDialog({
       setAdditionalInstructions('');
       setStandardsInitialized(false);
       setSelectedStandardIds(new Set());
+      setContextSources(null);
       abortControllerRef.current = null;
     }
   }, [open, template]);
@@ -169,13 +202,16 @@ export function AIAutoFillDialog({
     const selectedDocs = refDocuments.filter((d) => selectedRefDocIds.includes(d.id));
     const textParts: string[] = [];
     for (const doc of selectedDocs) {
+      if (isAborted()) return '';
       try {
         const ext = doc.file_name.split('.').pop()?.toLowerCase() || '';
         if (['txt', 'md', 'csv', 'json', 'xml', 'html'].includes(ext)) {
           const url = await ReferenceDocumentService.getDownloadUrl(doc.file_path);
+          if (isAborted()) return '';
           const resp = await fetch(url);
           if (resp.ok) {
             const text = await resp.text();
+            if (isAborted()) return '';
             textParts.push(`[${doc.file_name}]\n${text}`);
           }
         } else {
@@ -191,12 +227,12 @@ export function AIAutoFillDialog({
   // Shared helper to generate a single section
   const generateSection = async (section: SectionState, referenceContext: string): Promise<'done' | 'error' | 'aborted'> => {
     // Check if already aborted before starting
-    if (abortControllerRef.current?.signal.aborted) return 'aborted';
+    if (isAborted()) return 'aborted';
 
-    setSections((prev) =>
+    safelyUpdateSections((prev) =>
       prev.map((s) => (s.id === section.id ? { ...s, status: 'generating' } : s))
     );
-    setCurrentGeneratingTitle(section.title);
+    safelySetCurrentGeneratingTitle(section.title);
 
     try {
       let prompt = `Generate comprehensive draft content for the "${section.title}" section following medical device industry best practices and regulatory standards (ISO 13485, FDA 21 CFR 820, EU MDR). Write professional, concise content appropriate for a ${template.type || 'QMS'} document titled "${template.name}".`;
@@ -244,11 +280,13 @@ export function AIAutoFillDialog({
 
       const { data, error } = result;
 
+      if (isAborted()) return 'aborted';
+
       if (error || !data?.success || !data?.content) {
         throw new Error(data?.error || 'Failed to generate content');
       }
 
-      setSections((prev) =>
+      safelyUpdateSections((prev) =>
         prev.map((s) =>
           s.id === section.id
             ? { ...s, status: 'done', generatedContent: data.content }
@@ -259,13 +297,14 @@ export function AIAutoFillDialog({
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         // Reset section back to pending on abort
-        setSections((prev) =>
+        safelyUpdateSections((prev) =>
           prev.map((s) => (s.id === section.id ? { ...s, status: 'pending' } : s))
         );
         return 'aborted';
       }
       console.error(`Error generating content for ${section.title}:`, err);
-      setSections((prev) =>
+      if (isAborted()) return 'aborted';
+      safelyUpdateSections((prev) =>
         prev.map((s) => (s.id === section.id ? { ...s, status: 'error' } : s))
       );
       return 'error';
@@ -281,33 +320,45 @@ export function AIAutoFillDialog({
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    setIsGenerating(true);
-    setIsDone(false);
+    safelySetGeneratingState(true);
+    safelySetDoneState(false);
 
-    const referenceContext = await fetchReferenceContext();
+    // Fetch device/company context and reference docs in parallel
+    const [deviceContext, referenceContext] = await Promise.all([
+      fetchFullAIContext(productId, companyId),
+      fetchReferenceContext(),
+    ]);
+    if (controller.signal.aborted || !isMountedRef.current) {
+      abortControllerRef.current = null;
+      safelySetGeneratingState(false);
+      safelySetCurrentGeneratingTitle('');
+      return;
+    }
+    safelySetContextSources(deviceContext.sources);
+    const fullReferenceContext = [deviceContext.text, referenceContext].filter(Boolean).join('\n\n');
 
     let successCount = 0;
     let errorCount = 0;
 
     for (const section of toGenerate) {
-      const result = await generateSection(section, referenceContext);
+      const result = await generateSection(section, fullReferenceContext);
       if (result === 'aborted') break;
       if (result === 'done') successCount++;
       else errorCount++;
     }
 
     const stopped = controller.signal.aborted;
-    setIsGenerating(false);
-    setCurrentGeneratingTitle('');
+    safelySetGeneratingState(false);
+    safelySetCurrentGeneratingTitle('');
     abortControllerRef.current = null;
 
     if (stopped) {
-      if (successCount > 0) setIsDone(true);
+      if (successCount > 0) safelySetDoneState(true);
       toast.info(successCount > 0
         ? `Generation stopped — ${successCount} section${successCount > 1 ? 's' : ''} completed successfully.`
         : 'Generation stopped — no sections were completed.');
     } else {
-      setIsDone(true);
+      safelySetDoneState(true);
       if (successCount > 0 && errorCount === 0) {
         toast.success(`AI content generated for all ${successCount} sections!`);
       } else if (successCount > 0) {
@@ -328,38 +379,49 @@ export function AIAutoFillDialog({
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    setIsGenerating(true);
-    setIsDone(false);
+    safelySetGeneratingState(true);
+    safelySetDoneState(false);
 
     // Reset failed to pending
-    setSections((prev) =>
+    safelyUpdateSections((prev) =>
       prev.map((s) => (s.status === 'error' ? { ...s, status: 'pending' as SectionStatus } : s))
     );
 
-    const referenceContext = await fetchReferenceContext();
+    const [deviceContext, referenceContext] = await Promise.all([
+      fetchFullAIContext(productId, companyId),
+      fetchReferenceContext(),
+    ]);
+    if (controller.signal.aborted || !isMountedRef.current) {
+      abortControllerRef.current = null;
+      safelySetGeneratingState(false);
+      safelySetCurrentGeneratingTitle('');
+      return;
+    }
+    safelySetContextSources(deviceContext.sources);
+    const fullReferenceContext = [deviceContext.text, referenceContext].filter(Boolean).join('\n\n');
 
     let successCount = 0;
     let errorCount = 0;
 
     for (const section of failedSections) {
-      const result = await generateSection(section, referenceContext);
+      const result = await generateSection(section, fullReferenceContext);
       if (result === 'aborted') break;
       if (result === 'done') successCount++;
       else errorCount++;
     }
 
     const stopped = controller.signal.aborted;
-    setIsGenerating(false);
-    setCurrentGeneratingTitle('');
+    safelySetGeneratingState(false);
+    safelySetCurrentGeneratingTitle('');
     abortControllerRef.current = null;
 
     if (stopped) {
-      if (successCount > 0) setIsDone(true);
+      if (successCount > 0) safelySetDoneState(true);
       toast.info(successCount > 0
         ? `Retry stopped — ${successCount} section${successCount > 1 ? 's' : ''} completed successfully.`
         : 'Retry stopped — no sections were completed.');
     } else {
-      setIsDone(true);
+      safelySetDoneState(true);
       if (successCount > 0 && errorCount === 0) {
         toast.success(`Retry successful for all ${successCount} sections!`);
       } else if (successCount > 0) {
@@ -395,9 +457,26 @@ export function AIAutoFillDialog({
     onOpenChange(false);
   };
 
+  // Abort in-flight requests on unmount to prevent state updates on unmounted component
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
   const handleClose = () => {
-    if (isGenerating) return;
+    abortControllerRef.current?.abort();
     onOpenChange(false);
+  };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      handleClose();
+      return;
+    }
+    onOpenChange(true);
   };
 
   const generatedCount = sections.filter((s) => s.status === 'done').length;
@@ -405,7 +484,7 @@ export function AIAutoFillDialog({
   const approvedCount = sections.filter((s) => s.status === 'done' && s.approved).length;
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={handleClose}>
+    <DialogPrimitive.Root open={open} onOpenChange={handleDialogOpenChange}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" style={{ zIndex: 1400 }} />
         <DialogPrimitive.Content
@@ -418,9 +497,12 @@ export function AIAutoFillDialog({
               <Sparkles className="w-5 h-5 text-blue-600" />
               AI Auto-Fill All Sections
             </DialogPrimitive.Title>
+            <DialogPrimitive.Description className="sr-only">
+              Generate draft content for multiple document sections and review approved results before applying them.
+            </DialogPrimitive.Description>
           </div>
 
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+          <DialogPrimitive.Close onClick={handleClose} className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
@@ -455,6 +537,61 @@ export function AIAutoFillDialog({
                     <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
                     <span className="font-medium">Standards</span>
                     <span className="text-muted-foreground">{selectedStandardIds.size} selected</span>
+                  </div>
+                )}
+                {productId && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                    {contextSources?.deviceDefinition ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                    ) : (
+                      <Circle className="h-3 w-3 text-muted-foreground shrink-0" />
+                    )}
+                    <span className="font-medium">Device Definition</span>
+                    <span className="text-muted-foreground">{contextSources?.deviceDefinition ? 'Loaded' : 'Available'}</span>
+                  </div>
+                )}
+                {productId && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                    {contextSources?.riskManagement ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                    ) : (
+                      <Circle className="h-3 w-3 text-muted-foreground shrink-0" />
+                    )}
+                    <span className="font-medium">Risk Management</span>
+                    <span className="text-muted-foreground">{contextSources?.riskManagement ? 'Loaded' : 'Available'}</span>
+                  </div>
+                )}
+                {productId && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                    {contextSources?.designControls ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                    ) : (
+                      <Circle className="h-3 w-3 text-muted-foreground shrink-0" />
+                    )}
+                    <span className="font-medium">Design Controls</span>
+                    <span className="text-muted-foreground">{contextSources?.designControls ? 'Loaded' : 'Available'}</span>
+                  </div>
+                )}
+                {productId && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                    {contextSources?.clinicalData ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                    ) : (
+                      <Circle className="h-3 w-3 text-muted-foreground shrink-0" />
+                    )}
+                    <span className="font-medium">Clinical Data</span>
+                    <span className="text-muted-foreground">{contextSources?.clinicalData ? 'Loaded' : 'Available'}</span>
+                  </div>
+                )}
+                {companyId && (
+                  <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+                    {contextSources?.companySettings ? (
+                      <CheckCircle2 className="h-3 w-3 text-green-600 dark:text-green-400 shrink-0" />
+                    ) : (
+                      <Circle className="h-3 w-3 text-muted-foreground shrink-0" />
+                    )}
+                    <span className="font-medium">Company Settings</span>
+                    <span className="text-muted-foreground">{contextSources?.companySettings ? 'Loaded' : 'Available'}</span>
                   </div>
                 )}
               </div>
@@ -738,7 +875,7 @@ export function AIAutoFillDialog({
 
             {/* Actions */}
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={handleClose} disabled={isGenerating}>
+              <Button variant="outline" onClick={handleClose}>
                 Cancel
               </Button>
               {!isDone ? (

@@ -116,6 +116,7 @@ interface DocumentListViewProps {
   bulkMode?: boolean;
   bulkSelectedDocs?: Set<string>;
   onToggleBulkDoc?: (docId: string) => void;
+  onSelectAllBulkDocs?: (ids: string[]) => void;
 }
 
 const getStatusBadgeStyles = (status: string) => {
@@ -191,6 +192,7 @@ export function DocumentListView({
   bulkMode = false,
   bulkSelectedDocs,
   onToggleBulkDoc,
+  onSelectAllBulkDocs,
 }: DocumentListViewProps) {
   // Use external sorting if provided, otherwise use local state
   const [localSorting, setLocalSorting] = React.useState<SortingState>([]);
@@ -241,10 +243,34 @@ export function DocumentListView({
   }, [tableSort, localSorting]);
 
   const columns: ColumnDef<DocumentListItem>[] = React.useMemo(() => [
-    // Bulk mode checkbox column
-    ...(bulkMode && onToggleBulkDoc ? [{
+    // Bulk mode checkbox column — always visible when handler provided
+    ...(onToggleBulkDoc ? [{
       id: "bulkSelect",
-      header: () => null,
+      header: ({ table }: { table: any }) => {
+        const allRows = table.getRowModel().rows;
+        const allIds = allRows.map((r: any) => r.original.id);
+        const allSelected = allIds.length > 0 && allIds.every((id: string) => bulkSelectedDocs?.has(id));
+        const someSelected = !allSelected && allIds.some((id: string) => bulkSelectedDocs?.has(id));
+        return (
+          <Checkbox
+            checked={allSelected}
+            ref={(el: HTMLButtonElement | null) => {
+              if (el) (el as any).indeterminate = someSelected;
+            }}
+            onCheckedChange={() => {
+              if (allSelected) {
+                // Deselect all visible
+                if (onSelectAllBulkDocs) onSelectAllBulkDocs([]);
+              } else {
+                // Select all visible
+                if (onSelectAllBulkDocs) onSelectAllBulkDocs(allIds);
+              }
+            }}
+            className="h-5 w-5"
+            aria-label="Select all documents"
+          />
+        );
+      },
       cell: ({ row }: { row: any }) => {
         const doc = row.original;
         const isChecked = bulkSelectedDocs?.has(doc.id) || false;

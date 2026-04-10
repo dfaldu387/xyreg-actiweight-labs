@@ -1,3 +1,19 @@
+export interface SubPrefixEntry {
+  key: string;
+  label: string;
+  code: string;
+}
+
+export const DEFAULT_SUB_PREFIXES: SubPrefixEntry[] = [
+  { key: 'qa', label: 'Quality Assurance', code: 'QA' },
+  { key: 'de', label: 'Design/Engineering', code: 'DE' },
+  { key: 'rm', label: 'Risk Management', code: 'RM' },
+  { key: 'cl', label: 'Clinical', code: 'CL' },
+  { key: 'ra', label: 'Regulatory Affairs', code: 'RA' },
+  { key: 'mf', label: 'Manufacturing', code: 'MF' },
+  { key: 'sc', label: 'Supply Chain', code: 'SC' },
+];
+
 export interface CategoryNumberingConfig {
   categoryKey: string;
   categoryName: string;

@@ -17,6 +17,10 @@ interface UserAndGroupSelectorProps {
   onUserIdsChange: (ids: string[]) => void;
   disabledGroupIds?: string[];
   disabledUserIds?: string[];
+  defaultExpanded?: boolean;
+  groupLabel?: string;
+  disabledLabel?: string;
+  accentColor?: 'blue' | 'green';
 }
 
 export function UserAndGroupSelector({
@@ -29,11 +33,15 @@ export function UserAndGroupSelector({
   onUserIdsChange,
   disabledGroupIds = [],
   disabledUserIds = [],
+  defaultExpanded = false,
+  groupLabel,
+  disabledLabel = 'Already reviewed',
+  accentColor = 'blue',
 }: UserAndGroupSelectorProps) {
   const { reviewerGroups } = useReviewerGroups(companyId);
   const { authors } = useDocumentAuthors(companyId);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   const getGroupMemberIds = (groupId: string): string[] => {
     const group = reviewerGroups.find(g => g.id === groupId);
@@ -47,7 +55,9 @@ export function UserAndGroupSelector({
     const memberIds = getGroupMemberIds(groupId);
     if (checked) {
       onGroupIdsChange([...selectedGroupIds, groupId]);
-      const newUserIds = new Set([...selectedUserIds, ...memberIds]);
+      // Exclude disabled (already reviewed) users when selecting a group
+      const eligibleMemberIds = memberIds.filter(uid => !disabledUserIds.includes(uid));
+      const newUserIds = new Set([...selectedUserIds, ...eligibleMemberIds]);
       onUserIdsChange(Array.from(newUserIds));
     } else {
       onGroupIdsChange(selectedGroupIds.filter(id => id !== groupId));
@@ -125,26 +135,30 @@ export function UserAndGroupSelector({
 
       {/* Expanded: group toggles + user list */}
       {isExpanded && (
-        <div className="mt-2 space-y-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           {/* Group toggles */}
           {reviewerGroups.length > 0 && (
             <div className="space-y-1 border rounded-md p-2">
-              <span className="text-xs text-muted-foreground">Select reviewer group</span>
+              <span className="text-xs text-muted-foreground">{groupLabel || `Select ${label.toLowerCase().replace(/s$/, '')} group`}</span>
               {reviewerGroups.map(group => {
                 const activeMembers = (group.members || []).filter((m: any) => m.is_active !== false);
                 const memberCount = activeMembers.length;
-                const allMembersSelected = memberCount > 0 && activeMembers.every((m: any) => selectedUserSet.has(m.user_id));
-                const isChecked = selectedGroupSet.has(group.id) && allMembersSelected;
+                const eligibleMembers = activeMembers.filter((m: any) => !disabledUserIds.includes(m.user_id));
+                const allEligibleSelected = eligibleMembers.length > 0
+                  ? eligibleMembers.every((m: any) => selectedUserSet.has(m.user_id))
+                  : memberCount === 0 ? false : true;
+                const isChecked = selectedGroupSet.has(group.id) && allEligibleSelected;
+                const isGroupDisabled = disabledGroupIds.includes(group.id);
                 return (
-                  <label key={group.id} className="flex items-center gap-2 py-1 px-1 rounded hover:bg-muted/50 cursor-pointer">
+                  <label key={group.id} className={`flex items-center gap-2 py-1 px-1 rounded ${isGroupDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-muted/50 cursor-pointer'}`}>
                     <Checkbox
                       checked={isChecked}
                       onCheckedChange={(checked) => handleGroupToggle(group.id, !!checked)}
+                      disabled={isGroupDisabled}
                     />
                     <span className={`text-sm ${memberCount > 0 ? 'font-medium' : 'text-muted-foreground'}`}>{group.name}</span>
-                    {memberCount > 0 && (
-                      <span className="text-xs text-muted-foreground ml-auto">({memberCount})</span>
-                    )}
+                    <span className="text-xs text-muted-foreground">({memberCount})</span>
+                    {isGroupDisabled && <span className="text-xs text-green-600 ml-1">{disabledLabel}</span>}
                   </label>
                 );
               })}
@@ -152,7 +166,7 @@ export function UserAndGroupSelector({
           )}
 
           {/* Search + user list */}
-          <div className="space-y-1">
+          <div className={`space-y-1 min-w-0 ${reviewerGroups.length === 0 ? 'col-span-2' : ''}`}>
             <span className="text-xs text-muted-foreground">Individual users</span>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -179,6 +193,7 @@ export function UserAndGroupSelector({
                       onCheckedChange={(checked) => handleUserToggle(user.id, !!checked)}
                     />
                     <span className="truncate">{user.name}</span>
+                    {isDisabled && <span className="text-xs text-green-600 ml-1">{disabledLabel}</span>}
                     {groups && groups.length > 0 && (
                       <Badge variant="outline" className="text-[10px] ml-auto shrink-0">
                         {groups[0]}{groups.length > 1 ? ` +${groups.length - 1}` : ''}

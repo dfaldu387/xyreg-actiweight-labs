@@ -103,6 +103,24 @@ export class ProductDataTableService {
         }
         return { success: true, data: data };
     }
+    static async archiveProduct(productId: string) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data, error } = await supabase
+            .from('products')
+            .update({
+                status: 'Archived',
+                is_archived: true,
+                archived_at: new Date().toISOString(),
+                archived_by: user?.id || null,
+            })
+            .eq('id', productId)
+            .select('company_id')
+            .single();
+        if (error) throw error;
+        if (data?.company_id) this.invalidatePortfolioCache(data.company_id);
+        return { success: true, data };
+    }
+
     static async getProductVariantsOptions(dimensionId: string) {
         const { data, error } = await supabase
             .from('product_variation_options')

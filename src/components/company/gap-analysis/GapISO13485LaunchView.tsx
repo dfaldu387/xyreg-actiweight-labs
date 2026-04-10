@@ -9,12 +9,15 @@ import { cn } from '@/lib/utils';
 import type { GapAnalysisItem } from '@/types/client';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { StandardStatusBadge } from './StandardStatusBadge';
+import type { StandardVersionStatus } from '@/hooks/useStandardVersionStatus';
 
 interface GapISO13485LaunchViewProps {
   items: GapAnalysisItem[];
   disabled?: boolean;
   companyId?: string;
   companyName?: string;
+  standardStatus?: StandardVersionStatus;
 }
 
 function getCompletionMap(items: GapAnalysisItem[]): Map<string, { isComplete: boolean; itemId: string }> {
@@ -33,7 +36,7 @@ function getCompletionMap(items: GapAnalysisItem[]): Map<string, { isComplete: b
   return map;
 }
 
-export function GapISO13485LaunchView({ items, disabled = false, companyId, companyName }: GapISO13485LaunchViewProps) {
+export function GapISO13485LaunchView({ items, disabled = false, companyId, companyName, standardStatus }: GapISO13485LaunchViewProps) {
   const completionMap = getCompletionMap(items);
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
   const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
@@ -59,6 +62,7 @@ export function GapISO13485LaunchView({ items, disabled = false, companyId, comp
             <div className="flex items-center gap-2 mb-1">
               <h2 className="text-lg font-bold text-foreground">ISO 13485 — Quality Management System</h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-600 text-white uppercase tracking-wider">ISO 13485</span>
+              <StandardStatusBadge status={standardStatus} />
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Build your complete ISO 13485:2016 QMS compliance file. Each section maps directly to a standard clause — click any step to navigate to the relevant enterprise module, fill in the data, and track your progress.

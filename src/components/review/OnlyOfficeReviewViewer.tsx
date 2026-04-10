@@ -446,7 +446,10 @@ export function OnlyOfficeReviewViewer({
       }
 
       // Save individual reviewer decision
-      await saveReviewerDecision("approved", reviewComments.trim() || "Approved and signed");
+      await saveReviewerDecision(
+        userRole === 'approver' ? "approved" : "reviewed",
+        reviewComments.trim() || (userRole === 'approver' ? "Approved and signed" : "Reviewed and signed")
+      );
 
       // Update review assignment to completed
       // Check both group-based and individual user assignments
@@ -456,27 +459,72 @@ export function OnlyOfficeReviewViewer({
         await updateAssignmentStatus(assignment.id, "completed", assignment.reviewer_group_id || '');
       }
 
-      // Determine new status based on who is signing
-      if (userRole === 'approver') {
-        // Approver signing — document is fully approved
-        await updateDocumentStatus("Approved");
-      } else {
-        // Reviewer signing — check if approvers are assigned for next step
+      // Determine new status: check if ALL reviewers AND ALL approvers have completed
+      {
         const cleanId = documentId.startsWith("template-") ? documentId.replace("template-", "") : documentId;
-        const { data: docRecord } = await supabase
-          .from("phase_assigned_document_template")
-          .select("approved_by, approver_user_ids, approver_group_ids")
-          .eq("id", cleanId)
+
+        // 1. Fetch the document's reviewer + approver lists
+        const { data: docData } = await supabase
+          .from('phase_assigned_document_template')
+          .select('reviewer_user_ids, reviewer_group_ids, approver_user_ids, approver_group_ids')
+          .eq('id', cleanId)
           .maybeSingle();
 
-        const hasApprovers = docRecord?.approved_by
-          || ((docRecord as any)?.approver_user_ids?.length > 0)
-          || ((docRecord as any)?.approver_group_ids?.length > 0);
+        // 2. Build full set of expected reviewer + approver user IDs (individual + group members)
+        const expectedReviewerIds = new Set<string>(
+          Array.isArray(docData?.reviewer_user_ids) ? docData.reviewer_user_ids : []
+        );
+        const expectedApproverIds = new Set<string>(
+          Array.isArray(docData?.approver_user_ids) ? docData.approver_user_ids : []
+        );
+        const allGroupIds = [
+          ...(Array.isArray(docData?.reviewer_group_ids) ? docData.reviewer_group_ids : []),
+          ...(Array.isArray(docData?.approver_group_ids) ? docData.approver_group_ids : []),
+        ];
+        if (allGroupIds.length > 0) {
+          const { data: members } = await supabase
+            .from('reviewer_group_members_new')
+            .select('user_id, group_id')
+            .in('group_id', allGroupIds)
+            .eq('is_active', true);
+          const reviewerGroupIds = new Set(Array.isArray(docData?.reviewer_group_ids) ? docData.reviewer_group_ids : []);
+          const approverGroupIds = new Set(Array.isArray(docData?.approver_group_ids) ? docData.approver_group_ids : []);
+          (members || []).forEach(m => {
+            if (reviewerGroupIds.has(m.group_id)) expectedReviewerIds.add(m.user_id);
+            if (approverGroupIds.has(m.group_id)) expectedApproverIds.add(m.user_id);
+          });
+        }
 
-        if (hasApprovers) {
-          await updateDocumentStatus("Pending Approval");
-        } else {
+        // 3. Fetch all existing decisions for this document
+        const { data: allDecisions } = await supabase
+          .from('document_reviewer_decisions')
+          .select('reviewer_id, decision')
+          .eq('document_id', cleanId);
+
+        const completedReviewerIds = new Set(
+          (allDecisions || [])
+            .filter(d => d.decision === 'reviewed' || d.decision === 'approved')
+            .map(d => d.reviewer_id)
+        );
+        const completedApproverIds = new Set(
+          (allDecisions || [])
+            .filter(d => d.decision === 'approved')
+            .map(d => d.reviewer_id)
+        );
+
+        // 4. Check completion
+        const allReviewersDone = expectedReviewerIds.size > 0
+          ? Array.from(expectedReviewerIds).every(uid => completedReviewerIds.has(uid))
+          : true;
+        const allApproversDone = expectedApproverIds.size > 0
+          ? Array.from(expectedApproverIds).every(uid => completedApproverIds.has(uid))
+          : true;
+
+        if (allReviewersDone && allApproversDone) {
           await updateDocumentStatus("Approved");
+        } else {
+          // Stay in review — don't change status away from In Review
+          await updateDocumentStatus("In Review");
         }
       }
 
@@ -492,7 +540,7 @@ export function OnlyOfficeReviewViewer({
 
       setSignatureRecord((record as ESignRecord) || null);
       setReviewStep("complete");
-      toast.success("Document approved and signed successfully");
+      toast.success(userRole === 'approver' ? "Document approved and signed successfully" : "Document reviewed and signed successfully");
     } catch (err: any) {
       console.error("[Review] Signing error:", err);
       toast.error("Failed to apply signature. Please try again.");
@@ -629,13 +677,13 @@ export function OnlyOfficeReviewViewer({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PenTool className="h-5 w-5 text-primary" />
-              {reviewStep === "decision" && "Review Decision"}
-              {reviewStep === "sign" && "E-Signature — Approve Document"}
+              {reviewStep === "decision" && (userRole === 'approver' ? "Approval Decision" : "Review Decision")}
+              {reviewStep === "sign" && (userRole === 'approver' ? "E-Signature — Approve Document" : "E-Signature — Review Document")}
               {reviewStep === "complete" && "Signature Applied"}
             </DialogTitle>
             <DialogDescription>
-              {reviewStep === "decision" && `Provide your review decision for "${documentName}"`}
-              {reviewStep === "sign" && "Sign to confirm your approval per FDA 21 CFR Part 11"}
+              {reviewStep === "decision" && (userRole === 'approver' ? `Provide your approval decision for "${documentName}"` : `Provide your review decision for "${documentName}"`)}
+              {reviewStep === "sign" && (userRole === 'approver' ? "Sign to confirm your approval per FDA 21 CFR Part 11" : "Sign to confirm your review per FDA 21 CFR Part 11")}
               {reviewStep === "complete" && "Your signature has been recorded"}
             </DialogDescription>
           </DialogHeader>
@@ -655,13 +703,23 @@ export function OnlyOfficeReviewViewer({
               </div>
 
               <div className="flex flex-col gap-2 pt-2">
-                <Button
-                  onClick={handleApproveClick}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  Approve & Sign
-                </Button>
+                {userRole === 'approver' ? (
+                  <Button
+                    onClick={handleApproveClick}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Approve & Sign
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleApproveClick}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Review & Sign
+                  </Button>
+                )}
                 <Button
                   onClick={() => handleRejectOrChanges("needs_changes")}
                   disabled={isSubmitting || !reviewComments.trim()}
@@ -780,7 +838,7 @@ export function OnlyOfficeReviewViewer({
                   ) : (
                     <PenTool className="h-4 w-4" />
                   )}
-                  {isSigning ? "Applying Signature..." : "Sign & Approve"}
+                  {isSigning ? "Applying Signature..." : userRole === 'approver' ? "Sign & Approve" : "Sign & Complete Review"}
                 </Button>
               </div>
             </div>
@@ -805,7 +863,7 @@ export function OnlyOfficeReviewViewer({
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                   <CheckCircle className="h-8 w-8 text-green-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-green-800">Document Approved & Signed</h3>
+                <h3 className="text-lg font-semibold text-green-800">{userRole === 'approver' ? "Document Approved & Signed" : "Document Reviewed & Signed"}</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   Signed by <span className="font-medium text-foreground">{fullLegalName}</span> on {dateStr} at {timeStr}
                 </p>

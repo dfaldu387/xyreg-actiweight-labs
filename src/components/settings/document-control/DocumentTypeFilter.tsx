@@ -12,8 +12,8 @@ export function DocumentTypeFilter({ countByType, activeTab }: DocumentTypeFilte
   return (
     <TabsList>
       <TabsTrigger value="all">All Documents</TabsTrigger>
-      <TabsTrigger value="core">
-        Core Documents <Badge variant="outline" className="ml-2">{countByType("Core")}</Badge>
+      <TabsTrigger value="governance">
+        Governance <Badge variant="outline" className="ml-2">{countByType("Governance")}</Badge>
       </TabsTrigger>
       <TabsTrigger value="standard">
         Standard <Badge variant="outline" className="ml-2">{countByType("Standard")}</Badge>

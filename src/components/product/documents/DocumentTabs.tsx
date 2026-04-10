@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BarChart3, LayoutGrid, List, RefreshCw, FileText } from "lucide-react";
+import { BarChart3, LayoutGrid, List, RefreshCw, FileText, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useTranslation } from "@/hooks/useTranslation";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -47,6 +48,7 @@ interface DocumentTabsProps {
   onDocumentsRefresh: () => Promise<any>;
   onSyncRefresh?: () => Promise<any>;
   onAddDocumentClick: () => void;
+  onBulkUploadClick?: () => void;
   onPhaseDeadlineChange: (phaseId: string, date: Date | undefined) => void;
   onDocumentStatusChange: (phaseId: string, documentId: string, status: string) => void;
   onDocumentDeadlineChange: (phaseId: string, documentId: string, date: Date | undefined) => void;
@@ -89,6 +91,7 @@ export function DocumentTabs({
   onDocumentsRefresh,
   onSyncRefresh,
   onAddDocumentClick,
+  onBulkUploadClick,
   statusFilter = [],
   onStatusFilterChange,
   phaseFilter,
@@ -119,6 +122,7 @@ export function DocumentTabs({
   const [isGraphModalOpen, setIsGraphModalOpen] = useState(false);
   const [isSyncPreviewOpen, setIsSyncPreviewOpen] = useState(false);
   const [selectedSyncDocs, setSelectedSyncDocs] = useState<Set<number>>(new Set());
+  const [syncSearchQuery, setSyncSearchQuery] = useState('');
   const [hideExcluded, setHideExcluded] = useState(false);
 
   // Detect if this product is a variant
@@ -708,30 +712,23 @@ export function DocumentTabs({
             </ToggleGroupItem>
           </ToggleGroup>
 
-          {/* Sync Documents Button */}
-          <div className="relative">
-            <Button
-              variant="outline"
-              onClick={() => setIsSyncPreviewOpen(true)}
-              className="flex items-center gap-2 bg-background"
-              disabled={disabled || isSyncing || !isAdmin}
-            >
-              <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Syncing...' : 'Sync Documents'}
-            </Button>
-            {pendingSyncCount > 0 && !isSyncing && (
-              <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white shadow">
-                {pendingSyncCount > 99 ? '99+' : pendingSyncCount}
-              </span>
-            )}
-          </div>
+          {/* Sync from Settings Button */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setIsSyncPreviewOpen(true)}
+            disabled={disabled || isSyncing || !isAdmin}
+            title="Sync with documents from settings"
+          >
+            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+          </Button>
 
           {/* Sync Preview Dialog */}
           <Dialog open={isSyncPreviewOpen} onOpenChange={(open) => {
             setIsSyncPreviewOpen(open);
             if (open) {
-              // Select all by default when opening
               setSelectedSyncDocs(new Set(pendingSyncDocs.map((_, i) => i)));
+              setSyncSearchQuery('');
             }
           }}>
             <DialogContent className="sm:max-w-lg">
@@ -756,11 +753,23 @@ export function DocumentTabs({
               ) : (
                 <>
               <DialogHeader>
-                <DialogTitle>Suggested Updates{pendingSyncCount > 0 ? ` (${pendingSyncCount})` : ''}</DialogTitle>
+                <DialogTitle>Sync with Settings{pendingSyncCount > 0 ? ` (${pendingSyncCount})` : ''}</DialogTitle>
                 <DialogDescription>
-                  Select which updates to sync to this device.
+                  Do you want to sync with documents from settings? Select which documents to include.
                 </DialogDescription>
               </DialogHeader>
+              {/* Search bar */}
+              {pendingSyncCount > 0 && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search documents..."
+                    value={syncSearchQuery}
+                    onChange={(e) => setSyncSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+              )}
               {/* Select All / Deselect All */}
               {pendingSyncCount > 0 && <div className="flex items-center gap-2 pb-1 border-b">
                 <Checkbox
@@ -790,7 +799,9 @@ export function DocumentTabs({
                   </div>
                 ) : (
                 <div className="space-y-2">
-                  {pendingSyncDocs.map((doc, idx) => (
+                  {pendingSyncDocs.map((doc, idx) => ({ doc, idx })).filter(({ doc }) =>
+                    !syncSearchQuery || doc.name?.toLowerCase().includes(syncSearchQuery.toLowerCase()) || doc.phaseName?.toLowerCase().includes(syncSearchQuery.toLowerCase())
+                  ).map(({ doc, idx }) => (
                     <div
                       key={idx}
                       className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${
@@ -894,6 +905,7 @@ export function DocumentTabs({
         refDocTagMap={refDocTagMap}
         sortByDate={sortByDate}
         onAddDocumentClick={onAddDocumentClick}
+        onBulkUploadClick={onBulkUploadClick}
         viewMode={viewMode}
         tableSort={tableSort}
         onTableSortChange={setTableSort}
