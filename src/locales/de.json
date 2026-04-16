@@ -3370,7 +3370,10 @@
     "allNotificationsMarkedRead": "Alle Benachrichtigungen als gelesen markiert",
     "notificationRemoved": "Benachrichtigung entfernt",
     "qmsFoundation": "QMS-Grundlage",
-    "qmsFoundationSubtitle": "Infrastruktur auf Unternehmensebene • Stufen 1 & 5"
+    "qmsFoundationSubtitle": "Infrastruktur auf Unternehmensebene • Stufen 1 & 5",
+    "organization": "Organisation",
+    "organizationValueChain": "Organisatorische Wertschöpfungskette",
+    "noValueChainData": "Noch keine Abteilungsstruktur konfiguriert. Richten Sie Abteilungen in den Einstellungen ein."
   },
   "commercial": {
     "clientCompass": "Kundenkompass",

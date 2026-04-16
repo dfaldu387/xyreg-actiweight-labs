@@ -91,8 +91,9 @@ export function useCommunicationThreads(options: UseCommunicationThreadsOptions 
     // Primary realtime channel: app_notifications for this user
     // This is reliable because app_notifications has simple RLS (user_id = auth.uid())
     // and is confirmed working for review notifications.
+    const channelId = crypto.randomUUID();
     const notifChannel = supabase
-      .channel(`comms-notif-rt-${user.id}`)
+      .channel(`comms-notif-rt-${user.id}-${channelId}`)
       .on(
         'postgres_changes',
         {
@@ -115,7 +116,7 @@ export function useCommunicationThreads(options: UseCommunicationThreadsOptions 
 
     // Fallback channel: direct table subscriptions (may be blocked by SECURITY DEFINER RLS)
     const tableChannel = supabase
-      .channel(`comms-tables-rt-${user.id}`)
+      .channel(`comms-tables-rt-${user.id}-${channelId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'communication_threads' },

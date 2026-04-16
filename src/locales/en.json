@@ -3399,7 +3399,10 @@
     "allNotificationsMarkedRead": "All notifications marked as read",
     "notificationRemoved": "Notification removed",
     "qmsFoundation": "QMS Foundation",
-    "qmsFoundationSubtitle": "Company-Level Infrastructure • Rungs 1 & 5"
+    "qmsFoundationSubtitle": "Company-Level Infrastructure • Rungs 1 & 5",
+    "organization": "Organization",
+    "organizationValueChain": "Organization Value Chain",
+    "noValueChainData": "No department structure configured yet. Set up departments in Settings."
   },
   "commercial": {
     "clientCompass": "Client Compass",

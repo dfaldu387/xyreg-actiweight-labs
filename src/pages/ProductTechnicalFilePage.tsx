@@ -6,6 +6,8 @@ import { TECHNICAL_FILE_SECTIONS } from '@/types/designReview';
 import { TECHNICAL_FILE_GAP_LINKS } from '@/config/technicalFileGapMapping';
 import { TECHNICAL_FILE_GUIDED_SECTIONS, TECHNICAL_FILE_GROUPS } from '@/config/technicalFileSections';
 import type { TFSubItem } from '@/config/technicalFileSections';
+import { MARKET_MODULES, COMMON_CORE_SECTIONS, EU_MDR_SECTIONS, US_FDA_SECTIONS, UK_UKCA_SECTIONS, APAC_TGA_SECTIONS, getActiveModules, getDossierSections } from '@/config/regulatoryDossierSections';
+import type { MarketModuleKey, DossierSection } from '@/config/regulatoryDossierSections';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -53,9 +55,12 @@ function parseProductMarkets(markets: any): string[] {
   const result = new Set<string>();
   arr.forEach((m: any) => {
     if (typeof m === 'string') result.add(m.toUpperCase());
-    else if (m?.code) result.add(m.code.toUpperCase());
-    else if (m?.name) result.add(m.name.toUpperCase());
-    else if (m?.market) result.add(m.market.toUpperCase());
+    else if (m && typeof m === 'object') {
+      if ('selected' in m && !m.selected) return;
+      if (m.code) result.add(m.code.toUpperCase());
+      else if (m.name) result.add(m.name.toUpperCase());
+      else if (m.market) result.add(m.market.toUpperCase());
+    }
   });
   return Array.from(result).sort();
 }
@@ -75,7 +80,6 @@ function computeSectionCompletion(
   gapItems: Array<{ framework: string; clause_id: string; status: string }> | undefined,
   docMap?: Map<string, { id: string; status: string | null }>,
 ): SectionCompletion {
-  // Filter out orphaned links (doc deleted from DB but link remains)
   const sectionLinks = (allLinks || []).filter(l => {
     if (l.section_id !== sectionId) return false;
     return !docMap || docMap.has(l.document_id);
@@ -83,7 +87,6 @@ function computeSectionCompletion(
   const docCount = sectionLinks.length;
   const hasDocuments = docCount > 0;
 
-  // Check if any linked doc is still in draft — if so, section is not complete
   const allDocsApproved = docMap
     ? sectionLinks.every(l => {
         const doc = docMap.get(l.document_id);
@@ -91,7 +94,6 @@ function computeSectionCompletion(
       })
     : true;
 
-  // Compliance from gap analysis
   const links = TECHNICAL_FILE_GAP_LINKS.filter(l => l.sectionId === sectionId);
   let compliance: SectionCompletion['compliance'] = null;
 
@@ -113,16 +115,158 @@ function computeSectionCompletion(
     }
   }
 
-  // Complete = has docs AND all docs are not draft AND (no gap link OR 100% compliant)
   const gapOk = compliance === null || compliance.percentage === 100;
   const isComplete = hasDocuments && allDocsApproved && gapOk;
 
   return { hasDocuments, docCount, compliance, isComplete };
 }
 
+// ─── Market module color helpers ────────────────────────────────────────────
+
+const MODULE_COLORS: Record<string, { bg: string; text: string; border: string; pill: string; pillActive: string }> = {
+  common: {
+    bg: 'bg-slate-50 dark:bg-slate-950/20',
+    text: 'text-slate-700 dark:text-slate-300',
+    border: 'border-slate-200 dark:border-slate-800',
+    pill: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700',
+    pillActive: 'bg-slate-600 text-white dark:bg-slate-400 dark:text-slate-900',
+  },
+  blue: {
+    bg: 'bg-blue-50 dark:bg-blue-950/20',
+    text: 'text-blue-700 dark:text-blue-300',
+    border: 'border-blue-200 dark:border-blue-800',
+    pill: 'bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 border-blue-200 dark:border-blue-800',
+    pillActive: 'bg-blue-600 text-white dark:bg-blue-500',
+  },
+  red: {
+    bg: 'bg-red-50 dark:bg-red-950/20',
+    text: 'text-red-700 dark:text-red-300',
+    border: 'border-red-200 dark:border-red-800',
+    pill: 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-300 border-red-200 dark:border-red-800',
+    pillActive: 'bg-red-600 text-white dark:bg-red-500',
+  },
+  purple: {
+    bg: 'bg-purple-50 dark:bg-purple-950/20',
+    text: 'text-purple-700 dark:text-purple-300',
+    border: 'border-purple-200 dark:border-purple-800',
+    pill: 'bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300 border-purple-200 dark:border-purple-800',
+    pillActive: 'bg-purple-600 text-white dark:bg-purple-500',
+  },
+  amber: {
+    bg: 'bg-amber-50 dark:bg-amber-950/20',
+    text: 'text-amber-700 dark:text-amber-300',
+    border: 'border-amber-200 dark:border-amber-800',
+    pill: 'bg-amber-100 text-amber-600 dark:bg-amber-900 dark:text-amber-300 border-amber-200 dark:border-amber-800',
+    pillActive: 'bg-amber-600 text-white dark:bg-amber-500',
+  },
+};
+
+function getModuleColor(key: MarketModuleKey | 'common') {
+  if (key === 'common') return MODULE_COLORS.common;
+  const mod = MARKET_MODULES.find(m => m.key === key);
+  return MODULE_COLORS[mod?.color || 'common'] || MODULE_COLORS.common;
+}
+
+// ─── Build unified section list from old TF config + new market modules ─────
+
+interface UnifiedSection {
+  sectionId: string;
+  title: string;
+  description: string;
+  group: 'common' | MarketModuleKey;
+  groupLabel: string;
+  subItems: TFSubItem[];
+}
+
+function buildUnifiedSections(activeModules: MarketModuleKey[]): UnifiedSection[] {
+  const sections: UnifiedSection[] = [];
+
+  // Common Core: map from existing TECHNICAL_FILE_GUIDED_SECTIONS, excluding EU-only (TF-0, TF-4)
+  const commonIds = COMMON_CORE_SECTIONS.map(s => s.sectionId);
+  TECHNICAL_FILE_GUIDED_SECTIONS
+    .filter(s => commonIds.includes(s.section))
+    .forEach(s => {
+      sections.push({
+        sectionId: s.section,
+        title: s.title,
+        description: s.description,
+        group: 'common',
+        groupLabel: 'Common Core',
+        subItems: s.subItems,
+      });
+    });
+
+  // EU MDR sections from existing config
+  if (activeModules.includes('EU_MDR')) {
+    const euIds = EU_MDR_SECTIONS.map(s => s.sectionId);
+    TECHNICAL_FILE_GUIDED_SECTIONS
+      .filter(s => euIds.includes(s.section))
+      .forEach(s => {
+        sections.push({
+          sectionId: s.section,
+          title: s.title,
+          description: s.description,
+          group: 'EU_MDR',
+          groupLabel: 'EU MDR Module',
+          subItems: s.subItems,
+        });
+      });
+  }
+
+  // US FDA sections (new)
+  if (activeModules.includes('US_FDA')) {
+    US_FDA_SECTIONS.forEach(s => {
+      sections.push({
+        sectionId: s.sectionId,
+        title: s.title,
+        description: s.description,
+        group: 'US_FDA',
+        groupLabel: 'US FDA Module',
+        subItems: s.subItems,
+      });
+    });
+  }
+
+  // UK UKCA sections (new)
+  if (activeModules.includes('UK_UKCA')) {
+    UK_UKCA_SECTIONS.forEach(s => {
+      sections.push({
+        sectionId: s.sectionId,
+        title: s.title,
+        description: s.description,
+        group: 'UK_UKCA',
+        groupLabel: 'UK UKCA Module',
+        subItems: s.subItems,
+      });
+    });
+  }
+
+  // APAC TGA sections (new)
+  if (activeModules.includes('APAC_TGA')) {
+    APAC_TGA_SECTIONS.forEach(s => {
+      sections.push({
+        sectionId: s.sectionId,
+        title: s.title,
+        description: s.description,
+        group: 'APAC_TGA',
+        groupLabel: 'APAC / TGA Module',
+        subItems: s.subItems,
+      });
+    });
+  }
+
+  return sections;
+}
+
 // ─── Guided Sections Tab ────────────────────────────────────────────────────
 
-function TechnicalFileSectionsTab({ productId, companyId }: { productId: string; companyId?: string }) {
+function RegulatoryDossierSectionsTab({ productId, companyId, activeModules, marketFilter, setMarketFilter }: {
+  productId: string;
+  companyId?: string;
+  activeModules: MarketModuleKey[];
+  marketFilter: 'all' | MarketModuleKey | 'common';
+  setMarketFilter: (f: 'all' | MarketModuleKey | 'common') => void;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pickerSection, setPickerSection] = useState<{ id: string; label: string } | null>(null);
@@ -131,7 +275,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
   const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string; documentReference?: string; isNewUnsavedDocument?: boolean; tfSectionId?: string } | null>(null);
   const [isCreatingDoc, setIsCreatingDoc] = useState(false);
 
-  // Fetch company data for Document Studio navigation + AI prompt enrichment
+  // Fetch company data
   const { data: company } = useQuery({
     queryKey: ['company-data-tf', companyId],
     queryFn: async () => {
@@ -147,7 +291,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
     enabled: !!companyId,
   });
 
-  // Fetch product/device data for AI prompt enrichment
+  // Fetch product data
   const { data: productData } = useQuery({
     queryKey: ['product-data-tf', productId],
     queryFn: async () => {
@@ -174,7 +318,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
     },
   });
 
-  // Fetch gap analysis items for compliance badges
+  // Fetch gap analysis items
   const { data: gapItems } = useQuery({
     queryKey: ['tf-gap-compliance', companyId],
     queryFn: async () => {
@@ -189,7 +333,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
     enabled: !!companyId,
   });
 
-  // Fetch document details for linked docs
+  // Fetch document details
   const linkedDocIds = [...new Set((allLinks || []).map(l => l.document_id))];
   const { data: documents } = useQuery({
     queryKey: ['tf-linked-doc-details', productId, linkedDocIds.join(',')],
@@ -207,17 +351,40 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
 
   const docMap = new Map((documents || []).map(d => [d.id, d]));
 
+  // Build unified sections
+  const allSections = useMemo(() => buildUnifiedSections(activeModules), [activeModules]);
+
+  // Filter by selected market
+  const visibleSections = useMemo(() => {
+    if (marketFilter === 'all') return allSections;
+    if (marketFilter === 'common') return allSections.filter(s => s.group === 'common');
+    // Show common + selected market
+    return allSections.filter(s => s.group === 'common' || s.group === marketFilter);
+  }, [allSections, marketFilter]);
+
+  // Group sections for display
+  const sectionGroups = useMemo(() => {
+    const groups: { key: string; label: string; sections: UnifiedSection[] }[] = [];
+    const seen = new Set<string>();
+    visibleSections.forEach(s => {
+      if (!seen.has(s.group)) {
+        seen.add(s.group);
+        groups.push({ key: s.group, label: s.groupLabel, sections: [] });
+      }
+      groups.find(g => g.key === s.group)!.sections.push(s);
+    });
+    return groups;
+  }, [visibleSections]);
+
   const getDocsForSection = (sectionId: string) => {
     const docIds = (allLinks || []).filter(l => {
       if (l.section_id === sectionId) return true;
-      // Show legacy section-level links on the first sub-step (A)
       if (sectionId.endsWith('-A') && l.section_id === sectionId.slice(0, -2)) return true;
       return false;
     }).map(l => l.document_id);
     return docIds.map(id => docMap.get(id)).filter(Boolean) as Array<{ id: string; name: string; document_type: string | null; status: string | null; document_reference: string | null }>;
   };
 
-  // Unlink a document from a section
   const handleUnlinkDoc = async (docId: string, sectionId: string) => {
     const { error } = await (supabase as any)
       .from('technical_file_document_links')
@@ -238,22 +405,21 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
   const completionData = useMemo(() => {
     const statusMap = new Map((documents || []).map(d => [d.id, d]));
     const map = new Map<string, SectionCompletion>();
-    TECHNICAL_FILE_GUIDED_SECTIONS.forEach(s => {
-      // For completion, check both section-level links AND sub-step-level links (e.g., TF-0-A, TF-0-B)
-      const allSectionLinks = (allLinks || []).filter(l => 
-        l.section_id === s.section || (s.subItems && s.subItems.some(sub => l.section_id === `${s.section}-${sub.letter}`))
+    allSections.forEach(s => {
+      // Check both section-level and sub-step-level links
+      const allSectionLinks = (allLinks || []).filter(l =>
+        l.section_id === s.sectionId || (s.subItems && s.subItems.some(sub => l.section_id === `${s.sectionId}-${sub.letter}`))
       );
-      map.set(s.section, computeSectionCompletion(s.section, allSectionLinks.length > 0 ? allSectionLinks.map(l => ({ ...l, section_id: s.section })) : undefined, gapItems, statusMap));
+      map.set(s.sectionId, computeSectionCompletion(s.sectionId, allSectionLinks.length > 0 ? allSectionLinks.map(l => ({ ...l, section_id: s.sectionId })) : undefined, gapItems, statusMap));
     });
     return map;
-  }, [allLinks, gapItems, documents]);
+  }, [allLinks, gapItems, documents, allSections]);
 
-  const totalSections = TECHNICAL_FILE_GUIDED_SECTIONS.length;
-  const completedCount = TECHNICAL_FILE_GUIDED_SECTIONS.filter(s => completionData.get(s.section)?.isComplete).length;
+  const totalSections = visibleSections.length;
+  const completedCount = visibleSections.filter(s => completionData.get(s.sectionId)?.isComplete).length;
   const progress = totalSections > 0 ? Math.round((completedCount / totalSections) * 100) : 0;
-  const nextIncomplete = TECHNICAL_FILE_GUIDED_SECTIONS.find(s => !completionData.get(s.section)?.isComplete);
+  const nextIncomplete = visibleSections.find(s => !completionData.get(s.sectionId)?.isComplete);
 
-  // Get the matching TF section metadata for legal reference display
   const getTfMeta = (sectionId: string) => TECHNICAL_FILE_SECTIONS.find(s => s.id === sectionId);
 
   const handleRowClick = (sectionId: string) => {
@@ -271,20 +437,17 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
     setActiveSubStepIndex(0);
   };
 
-  const activeConfig = expandedSection
-    ? TECHNICAL_FILE_GUIDED_SECTIONS.find(s => s.section === expandedSection)
-    : null;
+  const activeUnified = expandedSection ? allSections.find(s => s.sectionId === expandedSection) : null;
   const activeCompletion = expandedSection ? completionData.get(expandedSection) : null;
   const activeTfMeta = expandedSection ? getTfMeta(expandedSection) : null;
-  const activeSubStep: TFSubItem | null = activeConfig?.subItems?.[activeSubStepIndex] || null;
+  const activeSubStep: TFSubItem | null = activeUnified?.subItems?.[activeSubStepIndex] || null;
 
-  // Derive sub-step-specific section ID for per-sub-step evidence scoping
-  const activeSubStepSectionId = activeConfig && activeSubStep
-    ? `${activeConfig.section}-${activeSubStep.letter}`
-    : activeConfig?.section;
+  const activeSubStepSectionId = activeUnified && activeSubStep
+    ? `${activeUnified.sectionId}-${activeSubStep.letter}`
+    : activeUnified?.sectionId;
 
   const activeDocs = activeSubStepSectionId ? getDocsForSection(activeSubStepSectionId) : [];
-  const totalSubSteps = activeConfig?.subItems?.length || 0;
+  const totalSubSteps = activeUnified?.subItems?.length || 0;
 
   const goToSubStep = (index: number) => {
     if (index >= 0 && index < totalSubSteps) {
@@ -294,13 +457,30 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
     }
   };
 
+  // Per-market progress
+  const marketProgress = useMemo(() => {
+    const result: { key: string; label: string; completed: number; total: number; pct: number }[] = [];
+    const groups = new Map<string, UnifiedSection[]>();
+    allSections.forEach(s => {
+      const arr = groups.get(s.group) || [];
+      arr.push(s);
+      groups.set(s.group, arr);
+    });
+    groups.forEach((sections, key) => {
+      const total = sections.length;
+      const completed = sections.filter(s => completionData.get(s.sectionId)?.isComplete).length;
+      const label = key === 'common' ? 'Common Core' : (MARKET_MODULES.find(m => m.key === key)?.shortLabel || key);
+      result.push({ key, label, completed, total, pct: total > 0 ? Math.round((completed / total) * 100) : 0 });
+    });
+    return result;
+  }, [allSections, completionData]);
+
   return (
     <TooltipProvider>
     <div className="relative">
-      {/* Main content — leaves room for sidebar */}
       <div className="mr-[280px] lg:mr-[300px] xl:mr-[320px]">
 
-        {/* ─── OVERVIEW MODE (no section selected) ─── */}
+        {/* ─── OVERVIEW MODE ─── */}
         {!expandedSection && (
           <>
             {/* Info Banner */}
@@ -311,11 +491,19 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h2 className="text-lg font-bold text-foreground">Technical File — MDR Dossier</h2>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-600 text-white uppercase tracking-wider">EU MDR</span>
+                    <h2 className="text-lg font-bold text-foreground">Regulatory Dossier</h2>
+                    {activeModules.map(key => {
+                      const mod = MARKET_MODULES.find(m => m.key === key);
+                      const colors = getModuleColor(key);
+                      return (
+                        <span key={key} className={cn("px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider", colors.pillActive)}>
+                          {mod?.shortLabel}
+                        </span>
+                      );
+                    })}
                   </div>
                   <p className="text-sm text-muted-foreground leading-relaxed">
-                    Auditor-ready technical dossier organized by MDR Annex II/III structure. Link your compliance documents to each section and track gap analysis completion.
+                    Unified regulatory submission dossier — common core evidence plus market-specific modules. Link compliance documents to each section and track completion per market.
                   </p>
                   <div className="flex flex-wrap gap-4 mt-3 text-xs text-blue-700 dark:text-blue-400">
                     <div className="flex items-center gap-1.5">
@@ -335,9 +523,56 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
               </div>
             </div>
 
-            {/* Progress Header */}
+            {/* Market Filter Pills */}
+            {activeModules.length > 0 && (
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground mr-1">Filter:</span>
+                <button
+                  onClick={() => setMarketFilter('all')}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                    marketFilter === 'all'
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+                  )}
+                >
+                  All Markets
+                </button>
+                <button
+                  onClick={() => setMarketFilter('common')}
+                  className={cn(
+                    "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                    marketFilter === 'common'
+                      ? MODULE_COLORS.common.pillActive
+                      : cn(MODULE_COLORS.common.pill, "hover:opacity-80")
+                  )}
+                >
+                  Common Core
+                </button>
+                {activeModules.map(key => {
+                  const mod = MARKET_MODULES.find(m => m.key === key);
+                  const colors = getModuleColor(key);
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setMarketFilter(key)}
+                      className={cn(
+                        "px-3 py-1 rounded-full text-xs font-medium border transition-colors",
+                        marketFilter === key
+                          ? colors.pillActive
+                          : cn(colors.pill, "hover:opacity-80")
+                      )}
+                    >
+                      {mod?.shortLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Per-Market Progress */}
             <div className="mb-6 p-4 rounded-lg border bg-card">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-3">
                 <div>
                   <h3 className="text-base font-semibold text-foreground">Overall Progress</h3>
                   <p className="text-sm text-muted-foreground mt-0.5">
@@ -355,37 +590,59 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                   {progress}%
                 </div>
               </div>
-              <Progress value={progress} className="h-2" />
+              <Progress value={progress} className="h-2 mb-3" />
+              {/* Per-market breakdown */}
+              {marketProgress.length > 1 && (
+                <div className="flex flex-wrap gap-3 pt-2 border-t">
+                  {marketProgress.map(mp => (
+                    <div key={mp.key} className="flex items-center gap-2 text-xs">
+                      <span className={cn(
+                        "px-1.5 py-0.5 rounded text-[10px] font-semibold",
+                        getModuleColor(mp.key as any).pill
+                      )}>
+                        {mp.label}
+                      </span>
+                      <span className="text-muted-foreground tabular-nums">{mp.completed}/{mp.total}</span>
+                      <span className={cn(
+                        "font-medium tabular-nums",
+                        mp.pct >= 100 ? "text-emerald-600" : mp.pct >= 50 ? "text-blue-600" : "text-amber-600"
+                      )}>
+                        {mp.pct}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Section Groups */}
             <div className="space-y-6">
-              {TECHNICAL_FILE_GROUPS.map(group => {
-                const groupItems = TECHNICAL_FILE_GUIDED_SECTIONS.filter(s => s.sectionGroup === group.id);
-                const groupCompleted = groupItems.filter(s => completionData.get(s.section)?.isComplete).length;
+              {sectionGroups.map(group => {
+                const groupCompleted = group.sections.filter(s => completionData.get(s.sectionId)?.isComplete).length;
+                const colors = getModuleColor(group.key as any);
 
                 return (
-                  <div key={group.id}>
+                  <div key={group.key}>
                     <div className="flex items-center justify-between mb-2 px-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                          {group.name}
+                        <span className={cn("text-xs font-bold uppercase tracking-wider", colors.text)}>
+                          {group.label}
                         </span>
                         <Badge variant="outline" className="text-[10px]">
-                          {groupCompleted}/{groupItems.length}
+                          {groupCompleted}/{group.sections.length}
                         </Badge>
                       </div>
                     </div>
 
                     <div className="space-y-1">
-                      {groupItems.map(config => {
-                        const completion = completionData.get(config.section);
+                      {group.sections.map(section => {
+                        const completion = completionData.get(section.sectionId);
                         const isComplete = completion?.isComplete || false;
 
                         return (
                           <button
-                            key={config.section}
-                            onClick={() => handleRowClick(config.section)}
+                            key={section.sectionId}
+                            onClick={() => handleRowClick(section.sectionId)}
                             className={cn(
                               "w-full flex items-center gap-3 px-4 py-3 rounded-lg border text-left transition-all",
                               isComplete
@@ -400,10 +657,10 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                             )}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-mono text-xs text-muted-foreground">{config.section}</span>
-                                <span className="text-sm font-medium text-foreground">{config.title}</span>
+                                <span className="font-mono text-xs text-muted-foreground">{section.sectionId}</span>
+                                <span className="text-sm font-medium text-foreground">{section.title}</span>
                               </div>
-                              <p className="text-xs text-muted-foreground mt-0.5 truncate">{config.description}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5 truncate">{section.description}</p>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
                               <Badge variant="secondary" className="text-[10px]">
@@ -445,8 +702,34 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
         )}
 
         {/* ─── DETAIL MODE: Single Sub-Step View ─── */}
-        {expandedSection && activeConfig && (
+        {expandedSection && activeUnified && (
           <div className="space-y-5 pb-24">
+            {/* ── Sticky market context banner ── */}
+            {marketFilter !== 'all' && (() => {
+              const marketLabel = marketFilter === 'common'
+                ? 'Common Core'
+                : MARKET_MODULES.find(m => m.key === marketFilter)?.label || marketFilter;
+              const colors = getModuleColor(marketFilter);
+              return (
+                <div className={cn(
+                  "sticky top-0 z-20 -mx-1 px-4 py-2 flex items-center justify-between rounded-lg border",
+                  colors.bg, colors.border
+                )}>
+                  <div className="flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    <span className={cn("text-sm font-semibold", colors.text)}>
+                      Working on: {marketLabel}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setMarketFilter('all')}
+                    className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+                  >
+                    Show all markets
+                  </button>
+                </div>
+              );
+            })()}
             {/* Back + Step indicator */}
             <div className="flex items-center justify-between">
               <button
@@ -457,6 +740,15 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                 Back to overview
               </button>
               <div className="flex items-center gap-2">
+                {/* Market badge */}
+                {activeUnified.group !== 'common' && (
+                  <Badge className={cn("text-xs", getModuleColor(activeUnified.group).pillActive)}>
+                    {MARKET_MODULES.find(m => m.key === activeUnified.group)?.shortLabel}
+                  </Badge>
+                )}
+                {activeUnified.group === 'common' && (
+                  <Badge variant="outline" className="text-xs">Common Core</Badge>
+                )}
                 {activeTfMeta && (
                   <Badge variant="outline" className="text-xs">{activeTfMeta.legalReference}</Badge>
                 )}
@@ -477,22 +769,33 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
             </div>
 
             {/* Step Header */}
-            <div className="p-5 rounded-xl border bg-card">
+            <div className={cn("p-5 rounded-xl border bg-card", (() => {
+              const c = getModuleColor(activeUnified.group);
+              return `border-l-4 ${c.border}`;
+            })())}>
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                <span className="font-mono">{activeConfig.section}</span>
+                <span className="font-mono">{activeUnified.sectionId}</span>
                 <span>·</span>
-                <span>{activeConfig.title}</span>
+                <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", getModuleColor(activeUnified.group).pill)}>
+                  {activeUnified.group === 'common' ? 'Common Core' : MARKET_MODULES.find(m => m.key === activeUnified.group)?.shortLabel}
+                </Badge>
+                <span>·</span>
+                <span>{activeUnified.title}</span>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <span className="text-sm font-bold text-primary uppercase">{activeSubStep?.letter}</span>
+              {activeSubStep ? (
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <span className="text-sm font-bold text-primary uppercase">{activeSubStep.letter}</span>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-foreground">
+                      Step {activeSubStepIndex + 1} of {totalSubSteps} — ({activeSubStep.letter}) {activeSubStep.description}
+                    </h2>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-foreground">
-                    Step {activeSubStepIndex + 1} of {totalSubSteps} — ({activeSubStep?.letter}) {activeSubStep?.description}
-                  </h2>
-                </div>
-              </div>
+              ) : (
+                <h2 className="text-lg font-bold text-foreground">{activeUnified.title}</h2>
+              )}
             </div>
 
             {/* REQUIREMENT card */}
@@ -517,7 +820,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
               </div>
             )}
 
-            {/* HELP / WHAT IS THIS card */}
+            {/* HELP card */}
             {activeSubStep?.helpText && (
               <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20 p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -536,7 +839,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                   <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Evidence & References</h3>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {companyId && company?.name && (
+                  {companyId && company?.name && activeSubStep && (
                     <>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -546,14 +849,13 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                           className="h-7 w-7"
                           disabled={isCreatingDoc}
                           onClick={async () => {
-                            if (!companyId || !company?.name || !activeSubStep || !activeConfig) return;
+                            if (!companyId || !company?.name || !activeSubStep || !activeUnified) return;
                             const { documentReference, htmlContent } = prepareTFDocumentContent({
                               substepDescription: activeSubStep.description,
-                              sectionId: activeConfig.section,
+                              sectionId: activeUnified.sectionId,
                               substepLetter: activeSubStep.letter,
                             });
 
-                            // Check for existing CI by document_reference before opening drawer
                             setIsCreatingDoc(true);
                             try {
                               const existingCIs = await DocumentStudioPersistenceService.getDocumentCIsByReference(
@@ -580,14 +882,13 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                               setIsCreatingDoc(false);
                             }
 
-                            // No existing CI — open drawer with blank template, CI created on first save
                             setDraftDrawerDoc({
-                              id: `new-tf-${activeConfig.section}-${activeSubStep.letter}`,
+                              id: `new-tf-${activeUnified.sectionId}-${activeSubStep.letter}`,
                               name: activeSubStep.description,
                               type: 'technical-file',
                               documentReference,
                               isNewUnsavedDocument: true,
-                              tfSectionId: activeSubStepSectionId || activeConfig.section,
+                              tfSectionId: activeSubStepSectionId || activeUnified.sectionId,
                             });
                           }}
                         >
@@ -604,20 +905,20 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                           className="h-7 w-7"
                           disabled={isCreatingDoc}
                           onClick={() => {
-                            if (!companyId || !company?.name || !activeSubStep || !activeConfig) return;
+                            if (!companyId || !company?.name || !activeSubStep || !activeUnified) return;
                             const { documentReference } = prepareTFDocumentContent({
                               substepDescription: activeSubStep.description,
-                              sectionId: activeConfig.section,
+                              sectionId: activeUnified.sectionId,
                               substepLetter: activeSubStep.letter,
                               isAdditional: true,
                             });
                             setDraftDrawerDoc({
-                              id: `new-tf-add-${activeConfig.section}-${activeSubStep.letter}-${Date.now()}`,
+                              id: `new-tf-add-${activeUnified.sectionId}-${activeSubStep.letter}-${Date.now()}`,
                               name: `${activeSubStep.description} (Additional)`,
                               type: 'technical-file',
                               documentReference,
                               isNewUnsavedDocument: true,
-                              tfSectionId: activeSubStepSectionId || activeConfig.section,
+                              tfSectionId: activeSubStepSectionId || activeUnified.sectionId,
                             });
                           }}
                         >
@@ -634,7 +935,7 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                         variant="outline"
                         size="icon"
                         className="h-7 w-7"
-                        onClick={() => setPickerSection({ id: activeSubStepSectionId || activeConfig.section, label: activeSubStep ? `${activeSubStep.letter}. ${activeSubStep.description}` : `${activeConfig.section} — ${activeConfig.title}` })}
+                        onClick={() => setPickerSection({ id: activeSubStepSectionId || activeUnified.sectionId, label: activeSubStep ? `${activeSubStep.letter}. ${activeSubStep.description}` : `${activeUnified.sectionId} — ${activeUnified.title}` })}
                       >
                         <Link2 className="h-3.5 w-3.5" />
                       </Button>
@@ -710,10 +1011,10 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
               </div>
             )}
 
-            {/* ─── Bottom Step Navigation Bar ─── */}
-            {(() => {
-              const prevItem = activeConfig?.subItems?.[activeSubStepIndex - 1];
-              const nextItem = activeConfig?.subItems?.[activeSubStepIndex + 1];
+            {/* Bottom Step Navigation Bar */}
+            {totalSubSteps > 0 && (() => {
+              const prevItem = activeUnified?.subItems?.[activeSubStepIndex - 1];
+              const nextItem = activeUnified?.subItems?.[activeSubStepIndex + 1];
               const prevLabel = prevItem?.description;
               const nextLabel = nextItem?.description;
               const currentLabel = activeSubStep?.description || '';
@@ -736,7 +1037,14 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-white truncate max-w-[180px]">{currentLabel}</span>
                       </div>
-                      <span className="text-[10px] text-white/70">Step {activeSubStepIndex + 1}/{totalSubSteps}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-white/70">Step {activeSubStepIndex + 1}/{totalSubSteps}</span>
+                        {marketFilter !== 'all' && (
+                          <span className="text-[10px] text-white/90 bg-white/20 px-1.5 rounded-full">
+                            {marketFilter === 'common' ? 'Core' : MARKET_MODULES.find(m => m.key === marketFilter)?.shortLabel}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <Button onClick={() => {
                       if (activeSubStepIndex < totalSubSteps - 1) {
@@ -765,12 +1073,12 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
           <div className="flex items-center gap-2 mb-3">
             <FolderOpen className="h-4 w-4 text-blue-600" />
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Technical File
+              Regulatory Dossier
             </span>
           </div>
           <h3 className="font-semibold text-foreground text-sm truncate">
             {expandedSection
-              ? `${expandedSection}: ${activeConfig?.title}`
+              ? `${expandedSection}: ${activeUnified?.title}`
               : nextIncomplete
               ? `Next: ${nextIncomplete.title}`
               : 'All sections complete'
@@ -792,10 +1100,10 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
           </div>
         </div>
 
-        {/* "To Complete This Section" Panel — shows sub-items as checklist */}
-        {expandedSection && activeConfig && (() => {
+        {/* "To Complete This Section" Panel */}
+        {expandedSection && activeUnified && (() => {
           const completion = activeCompletion;
-          const subChecklist = activeConfig.subItems || [];
+          const subChecklist = activeUnified.subItems || [];
 
           return (
             <div className={cn(
@@ -814,7 +1122,6 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                 {completion?.isComplete ? 'Section Complete ✓' : 'To Complete This Section'}
               </h4>
               <ul className="mt-2 space-y-1.5">
-                {/* Document requirement */}
                 <li className="flex items-start gap-2 text-xs">
                   {completion?.hasDocuments ? (
                     <CheckCircle className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
@@ -825,7 +1132,6 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                     Link at least 1 document
                   </span>
                 </li>
-                {/* Gap compliance */}
                 {completion?.compliance && (
                   <li className="flex items-start gap-2 text-xs">
                     {completion.compliance.percentage === 100 ? (
@@ -838,7 +1144,6 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                     </span>
                   </li>
                 )}
-                {/* Sub-items as deliverable checklist */}
                 {subChecklist.length > 0 && (
                   <>
                     <li className="pt-1.5 mt-1.5 border-t border-border/50">
@@ -879,30 +1184,30 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
           );
         })()}
 
-        {/* All Sections list with nested sub-items for active section */}
+        {/* All Sections list */}
         <div className="flex-1 overflow-y-auto px-4 pt-4 pb-16">
           <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 px-1">
             All Sections
           </h4>
 
           <div className="space-y-4">
-            {TECHNICAL_FILE_GROUPS.map(group => {
-              const groupItems = TECHNICAL_FILE_GUIDED_SECTIONS.filter(s => s.sectionGroup === group.id);
+            {sectionGroups.map(group => {
+              const colors = getModuleColor(group.key as any);
               return (
-                <div key={group.id}>
+                <div key={group.key}>
                   <div className="flex items-center gap-2 mb-2 px-1">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                      {group.name}
+                    <span className={cn("text-[10px] font-bold uppercase tracking-wider", colors.text)}>
+                      {group.label}
                     </span>
                   </div>
                   <div className="space-y-0.5">
-                    {groupItems.map(config => {
-                      const isComplete = completionData.get(config.section)?.isComplete || false;
-                      const isActive = config.section === expandedSection;
+                    {group.sections.map(section => {
+                      const isComplete = completionData.get(section.sectionId)?.isComplete || false;
+                      const isActive = section.sectionId === expandedSection;
                       return (
-                        <div key={config.section}>
+                        <div key={section.sectionId}>
                           <button
-                            onClick={() => handleRowClick(config.section)}
+                            onClick={() => handleRowClick(section.sectionId)}
                             className={cn(
                               "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left",
                               isActive && "bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 font-medium",
@@ -918,13 +1223,12 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
                                 isActive ? "text-blue-500" : "text-muted-foreground/50"
                               )} />
                             )}
-                            <span className="truncate">{config.section} {config.title}</span>
+                            <span className="truncate">{section.sectionId} {section.title}</span>
                           </button>
 
-                          {/* Nested sub-items when active — clickable */}
-                          {isActive && config.subItems && config.subItems.length > 0 && (
+                          {isActive && section.subItems && section.subItems.length > 0 && (
                             <div className="ml-4 mt-0.5 mb-1 border-l-2 border-blue-300 dark:border-blue-700 pl-3 space-y-0.5">
-                              {config.subItems.map((sub, idx) => (
+                              {section.subItems.map((sub, idx) => (
                                 <button
                                   key={sub.letter}
                                   onClick={() => setActiveSubStepIndex(idx)}
@@ -978,7 +1282,6 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
         documentReference={draftDrawerDoc?.documentReference}
         isNewUnsavedDocument={draftDrawerDoc?.isNewUnsavedDocument}
         onDocumentCreated={async (docId, docName, docType) => {
-          // Link CI to TF section
           const tfSectionId = draftDrawerDoc?.tfSectionId;
           if (tfSectionId) {
             await supabase
@@ -989,9 +1292,8 @@ function TechnicalFileSectionsTab({ productId, companyId }: { productId: string;
               );
             await queryClient.invalidateQueries({ queryKey: ['tf-section-documents'] });
             await queryClient.invalidateQueries({ queryKey: ['tf-linked-doc-details'] });
-            toast.success('Document created and linked to Technical File');
+            toast.success('Document created and linked to Regulatory Dossier');
           }
-          // Update drawer to point to real CI — preserve tfSectionId so context isn't lost
           setDraftDrawerDoc(prev => prev ? {
             ...prev,
             id: docId,
@@ -1156,6 +1458,7 @@ function MarketApprovalsTab({ productId, companyId, productMarkets }: { productI
 
 export default function ProductTechnicalFilePage() {
   const { productId } = useParams<{ productId: string }>();
+  const [marketFilter, setMarketFilter] = useState<'all' | MarketModuleKey | 'common'>('all');
 
   const { data: product } = useQuery({
     queryKey: ['product-basic-tf', productId],
@@ -1173,15 +1476,16 @@ export default function ProductTechnicalFilePage() {
   });
 
   const productMarkets = parseProductMarkets(product?.markets);
+  const activeModules = useMemo(() => getActiveModules(productMarkets), [productMarkets]);
 
   if (!productId) return null;
 
   return (
     <div className="space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold">Technical File</h1>
+        <h1 className="text-2xl font-bold">Regulatory Dossier</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Auditor-ready view of the complete technical dossier organized by MDR Annex II/III structure, with market approval status.
+          Unified regulatory submission dossier — common core evidence plus market-specific modules, with approval tracking.
         </p>
       </div>
 
@@ -1189,7 +1493,7 @@ export default function ProductTechnicalFilePage() {
         <TabsList>
           <TabsTrigger value="file-sections" className="gap-2">
             <FileText className="h-4 w-4" />
-            File Sections
+            Dossier Sections
           </TabsTrigger>
           <TabsTrigger value="market-approvals" className="gap-2">
             <Globe className="h-4 w-4" />
@@ -1198,7 +1502,13 @@ export default function ProductTechnicalFilePage() {
         </TabsList>
 
         <TabsContent value="file-sections" className="mt-4">
-          <TechnicalFileSectionsTab productId={productId} companyId={product?.company_id} />
+          <RegulatoryDossierSectionsTab
+            productId={productId}
+            companyId={product?.company_id}
+            activeModules={activeModules}
+            marketFilter={marketFilter}
+            setMarketFilter={setMarketFilter}
+          />
         </TabsContent>
 
         <TabsContent value="market-approvals" className="mt-4">

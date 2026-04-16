@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { MultiDepartmentSelector, type DepartmentAssignment, type MultiDepartmentSelectorRef } from "./MultiDepartmentSelector";
 import { DeviceAccessSelector } from "./DeviceAccessSelector";
 import { DocumentPermissionSelector } from "./DocumentPermissionSelector";
+import { DeviceModulePickerDialog } from "./DeviceModulePickerDialog";
 import { useTranslation } from "@/hooks/useTranslation";
 import { ALL_COMPANY_MODULES, MODULE_DISPLAY_NAMES } from "@/types/userCompanyModuleAccess";
 
@@ -50,6 +51,10 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
   const [selectedModuleIds, setSelectedModuleIds] = useState<string[]>([]);
   const [tempSelectedModuleIds, setTempSelectedModuleIds] = useState<string[]>([]);
   const [isModuleDialogOpen, setIsModuleDialogOpen] = useState(false);
+  const [hasDeviceModuleRestriction, setHasDeviceModuleRestriction] = useState(false);
+  const [deviceModulePermissions, setDeviceModulePermissions] = useState<Record<string, string[]>>({});
+  const [isDeviceModuleDialogOpen, setIsDeviceModuleDialogOpen] = useState(false);
+  const [selectedProductNames, setSelectedProductNames] = useState<{ id: string; name: string }[]>([]);
   const deptSelectorRef = useRef<MultiDepartmentSelectorRef>(null);
 
   const { sendInvitation } = useInvitations(companyId);
@@ -84,6 +89,40 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
 
     fetchDepartments();
   }, [companyId]);
+
+  // Fetch human-readable names for selected products (for Device Module picker)
+  useEffect(() => {
+    if (selectedProductIds.length === 0) {
+      setSelectedProductNames([]);
+      return;
+    }
+    const fetchNames = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name')
+        .eq('company_id', companyId)
+        .in('id', selectedProductIds);
+      if (error) {
+        console.error('Error fetching product names:', error);
+        setSelectedProductNames([]);
+        return;
+      }
+      setSelectedProductNames((data || []).map(p => ({ id: p.id, name: p.name })));
+    };
+    fetchNames();
+  }, [selectedProductIds, companyId]);
+
+  // Prune stale device keys when devices are removed from the selection
+  useEffect(() => {
+    setDeviceModulePermissions(prev => {
+      const keys = Object.keys(prev);
+      const stale = keys.filter(k => !selectedProductIds.includes(k));
+      if (stale.length === 0) return prev;
+      const next = { ...prev };
+      stale.forEach(k => delete next[k]);
+      return next;
+    });
+  }, [selectedProductIds]);
 
   const saveInvitationDeviceAccess = async (invitationId: string, productIds: string[]) => {
     // Always clear old records first (handles re-invite case)
@@ -151,6 +190,37 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
     if (error) {
       console.error('Error saving invitation module access:', error);
       toast.error('Failed to save company access');
+    }
+  };
+
+  const saveInvitationDeviceModuleAccess = async (
+    invitationId: string,
+    permissions: Record<string, string[]>
+  ) => {
+    // Always clear old records first (handles re-invite case)
+    await (supabase as any)
+      .from('invitation_device_module_access')
+      .delete()
+      .eq('invitation_id', invitationId);
+
+    const rows = Object.entries(permissions)
+      .filter(([, modules]) => modules.length > 0)
+      .map(([deviceId, modules]) => ({
+        invitation_id: invitationId,
+        company_id: companyId,
+        device_id: deviceId,
+        module_ids: modules,
+      }));
+
+    if (rows.length === 0) return;
+
+    const { error } = await (supabase as any)
+      .from('invitation_device_module_access')
+      .insert(rows);
+
+    if (error) {
+      console.error('Error saving invitation device module access:', error);
+      toast.error('Failed to save device module access');
     }
   };
 
@@ -237,6 +307,11 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
           await saveInvitationModuleAccess(result.invitationId, selectedModuleIds);
         }
 
+        // Save device module access selections
+        if (hasDeviceModuleRestriction && Object.keys(deviceModulePermissions).length > 0) {
+          await saveInvitationDeviceModuleAccess(result.invitationId, deviceModulePermissions);
+        }
+
         toast.success(`Invitation sent to ${formData.email}`);
         onUserInvited?.();
         onAddUser?.(); // Legacy support
@@ -258,6 +333,8 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
         setSelectedDocumentIds([]);
         setHasModuleRestriction(false);
         setSelectedModuleIds([]);
+        setHasDeviceModuleRestriction(false);
+        setDeviceModulePermissions({});
       }
     } catch (error) {
       console.error('Error sending invitation:', error);
@@ -309,6 +386,8 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
         setSelectedDocumentIds([]);
         setHasModuleRestriction(false);
         setSelectedModuleIds([]);
+        setHasDeviceModuleRestriction(false);
+        setDeviceModulePermissions({});
       }
     } catch (error) {
       console.error('Error creating pending user:', error);
@@ -472,6 +551,35 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
                       label="Devices"
                       inline
                     />
+
+                    <Label>Device Modules</Label>
+                    <Switch
+                      checked={hasDeviceModuleRestriction}
+                      disabled={selectedProductIds.length === 0}
+                      onCheckedChange={(checked) => {
+                        setHasDeviceModuleRestriction(checked);
+                        if (checked) {
+                          setIsDeviceModuleDialogOpen(true);
+                        } else {
+                          setDeviceModulePermissions({});
+                        }
+                      }}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {selectedProductIds.length === 0
+                        ? 'Select devices first'
+                        : hasDeviceModuleRestriction
+                          ? `${Object.keys(deviceModulePermissions).filter(k => (deviceModulePermissions[k]?.length ?? 0) > 0).length} configured`
+                          : 'All Modules'}
+                    </span>
+                    {hasDeviceModuleRestriction && Object.keys(deviceModulePermissions).length > 0 && (
+                      <p
+                        className="col-span-3 text-xs text-primary -mt-2 cursor-pointer hover:underline"
+                        onClick={() => setIsDeviceModuleDialogOpen(true)}
+                      >
+                        Edit device module configuration
+                      </p>
+                    )}
 
                     <DocumentPermissionSelector
                       companyId={companyId}
@@ -637,6 +745,35 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
                   inline
                 />
 
+                <Label>Device Modules</Label>
+                <Switch
+                  checked={hasDeviceModuleRestriction}
+                  disabled={selectedProductIds.length === 0}
+                  onCheckedChange={(checked) => {
+                    setHasDeviceModuleRestriction(checked);
+                    if (checked) {
+                      setIsDeviceModuleDialogOpen(true);
+                    } else {
+                      setDeviceModulePermissions({});
+                    }
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">
+                  {selectedProductIds.length === 0
+                    ? 'Select devices first'
+                    : hasDeviceModuleRestriction
+                      ? `${Object.keys(deviceModulePermissions).filter(k => (deviceModulePermissions[k]?.length ?? 0) > 0).length} configured`
+                      : 'All Modules'}
+                </span>
+                {hasDeviceModuleRestriction && Object.keys(deviceModulePermissions).length > 0 && (
+                  <p
+                    className="col-span-3 text-xs text-primary -mt-2 cursor-pointer hover:underline"
+                    onClick={() => setIsDeviceModuleDialogOpen(true)}
+                  >
+                    Edit device module configuration
+                  </p>
+                )}
+
                 <DocumentPermissionSelector
                   companyId={companyId}
                   selectedProductIds={selectedProductIds}
@@ -753,6 +890,20 @@ export function AddCompanyUserDialog({ onUserInvited, onUserAdded, onAddUser, co
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Device Module Picker Dialog */}
+      <DeviceModulePickerDialog
+        open={isDeviceModuleDialogOpen}
+        onOpenChange={setIsDeviceModuleDialogOpen}
+        devices={selectedProductNames}
+        value={deviceModulePermissions}
+        onSave={(val) => {
+          setDeviceModulePermissions(val);
+          const anyConfigured = Object.values(val).some(arr => arr.length > 0);
+          if (!anyConfigured) setHasDeviceModuleRestriction(false);
+        }}
+        subjectName={formData.firstName || formData.email || 'new user'}
+      />
     </DialogContent>
   );
 }

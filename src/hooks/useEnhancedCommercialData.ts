@@ -179,8 +179,8 @@ export function useCreateEnhancedCommercialData() {
           volume_seasonality_factor,
           market_penetration_percentage,
           attribution_type: 'direct',
-          market_code: 'EU', // Default market code - could be made configurable
-        })
+          market_code: 'EU',
+        } as any)
         .select();
 
       if (error) {

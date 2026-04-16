@@ -17,7 +17,7 @@ export class DocumentInclusionService {
         .update({ 
           inclusion_rules: rule,
           updated_at: new Date().toISOString()
-        })
+        } as any)
         .eq('id', documentId);
 
       if (error) throw error;
@@ -95,7 +95,7 @@ export class DocumentInclusionService {
         .update({ 
           is_protected: isProtected,
           updated_at: new Date().toISOString()
-        })
+        } as any)
         .eq('id', documentId);
 
       if (error) throw error;

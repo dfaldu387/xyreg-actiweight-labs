@@ -637,7 +637,7 @@ export class EudamedProductImportService {
     
     const { data, error } = await supabase
       .from('products')
-      .insert(productData)
+      .insert(productData as any)
       .select('id');
     
     if (error) {

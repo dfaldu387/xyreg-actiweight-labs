@@ -108,7 +108,7 @@ export async function updateDefinitionWithInheritance(
     // Update only this variant
     const { error } = await supabase
       .from('products')
-      .update(data)
+      .update(data as any)
       .eq('id', productId);
 
     if (error) throw error;
@@ -151,7 +151,7 @@ export async function updateDefinitionWithInheritance(
     // Update all variants
     const { error: updateError } = await supabase
       .from('products')
-      .update({ ...data, has_definition_override: false, definition_override_reason: null })
+      .update({ ...data, has_definition_override: false, definition_override_reason: null } as any)
       .in('id', variantIds);
 
     if (updateError) throw updateError;
@@ -170,7 +170,7 @@ export async function updateDefinitionWithInheritance(
   // Fallback to variant-only
   const { error } = await supabase
     .from('products')
-    .update(data)
+    .update(data as any)
     .eq('id', productId);
 
   if (error) throw error;
@@ -191,7 +191,7 @@ export async function createDefinitionOverride(
       ...data,
       has_definition_override: true,
       definition_override_reason: reason
-    })
+    } as any)
     .eq('id', productId);
 
   if (error) throw error;
@@ -213,7 +213,7 @@ export async function removeDefinitionOverride(productId: string): Promise<void>
       contraindications: null,
       warnings: null,
       precautions: null
-    })
+    } as any)
     .eq('id', productId);
 
   if (error) throw error;

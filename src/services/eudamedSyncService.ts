@@ -612,7 +612,7 @@ class EudamedSyncService {
 
         const { error } = await supabase
           .from('products')
-          .insert({
+           .insert({
             company_id: companyId,
             name: device.device_name || device.trade_names || 'Imported from EUDAMED',
             udi_di: device.udi_di,
@@ -630,7 +630,7 @@ class EudamedSyncService {
             markets: JSON.stringify([euMarket]),
             market_launch_dates: JSON.stringify({ 'EU': device.placed_on_the_market || new Date().toISOString() }),
             key_technology_characteristics: JSON.stringify(this.mapEudamedToTechnicalCharacteristics(device))
-          });
+          } as any);
 
         if (error) {
           console.error(`Failed to create product for UDI-DI ${device.udi_di}:`, error);

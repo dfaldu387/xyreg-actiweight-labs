@@ -233,7 +233,7 @@ export default function SuperAdminPlanPricing() {
 
       const { error } = await supabase
         .from("new_pricing_plans")
-        .update(updateData)
+        .update(updateData as any)
         .eq("id", planId);
 
       if (error) throw error;
@@ -306,7 +306,7 @@ export default function SuperAdminPlanPricing() {
 
       const { error } = await supabase
         .from("new_pricing_company_plans")
-        .update(updateData)
+        .update(updateData as any)
         .eq("id", editingSub.id);
 
       if (error) throw error;

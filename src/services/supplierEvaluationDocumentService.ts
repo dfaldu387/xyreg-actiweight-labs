@@ -16,7 +16,7 @@ export class SupplierEvaluationDocumentService {
   static async createDocument(document: Omit<SupplierEvaluationDocument, 'id' | 'created_at' | 'updated_at'>): Promise<SupplierEvaluationDocument> {
     const { data, error } = await supabase
       .from('supplier_evaluation_documents')
-      .insert(document)
+      .insert(document as any)
       .select()
       .single();
     
@@ -27,7 +27,7 @@ export class SupplierEvaluationDocumentService {
   static async updateDocument(id: string, updates: Partial<SupplierEvaluationDocument>): Promise<SupplierEvaluationDocument> {
     const { data, error } = await supabase
       .from('supplier_evaluation_documents')
-      .update(updates)
+      .update(updates as any)
       .eq('id', id)
       .select()
       .single();

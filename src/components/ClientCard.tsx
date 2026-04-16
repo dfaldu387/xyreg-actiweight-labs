@@ -2,7 +2,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Briefcase, Layers, ExternalLink } from "lucide-react";
+import { Briefcase, Layers, ExternalLink, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Client } from "@/types/client";
@@ -11,6 +11,7 @@ import { useCompanyRole } from "@/context/CompanyRoleContext";
 import { resolveCompanyToUuid } from "@/utils/simplifiedCompanyResolver";
 import { CompanyUsageService } from '@/services/companyUsageService';
 import { useTranslation } from "@/hooks/useTranslation";
+import { useCompanyTime, formatDuration } from "@/hooks/useCompanyTime";
 
 interface ClientCardProps {
   client: Client;
@@ -23,6 +24,8 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
   const navigate = useNavigate();
   const { switchCompanyRole, companyRoles, refreshCompanyRoles } = useCompanyRole();
   const { lang } = useTranslation();
+  const { totalSeconds, weeklySeconds, isLoading: timeLoading } = useCompanyTime(client.id);
+
   const getStatusColor = (status: Client["status"]) => {
     switch (status) {
       case "On Track":
@@ -43,31 +46,26 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
   };
 
   const navigateToCompanyDashboard = async (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent card click event from firing
+    e.stopPropagation();
     if (disabled) return;
 
-    // Always call the collapse function
     if (onCompanyDashboardClick) {
       onCompanyDashboardClick();
     }
 
     try {
-      // Record company access for recent companies tracking
       await CompanyUsageService.recordCompanyAccess(client.id);
 
-      // Find if the company exists in the user's company roles
       const existingRole = companyRoles.find(role =>
         role.companyName.toLowerCase() === client.name.toLowerCase()
       );
 
       if (existingRole) {
-        // Switch company role to update active company context
         await switchCompanyRole(existingRole.companyId, {
           navigateToCompany: false,
           updateUserMetadata: true
         });
 
-        // Immediately save the new context to prevent recovery from using stale data
         const newContext = {
           companyId: existingRole.companyId,
           companyName: existingRole.companyName,
@@ -76,16 +74,11 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
         };
         sessionStorage.setItem('xyreg_company_context', JSON.stringify(newContext));
 
-        // Navigate using company NAME (routes use :companyName, not :companyId)
         navigate(`/app/company/${encodeURIComponent(existingRole.companyName)}`);
       } else {
-        
         try {
           await refreshCompanyRoles();
-          
-          // Add small delay to ensure state propagation
           await new Promise(resolve => setTimeout(resolve, 200));
-          
           navigate(`/app/company/${encodeURIComponent(client.name)}`);
         } catch (error) {
           navigate(`/app/company/${encodeURIComponent(client.name)}`);
@@ -146,6 +139,16 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
               )}
             />
           </div>
+
+          {/* Time tracking stats */}
+          {!timeLoading && (totalSeconds > 0 || weeklySeconds > 0) && (
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <Clock className="w-3.5 h-3.5" />
+              <span>{lang('clients.thisWeek') || 'This week'}: <span className="font-medium text-foreground">{formatDuration(weeklySeconds)}</span></span>
+              <span className="text-border">|</span>
+              <span>{lang('clients.total') || 'Total'}: <span className="font-medium text-foreground">{formatDuration(totalSeconds)}</span></span>
+            </div>
+          )}
 
           <div className="flex flex-col sm:flex-row gap-2 mt-3">
             <Button

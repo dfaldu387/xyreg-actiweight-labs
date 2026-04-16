@@ -779,7 +779,7 @@ export function useRegistrationFlow(options?: RegistrationFlowOptions) {
           if (Object.keys(updates).length > 0) {
             const { data: updated, error: updateErr } = await supabase
               .from('companies')
-              .update(updates)
+              .update(updates as any)
               .eq('id', existingBySrn.id)
               .select()
               .single();

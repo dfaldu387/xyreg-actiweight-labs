@@ -31,7 +31,7 @@ export class GanttActivityAuditService {
 
       const { error } = await supabase
         .from("activities")
-        .update(updateData)
+        .update(updateData as any)
         .eq("id", activityId);
 
       if (error) {
@@ -76,7 +76,7 @@ export class GanttActivityAuditService {
 
       const { error } = await supabase
         .from("product_audits")
-        .update(updateData)
+        .update(updateData as any)
         .eq("id", auditId);
 
       if (error) {

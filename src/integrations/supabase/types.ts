@@ -7835,6 +7835,57 @@ export type Database = {
           },
         ]
       }
+      docx_comments: {
+        Row: {
+          id: string
+          document_id: string
+          version: number
+          docx_comment_id: string
+          author: string | null
+          author_initials: string | null
+          comment_date: string | null
+          content: string
+          quoted_text: string | null
+          parent_comment_docx_id: string | null
+          is_resolved: boolean
+          metadata: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          document_id: string
+          version: number
+          docx_comment_id: string
+          author?: string | null
+          author_initials?: string | null
+          comment_date?: string | null
+          content: string
+          quoted_text?: string | null
+          parent_comment_docx_id?: string | null
+          is_resolved?: boolean
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          document_id?: string
+          version?: number
+          docx_comment_id?: string
+          author?: string | null
+          author_initials?: string | null
+          comment_date?: string | null
+          content?: string
+          quoted_text?: string | null
+          parent_comment_docx_id?: string | null
+          is_resolved?: boolean
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       document_editor_sessions: {
         Row: {
           document_id: string
@@ -11816,6 +11867,69 @@ export type Database = {
             foreignKeyName: "invitation_device_access_invitation_id_fkey"
             columns: ["invitation_id"]
             isOneToOne: true
+            referencedRelation: "user_invitations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invitation_device_module_access: {
+        Row: {
+          company_id: string
+          created_at: string
+          device_id: string
+          id: string
+          invitation_id: string
+          module_ids: string[]
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          device_id: string
+          id?: string
+          invitation_id: string
+          module_ids?: string[]
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          device_id?: string
+          id?: string
+          invitation_id?: string
+          module_ids?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitation_device_module_access_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitation_device_module_access_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "invitation_device_module_access_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "portfolio_revenue_analytics"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "invitation_device_module_access_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitation_device_module_access_invitation_id_fkey"
+            columns: ["invitation_id"]
+            isOneToOne: false
             referencedRelation: "user_invitations"
             referencedColumns: ["id"]
           },
@@ -21935,6 +22049,51 @@ export type Database = {
         }
         Relationships: []
       }
+      regulatory_news_items: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          id: string
+          published_at: string | null
+          region: string | null
+          relevance_score: number | null
+          scraped_at: string | null
+          source: string
+          source_name: string
+          summary: string | null
+          title: string
+          url: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          published_at?: string | null
+          region?: string | null
+          relevance_score?: number | null
+          scraped_at?: string | null
+          source: string
+          source_name: string
+          summary?: string | null
+          title: string
+          url?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          published_at?: string | null
+          region?: string | null
+          relevance_score?: number | null
+          scraped_at?: string | null
+          source?: string
+          source_name?: string
+          summary?: string | null
+          title?: string
+          url?: string | null
+        }
+        Relationships: []
+      }
       report_analytics: {
         Row: {
           action_details: Json | null
@@ -25888,6 +26047,51 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_company_time_entries: {
+        Row: {
+          company_id: string
+          created_at: string
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          user_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_company_time_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_company_time_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
           },
         ]
       }

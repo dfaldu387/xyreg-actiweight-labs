@@ -811,6 +811,10 @@ export default function ProductDashboard() {
                         currentPhase={product.current_lifecycle_phase || ''}
                         productId={product.id}
                         onPhaseChange={handleRefreshData}
+                        onPhaseClick={(phaseName) => {
+                          const encoded = encodeURIComponent(phaseName);
+                          navigate(`/app/product/${productId}/documents?phase=${encoded}&phases=${encoded}`);
+                        }}
                       />
                     )}
 
@@ -851,7 +855,8 @@ export default function ProductDashboard() {
                             <DocumentChart
                               data={documentChartData}
                               onSegmentClick={(phase, status) => {
-                                navigate(`/app/product/${productId}/documents?phase=${encodeURIComponent(phase)}`);
+                                const encoded = encodeURIComponent(phase);
+                                navigate(`/app/product/${productId}/documents?phase=${encoded}&phases=${encoded}`);
                               }}
                             />
                           </CardContent>

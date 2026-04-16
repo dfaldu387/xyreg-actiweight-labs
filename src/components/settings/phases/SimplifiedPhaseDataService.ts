@@ -247,7 +247,7 @@ export class SimplifiedPhaseDataService {
       // Update the phase
       const { error: updateError } = await supabase
         .from('phases')
-        .update(updates)
+        .update(updates as any)
         .eq('id', phaseId);
 
       if (updateError) {
@@ -282,7 +282,7 @@ export class SimplifiedPhaseDataService {
         .insert({
           ...phaseData,
           company_id: companyId
-        })
+        } as any)
         .select('id')
         .single();
 

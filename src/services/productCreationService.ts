@@ -30,15 +30,15 @@ export async function createProduct(productData: ProductCreationData): Promise<{
         name: productData.name,
         description: productData.description,
         company_id: productData.company_id,
-        class: productData.product_class || null, // Can be null now
+        class: productData.product_class || null,
         product_market: productData.product_market,
-        project_types: productData.project_types, // Add project types
+        project_types: productData.project_types,
         status: 'Concept',
-        version: '1.0', // Set initial version
-        is_line_extension: false, // Default for new products
-        parent_product_id: null, // Default for new products
+        version: '1.0',
+        is_line_extension: false,
+        parent_product_id: null,
         project_start_date: projectStartDate
-      })
+      } as any)
       .select('id')
       .single();
 
@@ -127,15 +127,15 @@ export async function createProductWithTemplates(
         name: productData.name,
         description: productData.description,
         company_id: productData.company_id,
-        class: productData.product_class || null, // Can be null now
+        class: productData.product_class || null,
         product_market: productData.product_market,
-        project_types: productData.project_types, // Add project types
+        project_types: productData.project_types,
         status: 'Concept',
-        version: '1.0', // Set initial version
-        is_line_extension: false, // Default for new products
-        parent_product_id: null, // Default for new products
+        version: '1.0',
+        is_line_extension: false,
+        parent_product_id: null,
         project_start_date: projectStartDate
-      })
+      } as any)
       .select('id')
       .single();
 

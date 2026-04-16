@@ -24,9 +24,10 @@ import { useTranslation } from "@/hooks/useTranslation";
 
 interface UserInvitationsTableProps {
   companyId: string;
+  onChanged?: () => void;
 }
 
-export function UserInvitationsTable({ companyId }: UserInvitationsTableProps) {
+export function UserInvitationsTable({ companyId, onChanged }: UserInvitationsTableProps) {
   const { lang } = useTranslation();
   const { invitations, isLoading, cancelInvitation, resendInvitation } = useInvitations(companyId);
   const [actioningId, setActioningId] = useState<string | null>(null);
@@ -35,12 +36,14 @@ export function UserInvitationsTable({ companyId }: UserInvitationsTableProps) {
     setActioningId(invitationId);
     await cancelInvitation(invitationId);
     setActioningId(null);
+    onChanged?.();
   };
 
   const handleResendInvitation = async (invitationId: string) => {
     setActioningId(invitationId);
     await resendInvitation(invitationId);
     setActioningId(null);
+    onChanged?.();
   };
 
   const getStatusBadgeVariant = (status: string) => {

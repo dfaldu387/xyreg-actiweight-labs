@@ -48,11 +48,6 @@ export function QualityManualStepRow({ section, isComplete, isExcluded, exclusio
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <h4 className={cn("font-medium text-sm truncate", isExcluded && "line-through text-muted-foreground")}>{section.title}</h4>
-          {section.commonlyExcluded && !isExcluded && (
-            <span className="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-medium bg-muted text-muted-foreground border border-border/50">
-              Optional
-            </span>
-          )}
         </div>
         <p className="text-xs text-muted-foreground line-clamp-2">
           {isExcluded

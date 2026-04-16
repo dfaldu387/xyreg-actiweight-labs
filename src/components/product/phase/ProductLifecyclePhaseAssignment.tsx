@@ -204,12 +204,12 @@ export function ProductLifecyclePhaseAssignment({
             product_id: productId,
             phase_id: selectedPhaseId,
             is_current_phase: true,
-            start_date: new Date().toISOString().split('T')[0], // Date only
+            start_date: new Date().toISOString().split('T')[0],
             progress: 0,
             name: selectedPhase?.name || 'Unknown Phase',
             status: 'active',
             likelihood_of_approval: 0.5
-          });
+          } as any);
 
         if (insertError) {
           console.error('Error inserting new phase:', insertError);

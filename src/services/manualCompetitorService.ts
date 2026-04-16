@@ -52,7 +52,7 @@ export const manualCompetitorService = {
     try {
       const { data, error } = await supabase
         .from('product_manual_competitors')
-        .insert(competitor)
+        .insert(competitor as any)
         .select()
         .single();
 
@@ -74,7 +74,7 @@ export const manualCompetitorService = {
     try {
       const { data, error } = await supabase
         .from('product_manual_competitors')
-        .update(updates)
+        .update(updates as any)
         .eq('id', competitorId)
         .select()
         .single();
@@ -131,7 +131,7 @@ export const manualCompetitorService = {
 
       const { data, error } = await supabase
         .from('product_manual_competitors')
-        .insert(competitorRecords)
+        .insert(competitorRecords as any)
         .select();
 
       if (error) throw error;

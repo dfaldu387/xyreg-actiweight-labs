@@ -56,7 +56,7 @@ export async function createProductFromPlatform(
         version: '1.0',
         is_line_extension: !!productData.parent_product_id,
         project_start_date: projectStartDate
-      })
+      } as any)
       .select('id')
       .single();
 

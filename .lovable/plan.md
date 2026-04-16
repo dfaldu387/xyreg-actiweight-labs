@@ -1,32 +1,21 @@
 
 
-## Fix: Missing Status Badges Due to Key Mismatches
+## Plan: Change "Edit Doc" Icon Color to Yellow When Draft Exists
 
-### Root Cause
-The `standard_version_status` database table uses different `framework_key` values than the frontend. When `buildScopeProps('IEC_62366_1')` calls `getStatus('IEC_62366_1')`, it finds no match because the DB row has `framework_key = 'IEC_62366'`.
+### Problem
+The `FileEdit` icon in the Quality Manual sidebar header (top-right) is always gray (`text-muted-foreground`). The user wants it to turn yellow once a draft document has been created, providing visual feedback that a draft is in progress.
 
-### Mismatched Keys
+### Approach
+1. **Add a proactive draft-existence check** to `QualityManualSidebar.tsx` using a `useEffect` that calls `DocumentStudioPersistenceService.getDocumentCIsByReference` on mount with the `QM-FULL-{companyId}` key.
+2. **Store the result** in a `draftExists` boolean state.
+3. **Conditionally color the icon**: when `draftExists` is true, apply `text-amber-500` (yellow) instead of `text-muted-foreground`. Also update the tooltip text to "Open Document Draft".
 
-```text
-DB key          →  Frontend key (used in buildScopeProps)
-─────────────────────────────────────────────────────────
-IEC_62366       →  IEC_62366_1      (no match!)
-ISO_15223       →  ISO_15223_1      (no match!)
-IEEE_14971      →  ISO_14971_DEVICE (no match!)
-```
+### File changed
+- `src/components/quality-manual/QualityManualSidebar.tsx`
+  - Add `useEffect` + `useState` to check if a CI record exists for `templateIdKey` on mount
+  - Change the icon button class from `text-muted-foreground` to `text-amber-500` when `draftExists` is true
+  - Update tooltip text conditionally
 
-### Fix
-Update the three `framework_key` values in the database to match the frontend keys:
-
-```sql
-UPDATE standard_version_status SET framework_key = 'IEC_62366_1'    WHERE framework_key = 'IEC_62366';
-UPDATE standard_version_status SET framework_key = 'ISO_15223_1'    WHERE framework_key = 'ISO_15223';
-UPDATE standard_version_status SET framework_key = 'ISO_14971_DEVICE' WHERE framework_key = 'IEEE_14971';
-```
-
-Also update the hardcoded standards list in `supabase/functions/check-standard-status/index.ts` to use the corrected keys so nightly checks continue to match.
-
-### Files
-- **Migrate**: SQL to update the 3 mismatched keys
-- **Modify**: `supabase/functions/check-standard-status/index.ts` — fix the 3 keys in the standards array
+### Scope
+- 1 file, ~10 lines added/changed
 

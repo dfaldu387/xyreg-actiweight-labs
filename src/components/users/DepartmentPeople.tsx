@@ -1,7 +1,10 @@
 import React, { useState } from "react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { MessageSquare } from "lucide-react";
 import { UserCard } from "./UserCard";
+import { QuickMessageDialog } from "@/components/communications/QuickMessageDialog";
 
 interface User {
   id: string;
@@ -17,6 +20,7 @@ interface DepartmentPeopleProps {
   departmentName: string;
   users: User[];
   onUserUpdate?: () => void;
+  companyId?: string;
 }
 
 // Map department names to functional area enum values
@@ -41,8 +45,9 @@ const mapDepartmentToFunctionalArea = (departmentName: string): string => {
   }
 };
 
-export function DepartmentPeople({ departmentName, users, onUserUpdate }: DepartmentPeopleProps) {
+export function DepartmentPeople({ departmentName, users, onUserUpdate, companyId }: DepartmentPeopleProps) {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [quickMessageUser, setQuickMessageUser] = useState<User | null>(null);
 
   const getInitials = (user: User) => {
     const firstName = user.first_name || '';
@@ -89,14 +94,39 @@ export function DepartmentPeople({ departmentName, users, onUserUpdate }: Depart
             <DialogTitle>User Profile</DialogTitle>
           </DialogHeader>
           {selectedUser && (
-            <UserCard 
-              user={selectedUser} 
-              canEdit={false}
-              onAvatarUpdate={onUserUpdate}
-            />
+            <>
+              <UserCard 
+                user={selectedUser} 
+                canEdit={false}
+                onAvatarUpdate={onUserUpdate}
+              />
+              {companyId && (
+                <Button
+                  variant="outline"
+                  className="w-full mt-3"
+                  onClick={() => {
+                    setQuickMessageUser(selectedUser);
+                    setSelectedUser(null);
+                  }}
+                >
+                  <MessageSquare className="h-4 w-4 mr-2" />
+                  Send Message
+                </Button>
+              )}
+            </>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Quick Message Dialog */}
+      {quickMessageUser && companyId && (
+        <QuickMessageDialog
+          open={!!quickMessageUser}
+          onOpenChange={(open) => { if (!open) setQuickMessageUser(null); }}
+          recipient={quickMessageUser}
+          companyId={companyId}
+        />
+      )}
     </>
   );
 }

@@ -10,13 +10,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";
-import { Building, Plus, Save, Sparkles, Users, Move, Edit, Trash2, User, Palette, ChevronsUpDown, Check } from "lucide-react";
+import { Building, Plus, Save, Sparkles, Users, Move, Edit, Trash2, User, Palette, ChevronsUpDown, Check, LayoutGrid, GitBranch } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { UserCard } from "@/components/users/UserCard";
 import { DepartmentPeople } from "@/components/users/DepartmentPeople";
 import { useTranslation } from "@/hooks/useTranslation";
+import { ValueChainView } from "./ValueChainView";
 
 interface Department {
   id: string;
@@ -32,6 +33,7 @@ interface Department {
   width?: number;
   height?: number;
   roles?: string[];
+  category?: 'support' | 'primary';
 }
 
 interface CompanyUser {
@@ -221,68 +223,63 @@ function DraggableCard({ department, index, users, employeeCount, employees, tot
       onMouseDown={handleMouseDown}
     >
       <div className="text-white">
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between">
-            <div className="flex-1 drag-handle cursor-grab">
-              <div className="flex items-center gap-2 mb-1">
-                <Building className="h-4 w-4" />
-                <Badge variant="secondary" className="text-xs bg-white/20 text-white border-white/30">
-                  {index + 1}
-                </Badge>
-                {employeeCount > 0 && (
+        <CardHeader className="pb-3 relative">
+          <div className="absolute top-2 right-2 flex gap-1 z-10">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className="text-white/70 hover:text-white hover:bg-white/20 h-6 w-6 p-0"
+            >
+              <Edit className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDeleteConfirm(true);
+              }}
+              className="text-white/70 hover:text-white hover:bg-white/20 h-6 w-6 p-0"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+
+          <div className="drag-handle cursor-grab text-center">
+            <h3 className="font-semibold text-sm leading-tight mb-2">
+              {department.name || lang('companySettings.departments.untitledDepartment')}
+            </h3>
+            
+            <div className="flex items-center justify-start gap-2 flex-wrap">
+              <Building className="h-4 w-4" />
+              {employeeCount > 0 && (
+                <>
                   <Badge variant="secondary" className="text-xs bg-white/30 text-white border-white/40 flex items-center gap-1">
                     <Users className="h-3 w-3" />
                     {employeeCount} • {Math.round(totalFTE)}% FTE
                   </Badge>
-                )}
-              </div>
-              <h3 className="font-semibold text-sm leading-tight">
-                {department.name || lang('companySettings.departments.untitledDepartment')}
-              </h3>
-              {department.departmentHeadName && (
-                <div className="flex items-center gap-1 mt-2 text-xs text-white/90">
-                  <User className="h-3 w-3" />
-                  <span className="truncate">{department.departmentHeadName}</span>
-                </div>
+                  <DepartmentPeople
+                    departmentName={department.name}
+                    users={employees}
+                    onUserUpdate={onUserUpdate}
+                  />
+                </>
               )}
             </div>
-            
-            <div className="flex gap-1 ml-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-                className="text-white/70 hover:text-white hover:bg-white/20 h-6 w-6 p-0"
-              >
-                <Edit className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowDeleteConfirm(true);
-                }}
-                className="text-white/70 hover:text-white hover:bg-white/20 h-6 w-6 p-0"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
+
+            {department.departmentHeadName && (
+              <div className="flex items-center justify-start gap-1 mt-2 text-xs text-white/90">
+                <User className="h-3 w-3" />
+                <span className="truncate">{department.departmentHeadName}</span>
+              </div>
+            )}
           </div>
         </CardHeader>
         
-        {employeeCount > 0 && (
-          <CardContent className="pt-0 pb-3">
-            <DepartmentPeople
-              departmentName={department.name}
-              users={employees}
-              onUserUpdate={onUserUpdate}
-            />
-          </CardContent>
-        )}
       </div>
       
 
@@ -321,6 +318,7 @@ export function DepartmentStructureView({ companyId }: DepartmentStructureViewPr
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
+  const [viewMode, setViewMode] = useState<'canvas' | 'valuechain'>('valuechain');
   const { toast } = useToast();
   const { lang } = useTranslation();
 
@@ -373,13 +371,29 @@ export function DepartmentStructureView({ companyId }: DepartmentStructureViewPr
       // Get unique user IDs from assignments
       const userIds = [...new Set(assignments?.map(a => a.user_id) || [])];
       
-      // Fetch user profiles for those user IDs
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('user_profiles')
-        .select('id, email, first_name, last_name, avatar_url')
-        .in('id', userIds);
+      // Fetch user profiles and access levels in parallel
+      const [profilesResult, accessResult] = await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('id, email, first_name, last_name, avatar_url')
+          .in('id', userIds),
+        supabase
+          .from('user_company_access')
+          .select('user_id, access_level')
+          .eq('company_id', companyId)
+          .in('user_id', userIds)
+      ]);
 
-      if (profilesError) throw profilesError;
+      if (profilesResult.error) throw profilesResult.error;
+      if (accessResult.error) throw accessResult.error;
+
+      const profilesData = profilesResult.data;
+      // Build set of consultant user IDs to exclude from department groupings
+      const consultantUserIds = new Set(
+        (accessResult.data || [])
+          .filter(a => a.access_level === 'consultant')
+          .map(a => a.user_id)
+      );
 
       // Create a map of user profiles for quick lookup
       const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
@@ -388,6 +402,7 @@ export function DepartmentStructureView({ companyId }: DepartmentStructureViewPr
       const groupedEmployees: Record<string, { employees: CompanyUser[]; totalFTE: number }> = {};
       
       assignments?.forEach((a: any) => {
+        // Include consultants in their assigned departments
         const profile = profilesMap.get(a.user_id);
         if (!profile) return;
 
@@ -651,52 +666,133 @@ export function DepartmentStructureView({ companyId }: DepartmentStructureViewPr
             <div className="flex items-center gap-2">
               <Move className="h-4 w-4 text-primary" />
               <span className="text-sm text-muted-foreground">
-                {lang('companySettings.departments.dragInstructions')}
+                {viewMode === 'canvas' ? lang('companySettings.departments.dragInstructions') : 'Porter\'s Value Chain view — click a department to edit'}
               </span>
+            </div>
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+              <Button
+                variant={viewMode === 'valuechain' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('valuechain')}
+                className="gap-1.5 h-8"
+              >
+                <GitBranch className="h-4 w-4" />
+                Value Chain
+              </Button>
+              <Button
+                variant={viewMode === 'canvas' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('canvas')}
+                className="gap-1.5 h-8"
+              >
+                <LayoutGrid className="h-4 w-4" />
+                Canvas
+              </Button>
             </div>
           </div>
 
-          {/* Canvas Area */}
-          <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border min-h-[800px] overflow-hidden">
-            {departments.map((department, index) => {
-              const normalizedDeptName = normalizeDepartmentName(department.name);
-              const deptData = employeesByDept[normalizedDeptName] || { employees: [], totalFTE: 0 };
-              
-              return (
-                <DraggableCard
-                  key={department.id}
-                  department={department}
-                  index={index}
-                  users={users}
-                  employeeCount={deptData.employees.length}
-                  employees={deptData.employees}
-                  totalFTE={deptData.totalFTE}
-                  onEdit={() => setEditingDepartment(department)}
-                  onDelete={() => removeDepartment(department.id)}
-                  onPositionChange={(x, y) => updateDepartmentPosition(department.id, x, y)}
-                  onSizeChange={(width, height) => updateDepartmentSize(department.id, width, height)}
-                  onUserUpdate={fetchData}
-                  lang={lang}
-                />
-              );
-            })}
-            
-            {departments.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <Building className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">{lang('companySettings.departments.noDepartmentsYet')}</h3>
-                  <p className="text-muted-foreground mb-4">
-                    {lang('companySettings.departments.createFirstDesc')}
-                  </p>
-                  <Button onClick={addDepartment} className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    {lang('companySettings.departments.createFirstDepartment')}
-                  </Button>
-                </div>
+          {viewMode === 'canvas' ? (
+            <>
+              {/* Canvas Area */}
+              <div className="relative bg-gradient-to-br from-slate-50 to-slate-100 rounded-lg border min-h-[800px] overflow-hidden">
+                {departments.map((department, index) => {
+                  const normalizedDeptName = normalizeDepartmentName(department.name);
+                  const deptData = employeesByDept[normalizedDeptName] || { employees: [], totalFTE: 0 };
+                  
+                  return (
+                    <DraggableCard
+                      key={department.id}
+                      department={department}
+                      index={index}
+                      users={users}
+                      employeeCount={deptData.employees.length}
+                      employees={deptData.employees}
+                      totalFTE={deptData.totalFTE}
+                      onEdit={() => setEditingDepartment(department)}
+                      onDelete={() => removeDepartment(department.id)}
+                      onPositionChange={(x, y) => updateDepartmentPosition(department.id, x, y)}
+                      onSizeChange={(width, height) => updateDepartmentSize(department.id, width, height)}
+                      onUserUpdate={fetchData}
+                      lang={lang}
+                    />
+                  );
+                })}
+                
+                {departments.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <Building className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">{lang('companySettings.departments.noDepartmentsYet')}</h3>
+                      <p className="text-muted-foreground mb-4">
+                        {lang('companySettings.departments.createFirstDesc')}
+                      </p>
+                      <Button onClick={addDepartment} className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        {lang('companySettings.departments.createFirstDepartment')}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <ValueChainView
+              departments={departments}
+              employeesByDept={employeesByDept}
+              normalizeDepartmentName={normalizeDepartmentName}
+              onDepartmentClick={(dept) => setEditingDepartment(dept)}
+              onUserUpdate={fetchData}
+              onCategoryChange={async (deptId, category) => {
+                const updatedDepartments = departments.map(d =>
+                  d.id === deptId ? { ...d, category } : d
+                );
+                setDepartments(updatedDepartments);
+                try {
+                  const cleanDepartments = updatedDepartments.map(({ departmentHeadName, ...dept }) => dept);
+                  const { error } = await supabase
+                    .from('companies')
+                    .update({ department_structure: cleanDepartments } as any)
+                    .eq('id', companyId);
+                  if (error) throw error;
+                } catch (error) {
+                  console.error('Error saving category change:', error);
+                }
+              }}
+              onReorder={async (deptId, targetIndex, category) => {
+                // Remove dept from current position, update category, insert at target index within that category's list
+                const dept = departments.find(d => d.id === deptId);
+                if (!dept) return;
+
+                const updatedDept = { ...dept, category };
+                const otherDepts = departments.filter(d => d.id !== deptId);
+
+                // Get depts in the target category (sorted by position)
+                const categoryDepts = otherDepts
+                  .filter(d => (d.category || undefined) === (category || undefined))
+                  .sort((a, b) => a.position - b.position);
+                const nonCategoryDepts = otherDepts.filter(d => (d.category || undefined) !== (category || undefined));
+
+                // Insert at target index
+                categoryDepts.splice(targetIndex, 0, updatedDept);
+
+                // Recalculate positions for all depts
+                const allDepts = [...nonCategoryDepts, ...categoryDepts].map((d, i) => ({ ...d, position: i }));
+                setDepartments(allDepts);
+
+                try {
+                  const cleanDepartments = allDepts.map(({ departmentHeadName, ...d }) => d);
+                  const { error } = await supabase
+                    .from('companies')
+                    .update({ department_structure: cleanDepartments } as any)
+                    .eq('id', companyId);
+                  if (error) throw error;
+                } catch (error) {
+                  console.error('Error saving reorder:', error);
+                }
+              }}
+              companyId={companyId}
+            />
+          )}
 
           {departments.length > 0 && (
             <div className="mt-4 p-4 bg-muted/20 rounded-lg">
@@ -803,7 +899,27 @@ export function DepartmentStructureView({ companyId }: DepartmentStructureViewPr
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select
+                    value={editingDepartment.category || 'none'}
+                    onValueChange={(value) => setEditingDepartment({
+                      ...editingDepartment,
+                      category: value === 'none' ? undefined : value as 'support' | 'primary'
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      <SelectItem value="support">Support Activity</SelectItem>
+                      <SelectItem value="primary">Primary Activity</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">

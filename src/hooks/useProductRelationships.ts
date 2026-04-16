@@ -126,7 +126,7 @@ export function useUpdateProductAccessoryRelationship() {
     mutationFn: async ({ id, ...data }: Partial<ProductAccessoryRelationship> & { id: string }) => {
       const { data: result, error } = await supabase
         .from('product_accessory_relationships')
-        .update(data)
+        .update(data as any)
         .eq('id', id)
         .select()
         .single();

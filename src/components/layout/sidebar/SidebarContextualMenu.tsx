@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { isoTooltips } from '@/constants/isoTooltips';
 import { UserRole } from '@/types/documentTypes';
 import { useSubscriptionContext } from '@/context/SubscriptionContext';
+import { useDeviceModuleAccess } from '@/hooks/useDeviceModuleAccess';
 import { ComplianceInstancesGroup } from './ComplianceInstancesGroup';
 import { MilestonesGroup } from './MilestonesGroup';
 import { ProductDefinitionGroup } from './ProductDefinitionGroup';
@@ -51,6 +52,7 @@ export function SidebarContextualMenu({
   const navigate = useNavigate();
   const { state } = useSidebar();
   const { isSubscriptionExpired, isMasterPlanUser } = useSubscriptionContext();
+  const { hasAccess: hasDeviceModuleAccess } = useDeviceModuleAccess(currentProductId);
 
   // When subscription is expired and user is not master, lock all menus
   const menusLocked = isSubscriptionExpired && !isMasterPlanUser;
@@ -96,6 +98,7 @@ export function SidebarContextualMenu({
                 )}
               </SidebarMenuItem>
 
+              {hasDeviceModuleAccess('device-dashboard') && (
               <SidebarMenuItem>
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
@@ -126,7 +129,9 @@ export function SidebarContextualMenu({
                   </p>
                 )}
               </SidebarMenuItem>
+              )}
 
+              {hasDeviceModuleAccess('bill-of-materials') && (
               <SidebarMenuItem>
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
@@ -161,7 +166,9 @@ export function SidebarContextualMenu({
                   </p>
                 )}
               </SidebarMenuItem>
+              )}
 
+              {hasDeviceModuleAccess('development-lifecycle') && (
               <SidebarMenuItem>
                 <div>
                   <ComplianceInstancesGroup context="product" userRole={userRole} currentProductId={currentProductId} location={location} singleCompanyName={singleCompanyName} />
@@ -172,7 +179,9 @@ export function SidebarContextualMenu({
                   )}
                 </div>
               </SidebarMenuItem>
+              )}
 
+              {hasDeviceModuleAccess('design-risk-controls') && (
               <SidebarMenuItem>
                 <div>
                   <DesignRiskGroup userRole={userRole} currentProductId={currentProductId} location={location} />
@@ -183,7 +192,9 @@ export function SidebarContextualMenu({
                   )}
                 </div>
               </SidebarMenuItem>
+              )}
 
+              {hasDeviceModuleAccess('device-definition') && (
               <SidebarMenuItem>
                 <div>
                   <ProductDefinitionGroup userRole={userRole} currentProductId={currentProductId} location={location} />
@@ -194,7 +205,9 @@ export function SidebarContextualMenu({
                   )}
                 </div>
               </SidebarMenuItem>
+              )}
 
+              {hasDeviceModuleAccess('business-case') && (
               <SidebarMenuItem>
                 <div>
                   <BusinessCaseGroup userRole={userRole} currentProductId={currentProductId} location={location} />
@@ -205,7 +218,9 @@ export function SidebarContextualMenu({
                   )}
                 </div>
               </SidebarMenuItem>
+              )}
 
+              {hasDeviceModuleAccess('operations') && (
               <SidebarMenuItem>
                 <div>
                   <DeviceOperationsGroup userRole={userRole} currentProductId={currentProductId} location={location} />
@@ -218,6 +233,7 @@ export function SidebarContextualMenu({
               </SidebarMenuItem>
 
               {/* Quality & Governance Group (NC, CAPA, CC, DR) */}
+              {hasDeviceModuleAccess('quality-governance') && (
               <SidebarMenuItem>
                 <QualityGovernanceGroup
                   context="product"
@@ -225,7 +241,9 @@ export function SidebarContextualMenu({
                   location={location}
                 />
               </SidebarMenuItem>
+              )}
 
+              {hasDeviceModuleAccess('clinical-trials') && (
               <SidebarMenuItem>
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
@@ -256,7 +274,9 @@ export function SidebarContextualMenu({
                   </p>
                 )}
               </SidebarMenuItem>
+              )}
 
+              {hasDeviceModuleAccess('development-lifecycle') && (
               <SidebarMenuItem>
                 <div>
                   <MilestonesGroup userRole={userRole} currentProductId={currentProductId} location={location} />
@@ -267,9 +287,11 @@ export function SidebarContextualMenu({
                   )}
                 </div>
               </SidebarMenuItem>
+              )}
 
               {/* Design Review now in Quality & Governance group above */}
 
+              {hasDeviceModuleAccess('regulatory-submissions') && (
               <SidebarMenuItem>
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
@@ -300,7 +322,8 @@ export function SidebarContextualMenu({
                   </p>
                 )}
               </SidebarMenuItem>
-              {(userRole === "admin" || userRole === "editor") && (
+              )}
+              {(userRole === "admin" || userRole === "editor") && hasDeviceModuleAccess('audit-log') && (
                 <SidebarMenuItem>
                   <TooltipProvider delayDuration={300}>
                     <Tooltip>

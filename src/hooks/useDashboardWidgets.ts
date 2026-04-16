@@ -96,6 +96,16 @@ export const WIDGET_REGISTRY: WidgetDefinition[] = [
     defaultEnabled: true,
   },
   {
+    id: 'regulatory-news',
+    labelKey: 'missionControl.widgets.regulatoryNews',
+    descriptionKey: 'missionControl.widgets.regulatoryNewsDesc',
+    label: 'Regulatory News',
+    description: 'Latest updates from regulatory authorities worldwide',
+    icon: 'Newspaper',
+    column: 'right',
+    defaultEnabled: true,
+  },
+  {
     id: 'feedback-tracker',
     labelKey: 'missionControl.widgets.feedbackTracker',
     descriptionKey: 'missionControl.widgets.feedbackTrackerDesc',

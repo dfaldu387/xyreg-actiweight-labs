@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useProductDetails } from "@/hooks/useProductDetails";
 import { ManufacturingForm } from "@/components/product/business-case/ManufacturingForm";
 import { Card, CardContent } from "@/components/ui/card";
-import { Factory, Loader2, ClipboardCheck, Plus, Cog, Truck, Wrench, Sparkles, Package, Users } from "lucide-react";
+import { Factory, Loader2, ClipboardCheck, Plus, Cog, Truck, Wrench, Sparkles, Package, Users, Lock } from "lucide-react";
 import { InvestorShareFlowWrapper } from "@/components/funnel/InvestorShareFlowWrapper";
 import { useTranslation } from "@/hooks/useTranslation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,6 +24,7 @@ import { InstallationServicingTab } from "@/components/operations/InstallationSe
 import { SterilizationCleanlinessTab } from "@/components/operations/SterilizationCleanlinessTab";
 import { PreservationHandlingTab } from "@/components/operations/PreservationHandlingTab";
 import { CustomerPropertyTab } from "@/components/operations/CustomerPropertyTab";
+import { useDeviceModuleAccess } from "@/hooks/useDeviceModuleAccess";
 
 export default function DeviceOperationsPage() {
   const { productId } = useParams<{ productId: string }>();
@@ -33,6 +34,7 @@ export default function DeviceOperationsPage() {
   const isInvestorFlow = returnTo === "investor-share" || returnTo === "genesis" || returnTo === "venture-blueprint";
   const { lang } = useTranslation();
   const { user } = useAuth();
+  const { hasAccess } = useDeviceModuleAccess(productId || null);
 
   const { data: product, isLoading } = useProductDetails(productId);
   const { data: inspections = [], isLoading: inspectionsLoading } = useInspectionsByProduct(productId || '');
@@ -85,34 +87,33 @@ export default function DeviceOperationsPage() {
 
       <Tabs value={initialTab} onValueChange={handleTabChange}>
         <TabsList className="flex-wrap">
-          <TabsTrigger value="supply-chain" className="gap-2">
-            <Truck className="h-4 w-4" />
-            {lang('deviceOperations.tabs.supplyChain')}
-          </TabsTrigger>
-          <TabsTrigger value="incoming-inspection" className="gap-2">
-            <ClipboardCheck className="h-4 w-4" />
-            {lang('deviceOperations.tabs.incomingInspection')}
-          </TabsTrigger>
-          <TabsTrigger value="production" className="gap-2">
-            <Cog className="h-4 w-4" />
-            {lang('deviceOperations.tabs.production')}
-          </TabsTrigger>
-          <TabsTrigger value="sterilization-cleanliness" className="gap-2">
-            <Sparkles className="h-4 w-4" />
-            {lang('deviceOperations.tabs.sterilizationCleanliness')}
-          </TabsTrigger>
-          <TabsTrigger value="preservation-handling" className="gap-2">
-            <Package className="h-4 w-4" />
-            {lang('deviceOperations.tabs.preservationHandling')}
-          </TabsTrigger>
-          <TabsTrigger value="installation-servicing" className="gap-2">
-            <Wrench className="h-4 w-4" />
-            {lang('deviceOperations.tabs.installationServicing')}
-          </TabsTrigger>
-          <TabsTrigger value="customer-property" className="gap-2">
-            <Users className="h-4 w-4" />
-            {lang('deviceOperations.tabs.customerProperty')}
-          </TabsTrigger>
+          {[
+            { value: 'supply-chain', moduleId: 'operations.supply-chain', icon: Truck, label: lang('deviceOperations.tabs.supplyChain') },
+            { value: 'incoming-inspection', moduleId: 'operations.incoming-inspection', icon: ClipboardCheck, label: lang('deviceOperations.tabs.incomingInspection') },
+            { value: 'production', moduleId: 'operations.production', icon: Cog, label: lang('deviceOperations.tabs.production') },
+            { value: 'sterilization-cleanliness', moduleId: 'operations.sterilization-cleanliness', icon: Sparkles, label: lang('deviceOperations.tabs.sterilizationCleanliness') },
+            { value: 'preservation-handling', moduleId: 'operations.preservation-handling', icon: Package, label: lang('deviceOperations.tabs.preservationHandling') },
+            { value: 'installation-servicing', moduleId: 'operations.installation-servicing', icon: Wrench, label: lang('deviceOperations.tabs.installationServicing') },
+            { value: 'customer-property', moduleId: 'operations.customer-property', icon: Users, label: lang('deviceOperations.tabs.customerProperty') },
+          ].map((tab) => {
+            const hasDeviceAccess = hasAccess(tab.moduleId);
+            const Icon = tab.icon;
+            return (
+              <TabsTrigger
+                key={tab.value}
+                value={tab.value}
+                disabled={!hasDeviceAccess}
+                className={`gap-2 ${!hasDeviceAccess ? 'opacity-40 cursor-not-allowed' : ''}`}
+              >
+                {!hasDeviceAccess ? (
+                  <Lock className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                ) : (
+                  <Icon className="h-4 w-4" />
+                )}
+                {tab.label}
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
 
         <TabsContent value="supply-chain">

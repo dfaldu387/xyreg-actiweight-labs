@@ -13,6 +13,7 @@ import { CommunicationHub } from "./CommunicationHub";
 import { KnowledgeBotWidget } from "./KnowledgeBotWidget";
 import { FeedbackTrackerWidget } from "./widgets/FeedbackTrackerWidget";
 import { TaskListWidget } from "./widgets/TaskListWidget";
+import { RegulatoryNewsWidget } from "./widgets/RegulatoryNewsWidget";
 
 import { TrainingStatusCard } from "./TrainingStatusCard";
 
@@ -132,6 +133,8 @@ export function SingleCompanyDashboard() {
         return <KnowledgeBotWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
       case 'feedback-tracker':
         return <FeedbackTrackerWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} readOnly={!isAdmin} />;
+      case 'regulatory-news':
+        return <RegulatoryNewsWidget key={widgetId} companyId={currentCompanyId} onRemove={() => removeWidget(widgetId)} />;
       default:
         return null;
     }
@@ -160,7 +163,7 @@ export function SingleCompanyDashboard() {
       />
 
       <div className="space-y-6 pb-8 pt-4">
-        <NewReleaseNotification />
+        {/* <NewReleaseNotification /> */}
         <MyActionItems companyId={currentCompanyId} />
         <SortableWidgetColumn
           widgets={filteredEnabledWidgets}

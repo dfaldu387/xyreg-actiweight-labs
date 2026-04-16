@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useSidebarState } from '@/hooks/useSidebarState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { isoTooltips } from '@/constants/isoTooltips';
+import { useDeviceModuleAccess } from '@/hooks/useDeviceModuleAccess';
 
 interface DeviceOperationsGroupProps {
   userRole: UserRole;
@@ -25,21 +26,21 @@ export function DeviceOperationsGroup({
   const baseUrl = `/app/product/${currentProductId}`;
   const { expandedMenus, toggleMenuExpansion, setAutoExpansion } = useSidebarState();
   const { state: sidebarState } = useSidebar();
+  const { hasAccess } = useDeviceModuleAccess(currentProductId);
   const menuName = "DeviceOperations";
   const isCollapsed = sidebarState === "collapsed";
 
   const operationsItems = [
-    { title: "Supply Chain", path: `${baseUrl}/operations/manufacturing?tab=supply-chain`, icon: Truck, visible: true },
-    { title: "Incoming Inspection", path: `${baseUrl}/operations/manufacturing?tab=incoming-inspection`, icon: ClipboardCheck, visible: true },
-    
-    { title: "Production", path: `${baseUrl}/operations/manufacturing?tab=production`, icon: Cog, visible: true },
-    { title: "Sterilization & Cleanliness", path: `${baseUrl}/operations/manufacturing?tab=sterilization-cleanliness`, icon: Sparkles, visible: true },
-    { title: "Preservation & Handling", path: `${baseUrl}/operations/manufacturing?tab=preservation-handling`, icon: Package, visible: true },
-    { title: "Installation & Servicing", path: `${baseUrl}/operations/manufacturing?tab=installation-servicing`, icon: Wrench, visible: true },
-    { title: "Customer Property", path: `${baseUrl}/operations/manufacturing?tab=customer-property`, icon: Users, visible: true }
+    { title: "Supply Chain", path: `${baseUrl}/operations/manufacturing?tab=supply-chain`, icon: Truck, moduleId: "operations.supply-chain" },
+    { title: "Incoming Inspection", path: `${baseUrl}/operations/manufacturing?tab=incoming-inspection`, icon: ClipboardCheck, moduleId: "operations.incoming-inspection" },
+    { title: "Production", path: `${baseUrl}/operations/manufacturing?tab=production`, icon: Cog, moduleId: "operations.production" },
+    { title: "Sterilization & Cleanliness", path: `${baseUrl}/operations/manufacturing?tab=sterilization-cleanliness`, icon: Sparkles, moduleId: "operations.sterilization-cleanliness" },
+    { title: "Preservation & Handling", path: `${baseUrl}/operations/manufacturing?tab=preservation-handling`, icon: Package, moduleId: "operations.preservation-handling" },
+    { title: "Installation & Servicing", path: `${baseUrl}/operations/manufacturing?tab=installation-servicing`, icon: Wrench, moduleId: "operations.installation-servicing" },
+    { title: "Customer Property", path: `${baseUrl}/operations/manufacturing?tab=customer-property`, icon: Users, moduleId: "operations.customer-property" }
   ];
 
-  const visibleItems = operationsItems.filter(item => item.visible);
+  const visibleItems = operationsItems.filter(item => hasAccess(item.moduleId));
 
   const isOperationsActive = useMemo(() => {
     return visibleItems.some(item => {

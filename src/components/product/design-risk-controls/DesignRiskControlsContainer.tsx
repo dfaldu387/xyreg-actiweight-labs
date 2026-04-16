@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Lock } from "lucide-react";
+import { useDeviceModuleAccess } from "@/hooks/useDeviceModuleAccess";
 import { Card } from "@/components/ui/card";
 import { RequirementSpecificationsContainer } from "./RequirementSpecificationsContainer";
 import { RiskManagementWithSubTabs } from "./risk-management/RiskManagementWithSubTabs";
@@ -94,6 +95,7 @@ export function DesignRiskControlsContainer({
 
   // Create tab config with translations
   const TAB_CONFIG = createTabConfig(lang);
+  const { hasAccess: hasDeviceModuleAccess } = useDeviceModuleAccess(productId || null);
 
   // Check if a tab is enabled based on plan's menu_access
   const isTabEnabled = (menuAccessKey: string): boolean => {
@@ -198,11 +200,23 @@ export function DesignRiskControlsContainer({
 
               const enabled = isTabEnabled(tab.menuAccessKey);
 
-              if (!enabled) {
+              // Check device module access for this sub-tab
+              const deviceTabPermMap: Record<string, string> = {
+                'requirement-specifications': 'design-risk-controls.requirements',
+                'system-architecture': 'design-risk-controls.architecture',
+                'risk-management': 'design-risk-controls.risk-mgmt',
+                'verification-validation': 'design-risk-controls.vv',
+                'usability-engineering': 'design-risk-controls.usability-engineering',
+                'traceability': 'design-risk-controls.traceability',
+              };
+              const devicePermId = deviceTabPermMap[tab.value];
+              const hasDeviceAccess = !devicePermId || hasDeviceModuleAccess(devicePermId);
+
+              if (!enabled || !hasDeviceAccess) {
                 return (
                   <Tooltip key={tab.value}>
                     <TooltipTrigger asChild>
-                      <TabsTrigger value={tab.value} className={cn("flex items-center gap-1.5", activeTab === tab.value && "bg-background")}>
+                      <TabsTrigger value={tab.value} disabled={!hasDeviceAccess} className={cn("flex items-center gap-1.5", activeTab === tab.value && "bg-background", !hasDeviceAccess && "opacity-40 cursor-not-allowed")}>
                         <Lock className="h-3 w-3 text-slate-500" />
                         <span>{tab.label}</span>
                       </TabsTrigger>
@@ -211,9 +225,11 @@ export function DesignRiskControlsContainer({
                       <div className="flex items-start gap-2">
                         <Lock className="w-4 h-4 text-slate-500 flex-shrink-0 mt-0.5" />
                         <p className="text-sm">
-                          {planName
-                            ? lang('designRiskControls.lockedTab.withPlan').replace('{planName}', planName)
-                            : lang('designRiskControls.lockedTab.generic')}
+                          {!hasDeviceAccess
+                            ? 'Access restricted by your administrator'
+                            : planName
+                              ? lang('designRiskControls.lockedTab.withPlan').replace('{planName}', planName)
+                              : lang('designRiskControls.lockedTab.generic')}
                         </p>
                       </div>
                     </TooltipContent>

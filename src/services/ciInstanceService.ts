@@ -228,7 +228,7 @@ export class CIInstanceService {
         .update({
           ...updates,
           updated_at: new Date().toISOString()
-        })
+        } as any)
         .eq("id", instanceId);
 
       if (error) {

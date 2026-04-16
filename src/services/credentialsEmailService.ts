@@ -99,6 +99,8 @@ class CredentialsEmailService {
                     functional_area: null,
                     external_role: !isInternal ? toExternalRoleEnum(userInvitation?.external_role) : null,
                 }).select().single();
+
+
                 const { data: userProfile, error: userProfileError } = await supabase.from('user_profiles').update({
                     first_name: firstName,
                     last_name: lastName,

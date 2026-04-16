@@ -338,9 +338,6 @@ export function SafetyUsageTab({
     setNewValue,
     onAdd,
     onRemove,
-    badgeVariant,
-    badgeClassName,
-    removeBtnClassName,
     placeholder,
     tooltipText,
     aiFieldType,
@@ -356,9 +353,6 @@ export function SafetyUsageTab({
     setNewValue: (v: string) => void;
     onAdd: () => void;
     onRemove: (index: number) => void;
-    badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline';
-    badgeClassName?: string;
-    removeBtnClassName?: string;
     placeholder: string;
     tooltipText?: string;
     aiFieldType?: string;
@@ -455,17 +449,17 @@ export function SafetyUsageTab({
       <CardContent className="pt-0">
         
           <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
+            <div className="divide-y divide-border rounded-md border">
               {(isFieldPFMode?.(scopeKey)
                 ? normalizeArrayField(getFamilyValue?.(scopeKey))
                 : items
               ).map((item, index, arr) => (
-                <Badge key={index} variant={badgeVariant || 'secondary'} className={`flex items-center gap-2 min-h-[2rem] ${badgeClassName || ''}`}>
-                  {item}
+                <div key={index} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <span className="flex-1">{index + 1}. {item}</span>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className={`h-4 w-4 ${removeBtnClassName || ''}`}
+                    className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
                     onClick={() => {
                       if (isFieldPFMode?.(scopeKey)) {
                         saveFamilyValue?.(scopeKey, JSON.stringify(arr.filter((_, i) => i !== index)));
@@ -477,8 +471,14 @@ export function SafetyUsageTab({
                   >
                     <X className="h-3 w-3" />
                   </Button>
-                </Badge>
+                </div>
               ))}
+              {(isFieldPFMode?.(scopeKey)
+                ? normalizeArrayField(getFamilyValue?.(scopeKey))
+                : items
+              ).length === 0 && (
+                <div className="px-3 py-2 text-sm text-muted-foreground italic">No items added yet</div>
+              )}
             </div>
             <div className="flex gap-2">
               <Input
@@ -533,8 +533,7 @@ export function SafetyUsageTab({
         setNewValue: setNewContraindication,
         onAdd: handleAddContraindication,
         onRemove: handleRemoveContraindication,
-        badgeVariant: 'destructive',
-        removeBtnClassName: 'hover:bg-destructive-foreground hover:text-destructive',
+        
         placeholder: lang('devicePurpose.safety.addContraindication'),
         tooltipText: lang('devicePurpose.safety.contraindicationsTooltip'),
         aiFieldType: 'contraindications',
@@ -553,9 +552,7 @@ export function SafetyUsageTab({
         setNewValue: setNewWarning,
         onAdd: handleAddWarning,
         onRemove: handleRemoveWarning,
-        badgeVariant: 'secondary',
-        badgeClassName: 'bg-yellow-100 border-yellow-300 text-yellow-900',
-        removeBtnClassName: 'hover:bg-yellow-200',
+        
         placeholder: lang('devicePurpose.safety.addWarning'),
         tooltipText: lang('devicePurpose.safety.warningsTooltip'),
         aiFieldType: 'warnings',
@@ -574,9 +571,7 @@ export function SafetyUsageTab({
         setNewValue: setNewSideEffect,
         onAdd: () => handleAddTag('side_effects', newSideEffect, setNewSideEffect),
         onRemove: (i) => handleRemoveTag('side_effects', i),
-        badgeVariant: 'secondary',
-        badgeClassName: 'bg-orange-100 border-orange-300 text-orange-900',
-        removeBtnClassName: 'hover:bg-orange-200',
+        
         placeholder: 'Add a side effect or undesirable effect...',
         tooltipText: 'Known risks and undesirable effects that must be communicated to users (MDR Annex I, 23.4(h)).',
         aiFieldType: 'sideEffects',
@@ -595,9 +590,7 @@ export function SafetyUsageTab({
         setNewValue: setNewResidualRisk,
         onAdd: () => handleAddTag('residual_risks', newResidualRisk, setNewResidualRisk),
         onRemove: (i) => handleRemoveTag('residual_risks', i),
-        badgeVariant: 'secondary',
-        badgeClassName: 'bg-purple-100 border-purple-300 text-purple-900',
-        removeBtnClassName: 'hover:bg-purple-200',
+        
         placeholder: 'Add a residual risk...',
         tooltipText: 'Risks remaining after risk mitigation measures have been applied (MDR Annex I, 23.4(p)).',
         aiFieldType: 'residualRisks',
@@ -616,9 +609,7 @@ export function SafetyUsageTab({
         setNewValue: setNewInteraction,
         onAdd: () => handleAddTag('interactions', newInteraction, setNewInteraction),
         onRemove: (i) => handleRemoveTag('interactions', i),
-        badgeVariant: 'secondary',
-        badgeClassName: 'bg-blue-100 border-blue-300 text-blue-900',
-        removeBtnClassName: 'hover:bg-blue-200',
+        
         placeholder: 'Add an interaction or incompatibility...',
         tooltipText: 'Known interactions with other devices, substances, medicines, or materials (MDR Annex I, 23.4(i)).',
         aiFieldType: 'interactions',

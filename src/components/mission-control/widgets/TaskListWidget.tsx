@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ListTodo, X, Plus, ChevronDown, ChevronRight, Loader2, Trash2, Calendar, FileText, Paperclip, Download, Link2, CheckCircle2 } from "lucide-react";
+import { ListTodo, X, Plus, ChevronDown, ChevronRight, Loader2, Trash2, Calendar, Paperclip, Link2, CheckCircle2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -20,6 +21,9 @@ import { hasEditorPrivileges } from "@/utils/roleUtils";
 import { useCompanyRole } from "@/context/CompanyRoleContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+
+const isImagePath = (path: string) => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(path);
 
 interface TaskListWidgetProps {
   companyId?: string;
@@ -42,6 +46,15 @@ interface McTask {
   attachment_path: string | null;
 }
 
+interface CompanyDoc {
+  id: string;
+  name: string;
+  document_number: string | null;
+  document_type?: string;
+  product_id?: string;
+  product_name?: string;
+}
+
 export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
   const queryClient = useQueryClient();
   const { companyRoles } = useCompanyRole();
@@ -51,7 +64,10 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [drawerDoc, setDrawerDoc] = useState<{ id: string; name: string; type: string; companyId?: string; companyName?: string; productId?: string } | null>(null);
   const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [newAssignee, setNewAssignee] = useState<string>("");
   const [newDueDate, setNewDueDate] = useState<Date | undefined>();
   const [newLinkedDocId, setNewLinkedDocId] = useState<string>("");
@@ -108,21 +124,49 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
     enabled: !!companyId && canCreate,
   });
 
-  // Fetch company documents for linking
+  // Fetch company documents for linking — join with products to differentiate
   const { data: companyDocs = [] } = useQuery({
     queryKey: ['company-docs-for-tasks', companyId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('phase_assigned_document_template')
-        .select('id, name, document_number')
+        .select('id, name, document_number, document_type, product_id, products(name)')
         .eq('company_id', companyId!)
         .order('name', { ascending: true })
         .limit(200);
 
       if (error) throw error;
-      return (data || []) as { id: string; name: string; document_number: string | null }[];
+      return (data || []).map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        document_number: d.document_number,
+        document_type: d.document_type,
+        product_id: d.product_id,
+        product_name: d.products?.name || null,
+      })) as CompanyDoc[];
     },
     enabled: !!companyId && canCreate,
+  });
+
+  // Signed URL cache for attachment previews
+  const { data: attachmentUrls = {} } = useQuery({
+    queryKey: ['task-attachment-urls', companyId, tasks.map(t => t.attachment_path).filter(Boolean).join(',')],
+    queryFn: async () => {
+      const paths = tasks.map(t => t.attachment_path).filter(Boolean) as string[];
+      if (!paths.length) return {};
+      const urls: Record<string, string> = {};
+      await Promise.all(
+        paths.map(async (path) => {
+          if (isImagePath(path)) {
+            const { data } = await supabase.storage.from('document-templates').createSignedUrl(path, 3600);
+            if (data?.signedUrl) urls[path] = data.signedUrl;
+          }
+        })
+      );
+      return urls;
+    },
+    enabled: !!companyId && tasks.some(t => t.attachment_path && isImagePath(t.attachment_path)),
+    staleTime: 1000 * 60 * 30,
   });
 
   // Upload attachment helper
@@ -162,8 +206,9 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
         assigned_to: assignee,
         created_by: currentUser.id,
         title: newTitle.trim(),
+        description: newDescription.trim() || null,
         due_date: newDueDate?.toISOString() || null,
-        linked_document_id: newLinkedDocId || null,
+        linked_document_id: newLinkedDocId && newLinkedDocId !== '__none__' ? newLinkedDocId : null,
         attachment_path: attachmentPath,
       } as any);
       if (error) throw error;
@@ -171,6 +216,7 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mc-tasks', companyId] });
       setNewTitle("");
+      setNewDescription("");
       setNewAssignee("");
       setNewDueDate(undefined);
       setNewLinkedDocId("");
@@ -227,6 +273,11 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
     return doc ? (doc.document_number || doc.name) : null;
   };
 
+  const getDocDisplayName = (doc: CompanyDoc) => {
+    const base = doc.document_number ? `${doc.document_number} – ${doc.name}` : doc.name;
+    return doc.product_name ? `${base} (${doc.product_name})` : base;
+  };
+
   const handleDownloadAttachment = async (path: string) => {
     try {
       const { data, error } = await supabase.storage
@@ -236,6 +287,27 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
       window.open(data.signedUrl, '_blank');
     } catch {
       toast.error("Failed to download attachment");
+    }
+  };
+
+  const handleDocClick = async (docId: string) => {
+    if (!companyId) return;
+    // Always fetch full context to ensure drawer gets complete metadata
+    const { data } = await supabase
+      .from('phase_assigned_document_template')
+      .select('id, name, document_type, company_id, product_id')
+      .eq('id', docId)
+      .maybeSingle();
+    if (data) {
+      const companyName = companyRoles.find(r => r.companyId === companyId)?.companyName;
+      setDrawerDoc({
+        id: data.id,
+        name: data.name,
+        type: data.document_type || 'document',
+        companyId: data.company_id,
+        companyName: companyName || undefined,
+        productId: data.product_id,
+      });
     }
   };
 
@@ -255,53 +327,120 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
     );
   };
 
-  const renderTaskRow = (task: McTask, isCompleted: boolean) => (
-    <div key={task.id} className={`flex items-start gap-2 group py-1 ${isCompleted ? 'opacity-60' : ''}`}>
-      <Checkbox
-        checked={isCompleted}
-        onCheckedChange={() => toggleMutation.mutate({ id: task.id, completed: !isCompleted })}
-        className="mt-0.5"
-      />
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm leading-tight ${isCompleted ? 'line-through' : ''}`}>{task.title}</p>
-        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-          {!isCompleted && task.assigned_to !== task.created_by && currentUser?.id === task.created_by && (
-            <span className="text-[10px] text-muted-foreground">→ {getMemberName(task.assigned_to)}</span>
-          )}
-          {!isCompleted && task.assigned_to === currentUser?.id && task.created_by !== currentUser?.id && (
-            <span className="text-[10px] text-muted-foreground">from {getMemberName(task.created_by)}</span>
-          )}
-          {!isCompleted && getDueDateBadge(task.due_date)}
-          {task.linked_document_id && (
-            <Badge variant="outline" className="text-[10px] gap-0.5 cursor-default">
-              <Link2 className="h-2.5 w-2.5" />
-              {getDocName(task.linked_document_id) || 'Doc'}
-            </Badge>
-          )}
-          {task.attachment_path && (
-            <Badge
-              variant="outline"
-              className="text-[10px] gap-0.5 cursor-pointer hover:bg-accent"
-              onClick={() => handleDownloadAttachment(task.attachment_path!)}
+  const renderTaskRow = (task: McTask, isCompleted: boolean) => {
+    const isExpanded = expandedTaskId === task.id;
+    const hasDetail = task.description || task.attachment_path || task.linked_document_id;
+
+    return (
+      <div key={task.id} className={`border rounded-md ${isCompleted ? 'opacity-60' : ''}`}>
+        {/* Main row */}
+        <div className="flex items-start gap-2 group py-2 px-2.5">
+          <Checkbox
+            checked={isCompleted}
+            onCheckedChange={() => toggleMutation.mutate({ id: task.id, completed: !isCompleted })}
+            className="mt-0.5"
+          />
+          <div
+            className={`flex-1 min-w-0 ${hasDetail ? 'cursor-pointer' : ''}`}
+            onClick={() => hasDetail && setExpandedTaskId(isExpanded ? null : task.id)}
+          >
+            <p className={`text-sm leading-tight ${isCompleted ? 'line-through' : ''}`}>{task.title}</p>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              {!isCompleted && task.assigned_to !== task.created_by && currentUser?.id === task.created_by && (
+                <span className="text-[10px] text-muted-foreground">→ {getMemberName(task.assigned_to)}</span>
+              )}
+              {!isCompleted && task.assigned_to === currentUser?.id && task.created_by !== currentUser?.id && (
+                <span className="text-[10px] text-muted-foreground">from {getMemberName(task.created_by)}</span>
+              )}
+              {!isCompleted && getDueDateBadge(task.due_date)}
+              {task.linked_document_id && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] gap-0.5 cursor-pointer hover:bg-accent"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDocClick(task.linked_document_id!);
+                  }}
+                >
+                  <Link2 className="h-2.5 w-2.5" />
+                  {getDocName(task.linked_document_id) || 'Doc'}
+                </Badge>
+              )}
+              {task.attachment_path && (
+                <Badge
+                  variant="outline"
+                  className="text-[10px] gap-0.5 cursor-pointer hover:bg-accent"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDownloadAttachment(task.attachment_path!);
+                  }}
+                >
+                  <Paperclip className="h-2.5 w-2.5" />
+                  Attachment
+                </Badge>
+              )}
+              {hasDetail && (
+                <span className="text-[10px] text-muted-foreground ml-auto">
+                  {isExpanded ? <ChevronDown className="h-3 w-3 inline" /> : <ChevronRight className="h-3 w-3 inline" />}
+                </span>
+              )}
+            </div>
+          </div>
+          {currentUser?.id === task.created_by && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => deleteMutation.mutate(task.id)}
             >
-              <Download className="h-2.5 w-2.5" />
-              File
-            </Badge>
+              <Trash2 className="h-3 w-3 text-muted-foreground" />
+            </Button>
           )}
         </div>
+
+        {/* Expanded detail panel */}
+        {isExpanded && (
+          <div className="border-t px-3 py-2.5 space-y-2 bg-muted/30">
+            {task.description && (
+              <p className="text-xs text-muted-foreground whitespace-pre-wrap">{task.description}</p>
+            )}
+            {task.attachment_path && isImagePath(task.attachment_path) && attachmentUrls[task.attachment_path] && (
+              <div className="rounded-md overflow-hidden border border-border max-w-[240px]">
+                <img
+                  src={attachmentUrls[task.attachment_path]}
+                  alt="Attachment"
+                  className="w-full h-auto cursor-pointer"
+                  onClick={() => handleDownloadAttachment(task.attachment_path!)}
+                />
+              </div>
+            )}
+            {task.attachment_path && !isImagePath(task.attachment_path) && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => handleDownloadAttachment(task.attachment_path!)}
+              >
+                <Paperclip className="h-3 w-3" />
+                Open attachment
+              </Button>
+            )}
+            {task.linked_document_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => handleDocClick(task.linked_document_id!)}
+              >
+                <Link2 className="h-3 w-3" />
+                Open linked document
+              </Button>
+            )}
+          </div>
+        )}
       </div>
-      {currentUser?.id === task.created_by && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-          onClick={() => deleteMutation.mutate(task.id)}
-        >
-          <Trash2 className="h-3 w-3 text-muted-foreground" />
-        </Button>
-      )}
-    </div>
-  );
+    );
+  };
 
   return (
     <Card>
@@ -335,9 +474,13 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               className="h-8 text-sm"
-              onKeyDown={e => {
-                if (e.key === 'Enter' && newTitle.trim()) createMutation.mutate();
-              }}
+            />
+            <Textarea
+              placeholder="Description (optional)..."
+              value={newDescription}
+              onChange={e => setNewDescription(e.target.value)}
+              className="text-sm min-h-[60px] resize-none"
+              rows={2}
             />
             <div className="flex gap-2">
               <Select value={newAssignee} onValueChange={setNewAssignee}>
@@ -377,7 +520,7 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
                   <SelectItem value="__none__" className="text-xs text-muted-foreground">No document</SelectItem>
                   {companyDocs.map(d => (
                     <SelectItem key={d.id} value={d.id} className="text-xs">
-                      {d.document_number ? `${d.document_number} – ${d.name}` : d.name}
+                      {getDocDisplayName(d)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -425,7 +568,7 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
             )}
 
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setShowAddForm(false); setNewAttachmentFile(null); setNewLinkedDocId(""); }}>
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setShowAddForm(false); setNewAttachmentFile(null); setNewLinkedDocId(""); setNewDescription(""); }}>
                 Cancel
               </Button>
               <Button
@@ -467,6 +610,18 @@ export function TaskListWidget({ companyId, onRemove }: TaskListWidgetProps) {
             {showCompleted && completedTasks.map(task => renderTaskRow(task, true))}
           </div>
         )}
+
+        {/* Document Draft Side Drawer */}
+        <DocumentDraftDrawer
+          open={!!drawerDoc}
+          onOpenChange={(open) => { if (!open) setDrawerDoc(null); }}
+          documentId={drawerDoc?.id || ''}
+          documentName={drawerDoc?.name || ''}
+          documentType={drawerDoc?.type || ''}
+          companyId={drawerDoc?.companyId}
+          companyName={drawerDoc?.companyName}
+          productId={drawerDoc?.productId}
+        />
       </CardContent>
     </Card>
   );

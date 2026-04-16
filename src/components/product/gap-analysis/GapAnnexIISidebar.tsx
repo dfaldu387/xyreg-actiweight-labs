@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle, Circle, Home, ChevronRight, Target, FileText, Loader2 } from 'lucide-react';
+import { CheckCircle, Circle, Home, ChevronRight, Target, FileText, Loader2, FileEdit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,12 @@ import { cn } from '@/lib/utils';
 import { ANNEX_II_SECTIONS, ANNEX_II_GROUPS, type AnnexIISectionItem } from '@/config/gapAnnexIISections';
 import type { GapAnalysisItem } from '@/types/client';
 import type { ActiveSubStep } from '@/components/company/gap-analysis/GenericGapSidebar';
+import { useRegisterRightRail } from '@/context/RightRailContext';
+import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useCompanyId } from '@/hooks/useCompanyId';
+import { useDraftDocumentNavigation } from '@/hooks/useDraftDocumentNavigation';
 
 interface GapAnnexIISidebarProps {
   items: GapAnalysisItem[];
@@ -46,9 +52,16 @@ export function GapAnnexIISidebar({
   activeStepIndex,
   onStepClick,
 }: GapAnnexIISidebarProps) {
+  useRegisterRightRail();
   const navigate = useNavigate();
-  const { productId } = useParams();
+  const { productId, companyName } = useParams();
+  const companyId = useCompanyId();
+  const decodedCompanyName = companyName ? decodeURIComponent(companyName) : '';
   const [creating, setCreating] = useState(false);
+  const [showDocCIDialog, setShowDocCIDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
+  const annexTemplateIdKey = `GAP-ANNEX-II-${productId || companyId}`;
+  const { handleDraftClick, checking: checkingDraft } = useDraftDocumentNavigation(companyId, decodedCompanyName, productId || undefined);
 
   const completionMap = getCompletionMap(items);
   const baseUrl = `/app/product/${productId}`;
@@ -137,11 +150,29 @@ export function GapAnnexIISidebar({
 
       {/* Header */}
       <div className="p-4 border-b bg-background/50">
-        <div className="flex items-center gap-2 mb-3">
-          <FileText className="h-4 w-4 text-blue-600" />
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Technical Documentation
-          </span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-blue-600" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Technical Documentation
+            </span>
+          </div>
+          {companyId && decodedCompanyName && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => handleDraftClick(annexTemplateIdKey, () => setShowDocCIDialog(true))}
+                    disabled={checkingDraft}
+                    className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                  >
+                    {checkingDraft ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileEdit className="h-3.5 w-3.5" />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="left"><p>Create Document Draft</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
         <h3 className="font-semibold text-foreground text-sm truncate">
           {viewedConfig
@@ -323,6 +354,38 @@ export function GapAnnexIISidebar({
           })}
         </div>
       </div>
+
+      {/* Document Draft Dialog */}
+      {companyId && decodedCompanyName && (
+        <>
+          <SaveContentAsDocCIDialog
+            open={showDocCIDialog}
+            onOpenChange={setShowDocCIDialog}
+            title="Annex II Technical Documentation Gap Analysis"
+            htmlContent={ANNEX_II_SECTIONS
+              .map(s => {
+                const entry = completionMap.get(s.section);
+                const status = entry?.isComplete ? '✅ Compliant' : '⚠️ Non-compliant';
+                return `<h2>§${s.section} ${s.title}</h2><p><strong>Status:</strong> ${status}</p>`;
+              })
+              .join('\n')}
+            templateIdKey={`GAP-ANNEX-II-${productId || companyId}`}
+            companyId={companyId}
+            companyName={decodedCompanyName}
+            productId={productId || undefined}
+            defaultScope="device"
+            onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+          />
+          <DocumentDraftDrawer
+            open={!!draftDrawerDoc}
+            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+            documentId={draftDrawerDoc?.id || ''}
+            documentName={draftDrawerDoc?.name || ''}
+            documentType={draftDrawerDoc?.type || ''}
+            companyId={companyId}
+          />
+        </>
+      )}
     </div>
   );
 }

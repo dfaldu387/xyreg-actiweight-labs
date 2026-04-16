@@ -996,7 +996,7 @@ export function AllActivePhasesTab({
 
       const { error } = await supabase
         .from(table)
-        .update({ [field]: value })
+        .update({ [field]: value } as any)
         .eq("id", cleanId);
       if (error) {
         console.error('Bulk update error for', docId, '(table:', table, '):', error);

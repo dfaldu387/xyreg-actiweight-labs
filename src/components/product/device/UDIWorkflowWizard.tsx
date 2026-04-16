@@ -114,7 +114,7 @@ export function UDIWorkflowWizard({
       
       const { error } = await supabase
         .from('products')
-        .update(updateData)
+        .update(updateData as any)
         .eq('id', productId);
       
       if (error) throw error;

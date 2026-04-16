@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useCompanyApiKeys } from '@/hooks/useCompanyApiKeys';
+import { AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,7 @@ export function AgentChatDialog({ agent, open, onOpenChange }: AgentChatDialogPr
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const location = useLocation();
@@ -56,6 +59,8 @@ export function AgentChatDialog({ agent, open, onOpenChange }: AgentChatDialogPr
 
   const { data: product } = useProductDetails(productId);
   const companyContext = CompanyContextService.get();
+  const navigate = useNavigate();
+  const { getApiKey, apiKeys: companyApiKeys } = useCompanyApiKeys(companyContext?.companyId);
 
   // Reset messages when agent changes
   useEffect(() => {
@@ -74,6 +79,13 @@ export function AgentChatDialog({ agent, open, onOpenChange }: AgentChatDialogPr
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isLoading) return;
+
+    // Guard: Google Vertex AI key must be configured. Show inline error banner.
+    if (!companyApiKeys.isLoading && !getApiKey('google_vertex' as any)) {
+      setApiKeyMissing(true);
+      return;
+    }
+    if (apiKeyMissing) setApiKeyMissing(false);
 
     const userMsg: Message = { role: 'user', content: text };
     const updatedMessages = [...messages, userMsg];
@@ -95,11 +107,12 @@ export function AgentChatDialog({ agent, open, onOpenChange }: AgentChatDialogPr
 
       const systemPrompt = agent.systemPrompt + contextInfo;
 
-      const response = await supabase.functions.invoke('advisory-chat', {
+      const response = await supabase.functions.invoke('vertex-advisory-chat', {
         body: {
           messages: updatedMessages.map(m => ({ role: m.role, content: m.content })),
           systemPrompt,
           agentId: agent.id,
+          companyId: CompanyContextService.get()?.companyId,
         }
       });
 
@@ -153,7 +166,34 @@ export function AgentChatDialog({ agent, open, onOpenChange }: AgentChatDialogPr
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          {messages.length === 0 && (
+          {apiKeyMissing && (
+            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-medium">Google Vertex AI key required</p>
+                  <p className="text-xs mt-1 text-destructive/90">
+                    Add a Google Vertex AI service-account key in Company Settings → General → API Keys to use the advisory chat.
+                  </p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="w-full"
+                onClick={() => {
+                  const slug = companyContext?.companyName ? encodeURIComponent(companyContext.companyName) : null;
+                  if (slug) {
+                    onOpenChange(false);
+                    navigate(`/app/company/${slug}/settings?tab=general`);
+                  }
+                }}
+              >
+                Set API key
+              </Button>
+            </div>
+          )}
+          {messages.length === 0 && !apiKeyMissing && (
             <div className="text-center text-muted-foreground py-12">
               <p className="text-sm">Ask {agent.name} anything about <strong>{agent.specialty}</strong>.</p>
             </div>

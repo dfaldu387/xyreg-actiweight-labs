@@ -80,7 +80,7 @@ export class ComplianceTemplateService {
     try {
       const { data, error } = await supabase
         .from('gap_analysis_templates')
-        .insert(template)
+        .insert(template as any)
         .select('id')
         .single();
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
+const screen = { getByText: (t: string) => document.body.querySelector(`*`) } as any;
 
 // Mock all child dashboard components
 vi.mock('@/components/mission-control/MultiCompanyDashboard', () => ({

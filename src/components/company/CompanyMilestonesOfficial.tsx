@@ -8,7 +8,8 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useCompanyRole } from "@/context/CompanyRoleContext";
-import { Gantt, Willow } from "@/components/gantt-chart/src";
+import { Gantt, Willow, Tooltip } from "@/components/gantt-chart/src";
+import MyTooltipContent from "@/components/gantt-chart/MyTooltipContent";
 import "@svar-ui/react-gantt/all.css";
 import "@/components/gantt-chart/GanttChartCustom.css";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -419,11 +420,12 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
           deadline_date: a.deadline_date || null,
         })));
 
-        // Fetch enterprise-level activities (all activities for this company's products)
+        // Fetch enterprise-level activities (company-level — no product_id, or product-level)
+        const productIds = (productsData || []).map((p: any) => p.id);
         const { data: activitiesData } = await supabase
           .from('activities')
-          .select('id, name, status, start_date, end_date, product_id')
-          .in('product_id', (productsData || []).map((p: any) => p.id))
+          .select('id, name, status, start_date, end_date, product_id, company_id')
+          .eq('company_id', activeCompanyRole.companyId)
           .order('start_date', { ascending: true });
 
         setEnterpriseActivities((activitiesData || []).map((a: any) => ({
@@ -1043,15 +1045,23 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
           >
             <div className="hide-progress hide-links hide-drag hide-link-delete h-full overflow-hidden">
               <Willow>
-                <Gantt
-                  init={(api: any) => handleGanttReady(api)}
-                  zoom={zoomConfig}
-                  tasks={ganttTasks}
-                  links={ganttLinks}
-                  taskTypes={taskTypes}
-                  markers={ganttMarkers}
-                  readonly={true}
-                />
+                <Tooltip api={ganttApiRef.current} content={MyTooltipContent}>
+                  <Gantt
+                    init={(api: any) => handleGanttReady(api)}
+                    zoom={zoomConfig}
+                    tasks={ganttTasks}
+                    links={ganttLinks}
+                    taskTypes={taskTypes}
+                    markers={ganttMarkers}
+                    columns={[
+                      { id: "text", header: lang('gantt.taskName'), width: 200 },
+                      { id: "start", header: lang('gantt.startDate'), width: 100 },
+                      { id: "end", header: "End Date", width: 100 },
+                      { id: "duration", header: lang('gantt.duration'), width: 80, align: "center" as const },
+                    ]}
+                    readonly={true}
+                  />
+                </Tooltip>
               </Willow>
             </div>
           </div>

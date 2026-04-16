@@ -277,13 +277,17 @@ export function EnhancedAuditInstanceDialog({
           const phaseSpecificDates = calculatePhaseSpecificDates(phase);
           
           const auditData = {
+            auditName: auditName.trim(),
             audit_name: auditName.trim(),
+            auditType: selectedTemplate.audit_templates.template_name,
             audit_type: selectedTemplate.audit_templates.template_name,
             status: "Planned",
             start_date: phaseSpecificDates.start_date,
             end_date: phaseSpecificDates.end_date,
-            deadline_date: phaseSpecificDates.end_date, // For backward compatibility
+            deadlineDate: phaseSpecificDates.end_date ? new Date(phaseSpecificDates.end_date) : undefined,
+            deadline_date: phaseSpecificDates.end_date,
             notes,
+            responsiblePersonId: responsiblePersonId,
             responsible_person_id: responsiblePersonId,
             phase_id: phase.id || null, // Use lifecycle phase ID
             ...(type === "product" && { 
@@ -309,13 +313,17 @@ export function EnhancedAuditInstanceDialog({
           : { start_date: formData.start_date || null, end_date: formData.end_date || null };
 
         const auditData = {
+          auditName: auditName.trim(),
           audit_name: auditName.trim(),
+          auditType: selectedTemplate.audit_templates.template_name,
           audit_type: selectedTemplate.audit_templates.template_name,
           status: "Planned",
           start_date: phaseSpecificDates.start_date,
           end_date: phaseSpecificDates.end_date,
-          deadline_date: phaseSpecificDates.end_date, // For backward compatibility
+          deadlineDate: phaseSpecificDates.end_date ? new Date(phaseSpecificDates.end_date) : undefined,
+          deadline_date: phaseSpecificDates.end_date,
           notes,
+          responsiblePersonId: responsiblePersonId,
           responsible_person_id: responsiblePersonId,
           phase_id: selectedPhase?.id || null, // Use lifecycle phase ID
           ...(type === "product" && { 

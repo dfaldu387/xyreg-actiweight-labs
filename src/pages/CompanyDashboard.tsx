@@ -10,6 +10,7 @@ import { CompanyDashboardErrorBoundary } from "@/components/error/CompanyDashboa
 import { buildCompanyBreadcrumbs } from "@/utils/breadcrumbUtils";
 import { Settings, Bell, X, Check, AlertTriangle, CheckCircle, Clock, User, Calendar, FileText, XCircle, UserPlus, UserMinus, RefreshCw, Download, Share } from "lucide-react";
 import { CompanyHelixMap } from "@/components/qmsr";
+import { ReadOnlyValueChain } from "@/components/company/ReadOnlyValueChain";
 import { Badge } from "@/components/ui/badge";
 import { useRBRPulseStatus } from "@/hooks/useRBRPulseStatus";
 import { Button } from "@/components/ui/button";
@@ -579,9 +580,12 @@ export default function CompanyDashboard() {
             <div className="w-full py-6 space-y-6">
               {/* Dashboard Tabs - Portfolio Health & QMS Foundation */}
               <Tabs value={dashboardTab} onValueChange={handleDashboardTabChange}>
-                <TabsList className="grid w-full max-w-2xl grid-cols-2">
+                <TabsList className="grid w-full max-w-3xl grid-cols-3">
                   <TabsTrigger value="portfolio">
                     {lang('portfolioHealth.title') || 'Portfolio Health'}
+                  </TabsTrigger>
+                  <TabsTrigger value="organization">
+                    {lang('companyDashboard.organization') || 'Organization'}
                   </TabsTrigger>
                   <TabsTrigger value="qms-foundation">
                     {lang('companyDashboard.qmsFoundation') || 'QMS Foundation'}
@@ -589,7 +593,13 @@ export default function CompanyDashboard() {
                 </TabsList>
 
                 <TabsContent value="portfolio" className="mt-6 space-y-6">
-                  <ExecutiveKPIDashboard />
+                  <ExecutiveKPIDashboard companyId={companyId} />
+                </TabsContent>
+
+                <TabsContent value="organization" className="mt-6">
+                  {companyId && (
+                    <ReadOnlyValueChain companyId={companyId} />
+                  )}
                 </TabsContent>
 
                 <TabsContent value="qms-foundation" className="mt-6">

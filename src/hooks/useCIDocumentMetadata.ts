@@ -94,7 +94,7 @@ export function useCIDocumentMetadata(documentId: string | null, companyId: stri
 
     const { error } = await supabase
       .from('phase_assigned_document_template')
-      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .update({ [field]: value, updated_at: new Date().toISOString() } as any)
       .eq('id', documentId);
 
     if (error) {

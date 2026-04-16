@@ -551,7 +551,7 @@ export const defaultSidebarConfig: SidebarConfig = {
             { id: 'activities', name: 'Activities', icon: <Activity className="w-4 h-4" />, route: '/app/product/:id/activities' },
             { id: 'documents', name: 'Technical Documentation', icon: <FileText className="w-4 h-4" />, route: '/app/product/:id/documents' },
             
-            { id: 'technical-file', name: 'Technical File', icon: <FileText className="w-4 h-4" />, route: '/app/product/:id/technical-file' },
+            { id: 'technical-file', name: 'Regulatory Dossier', icon: <FileText className="w-4 h-4" />, route: '/app/product/:id/technical-file' },
             { id: 'pms', name: 'Post-Market Surveillance', icon: <Eye className="w-4 h-4" />, route: '/app/product/:id/post-market-surveillance' },
           ]
         }

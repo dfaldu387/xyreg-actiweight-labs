@@ -344,7 +344,7 @@ export class UnifiedDocumentService {
     // Update in phase_assigned_document_template table only
     const { error } = await supabase
       .from('phase_assigned_document_template')
-      .update(updateData)
+      .update(updateData as any)
       .eq('id', item.id);
 
     if (error) {
@@ -469,7 +469,7 @@ export class UnifiedDocumentService {
 
       await supabase
         .from('phase_assigned_document_template')
-        .update(ciUpdateData)
+        .update(ciUpdateData as any)
         .eq('document_reference', docReference);
     }
     

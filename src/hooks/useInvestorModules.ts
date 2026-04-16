@@ -29,7 +29,7 @@ export function useMarketSizing(productId: string, companyId: string) {
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase.from('product_market_sizing').update(values).eq('product_id', productId);
+        const { error } = await supabase.from('product_market_sizing').update(values as any).eq('product_id', productId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('product_market_sizing').insert({ 
@@ -77,7 +77,7 @@ export function useReimbursementStrategy(productId: string, companyId: string) {
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase.from('product_reimbursement_strategy').update(values).eq('product_id', productId);
+        const { error } = await supabase.from('product_reimbursement_strategy').update(values as any).eq('product_id', productId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('product_reimbursement_strategy').insert({ 
@@ -125,7 +125,7 @@ export function useTeamGaps(productId: string, companyId: string) {
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase.from('product_team_gaps').update(values).eq('product_id', productId);
+        const { error } = await supabase.from('product_team_gaps').update(values as any).eq('product_id', productId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('product_team_gaps').insert({ 
@@ -173,7 +173,7 @@ export function useRegulatoryTimeline(productId: string, companyId: string) {
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase.from('product_regulatory_timeline').update(values).eq('product_id', productId);
+        const { error } = await supabase.from('product_regulatory_timeline').update(values as any).eq('product_id', productId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('product_regulatory_timeline').insert({ 
@@ -221,7 +221,7 @@ export function useClinicalEvidencePlan(productId: string, companyId: string) {
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase.from('product_clinical_evidence_plan').update(values).eq('product_id', productId);
+        const { error } = await supabase.from('product_clinical_evidence_plan').update(values as any).eq('product_id', productId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('product_clinical_evidence_plan').insert({ 
@@ -269,7 +269,7 @@ export function useReadinessGates(productId: string, companyId: string) {
         .maybeSingle();
 
       if (existing) {
-        const { error } = await supabase.from('product_readiness_gates').update(values).eq('product_id', productId);
+        const { error } = await supabase.from('product_readiness_gates').update(values as any).eq('product_id', productId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('product_readiness_gates').insert({ 

@@ -103,7 +103,7 @@ export class DocumentReviewerService {
         .update({ 
           reviewer_groups: assignmentsJson,
           updated_at: new Date().toISOString()
-        })
+        } as any)
         .eq('id', documentId);
 
       if (error) {

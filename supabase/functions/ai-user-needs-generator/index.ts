@@ -118,22 +118,25 @@ serve(async (req) => {
     const apiKey = decryptApiKey(apiKeyData.encrypted_key);
     console.log('[ai-user-needs-generator] API key found, length:', apiKey.length, 'starts with:', apiKey.substring(0, 6));
 
-    // Extract product information
-    const clinicalPurpose = productData.clinical_purpose || 
-                           productData.intended_purpose_data?.clinicalPurpose || '';
-    const indicationsForUse = productData.indications_for_use || 
-                             productData.intended_purpose_data?.indicationsForUse || '';
-    const targetPopulation = productData.target_population || 
-                            productData.intended_purpose_data?.targetPopulation || '';
-    const useEnvironment = productData.use_environment || 
-                          productData.intended_purpose_data?.useEnvironment || '';
-    const durationOfUse = productData.duration_of_use || 
-                         productData.intended_purpose_data?.durationOfUse || '';
+    // Strip HTML tags from input text
+    const stripHtml = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 
-    // Extract target markets information
-    const markets = productData.markets || [];
+    // Extract product information (strip HTML to avoid confusing the model)
+    const clinicalPurpose = stripHtml(productData.clinical_purpose ||
+                           productData.intended_purpose_data?.clinicalPurpose || '');
+    const indicationsForUse = stripHtml(productData.indications_for_use ||
+                             productData.intended_purpose_data?.indicationsForUse || '');
+    const targetPopulation = stripHtml(productData.target_population ||
+                            productData.intended_purpose_data?.targetPopulation || '');
+    const useEnvironment = stripHtml(productData.use_environment ||
+                          productData.intended_purpose_data?.useEnvironment || '');
+    const durationOfUse = stripHtml(productData.duration_of_use ||
+                         productData.intended_purpose_data?.durationOfUse || '');
+
+    // Extract target markets information (only selected markets)
+    const markets = (productData.markets || []).filter((m: any) => m.selected !== false);
     const marketNames = markets
-      .map((m: any) => m.market_code || m.code || m.name)
+      .map((m: any) => m.name || m.market_code || m.code)
       .filter(Boolean)
       .join(', ');
 
@@ -169,7 +172,7 @@ Product Information:
 - Use Environment: ${useEnvironment}
 - Duration of Use: ${durationOfUse}${marketContext}${existingItemsSection}
 
-Please generate 8-12 user needs that are specific, measurable, and relevant to this medical device. Each user need should:
+Please generate 6-8 user needs that are specific, measurable, and relevant to this medical device. Each user need should:
 1. Be written from the user's perspective (healthcare professional, patient, or regulatory stakeholder)
 2. Be specific and actionable
 3. Be relevant to the device's intended use and target markets
@@ -177,17 +180,17 @@ Please generate 8-12 user needs that are specific, measurable, and relevant to t
 ${marketNames ? '5. Include market-specific regulatory and compliance needs for the target markets' : ''}
 
 For each user need, provide:
-- description: A clear statement of the user need
-- rationale: Why this need is important for this specific device${marketNames ? ' and target market(s)' : ''}
+- description: A clear, concise statement of the user need (max 2 sentences)
+- rationale: Why this need is important (max 2 sentences)
 - confidence: A number between 0.7 and 1.0 indicating how confident you are this is a valid need
 - category: One of these categories: "Safety", "Efficacy", "Usability", "Training", "Maintenance", "Regulatory", "Performance"
 
-Return your response as a JSON array of objects with the structure above. Do not include any other text or formatting.${outputLanguage && outputLanguage !== 'en' ? `\n\nIMPORTANT: Generate ALL output text (descriptions, rationale, etc.) in ${outputLanguage === 'de' ? 'German (Deutsch)' : outputLanguage === 'fr' ? 'French (Français)' : outputLanguage === 'fi' ? 'Finnish (Suomi)' : outputLanguage}. Keep JSON keys in English.` : ''}${additionalPrompt ? `\n\nAdditional instructions from the user:\n${additionalPrompt}` : ''}`;
+IMPORTANT: Keep descriptions and rationale SHORT and concise. Do not use special characters like curly quotes. Return ONLY a valid JSON array.${outputLanguage && outputLanguage !== 'en' ? `\n\nIMPORTANT: Generate ALL output text (descriptions, rationale, etc.) in ${outputLanguage === 'de' ? 'German (Deutsch)' : outputLanguage === 'fr' ? 'French (Français)' : outputLanguage === 'fi' ? 'Finnish (Suomi)' : outputLanguage}. Keep JSON keys in English.` : ''}${additionalPrompt ? `\n\nAdditional instructions from the user:\n${additionalPrompt}` : ''}`;
 
     console.log('[ai-user-needs-generator] Calling Gemini API');
 
     // Call Gemini API
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -200,7 +203,7 @@ Return your response as a JSON array of objects with the structure above. Do not
         }],
         generationConfig: {
           temperature: 0.7,
-          maxOutputTokens: 4096,
+          maxOutputTokens: 8192,
           responseMimeType: "application/json"
         }
       }),
@@ -235,18 +238,55 @@ Return your response as a JSON array of objects with the structure above. Do not
     const aiResponse = data.candidates[0].content.parts[0].text;
     console.log('[ai-user-needs-generator] AI Response:', aiResponse);
 
+    // Sanitize common JSON issues from Gemini output
+    const sanitizeJson = (text: string): string => {
+      return text
+        // Replace smart/curly quotes with standard quotes
+        .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+        .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+        // Replace en/em dashes with regular hyphens
+        .replace(/[\u2013\u2014]/g, '-')
+        // Remove zero-width characters
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+        // Fix unescaped newlines inside JSON strings
+        .replace(/(?<=":[ ]*"[^"]*)\n(?=[^"]*")/g, '\\n')
+        // Strip markdown code blocks
+        .replace(/```(?:json)?\s*/gi, '').replace(/```/g, '')
+        .trim();
+    };
+
     // Parse the AI response
     let suggestions: UserNeedSuggestion[];
     try {
-      // Clean the response - remove any markdown formatting
-      const cleanResponse = aiResponse.replace(/```json\n?|\n?```/g, '').trim();
-      suggestions = JSON.parse(cleanResponse);
-      
-      if (!Array.isArray(suggestions)) {
-        throw new Error('Response is not an array');
+      let parsed: any;
+      // Try direct parse first
+      try {
+        parsed = JSON.parse(aiResponse);
+      } catch {
+        // Sanitize and retry
+        let cleaned = sanitizeJson(aiResponse);
+        // Extract JSON array if surrounded by other text
+        const arrayMatch = cleaned.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          cleaned = arrayMatch[0];
+        }
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch {
+          // Last resort: fix single quotes used as property delimiters
+          cleaned = cleaned.replace(/'/g, '"');
+          parsed = JSON.parse(cleaned);
+        }
+      }
+
+      suggestions = Array.isArray(parsed) ? parsed : (parsed.suggestions || parsed.data || []);
+
+      if (!Array.isArray(suggestions) || suggestions.length === 0) {
+        throw new Error('Response is not a valid array of suggestions');
       }
     } catch (parseError) {
       console.error('[ai-user-needs-generator] Failed to parse AI response:', parseError);
+      console.error('[ai-user-needs-generator] Raw response:', aiResponse.substring(0, 1000));
       return new Response(JSON.stringify({
         error: 'Failed to parse AI response'
       }), {

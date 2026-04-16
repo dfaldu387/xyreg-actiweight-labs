@@ -22,6 +22,7 @@ import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraf
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { format } from 'date-fns';
 import { useLanguage } from '@/context/LanguageContext';
+import { useDraftDocumentNavigation } from '@/hooks/useDraftDocumentNavigation';
 
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
@@ -43,10 +44,10 @@ interface QualityManualSectionProps {
 
 function getDataCards(section: QMSection, data: QualityManualData) {
   const cards: { label: string; value: string | number; icon: React.ReactNode }[] = [];
-  const groupId = section.groupId;
+  const chapterNumber = section.chapterNumber;
   const clause = section.clause;
 
-  if (clause === '4.1' || groupId === 4) {
+  if (clause === '4' || chapterNumber === 4) {
     if (data.products.length > 0) {
       cards.push({ label: 'Products', value: data.products.length, icon: <Package className="h-4 w-4" /> });
       const riskClasses = [...new Set(data.products.map(p => p.risk_class).filter(Boolean))];
@@ -56,14 +57,14 @@ function getDataCards(section: QMSection, data: QualityManualData) {
     }
   }
 
-  if (groupId === 5 || groupId === 6) {
+  if (chapterNumber === 5 || chapterNumber === 6) {
     if (data.personnel.length > 0) {
       cards.push({ label: 'Personnel', value: data.personnel.length, icon: <Users className="h-4 w-4" /> });
     }
   }
 
   if (data.company?.country) {
-    if (clause === '4.1' || clause === '5.1') {
+    if (clause === '4' || clause === '5') {
       cards.push({ label: 'Market', value: data.company.country, icon: <ShieldCheck className="h-4 w-4" /> });
     }
   }
@@ -128,6 +129,7 @@ export function QualityManualSectionView({
   const [sourcesInitialized, setSourcesInitialized] = useState(false);
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
   const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
+  const { handleDraftClick, checking: checkingDraft } = useDraftDocumentNavigation(companyId, companyName || '');
 
   const sourceItems = buildSourceItems(section, companyData);
   const hasMissingData = !companyData.company;
@@ -186,10 +188,14 @@ export function QualityManualSectionView({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setShowDocCIDialog(true)}
+                      onClick={() => handleDraftClick(
+                        `QM-${section.clause.replace(/\./g, '_')}-${companyId}`,
+                        () => setShowDocCIDialog(true)
+                      )}
+                      disabled={checkingDraft}
                       className="gap-1.5"
                     >
-                      <FileEdit className="h-4 w-4" />
+                      {checkingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
                       Create Document
                     </Button>
                   </TooltipTrigger>

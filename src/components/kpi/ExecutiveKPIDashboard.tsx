@@ -6,14 +6,19 @@ import { PortfolioFinancialHealth } from "./PortfolioFinancialHealth";
 import { ProjectHealthMetrics } from "./ProjectHealthMetrics";
 import { OperationalHealthMetrics } from "./OperationalHealthMetrics";
 import { OperationalEfficiencyDashboard } from "./operational-efficiency/OperationalEfficiencyDashboard";
+import { ReadOnlyValueChain } from "@/components/company/ReadOnlyValueChain";
 import { Download, RefreshCw, Settings, Share } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/hooks/useTranslation";
 
-const VALID_TABS = ['portfolio', 'project-health', 'qms', 'financial'] as const;
+const VALID_TABS = ['portfolio', 'project-health', 'qms', 'financial', 'organization'] as const;
 type PortfolioTab = typeof VALID_TABS[number];
 
-export function ExecutiveKPIDashboard() {
+interface ExecutiveKPIDashboardProps {
+  companyId?: string;
+}
+
+export function ExecutiveKPIDashboard({ companyId }: ExecutiveKPIDashboardProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { lang } = useTranslation();
@@ -53,12 +58,15 @@ export function ExecutiveKPIDashboard() {
     <div className="space-y-6">
       {/* Main Dashboard Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="portfolio" className="text-sm">
             {lang('executiveKPI.portfolioFinancialHealth')}
           </TabsTrigger>
           <TabsTrigger value="project-health" className="text-sm">
             {lang('executiveKPI.projectHealthMetrics')}
+          </TabsTrigger>
+          <TabsTrigger value="organization" className="text-sm">
+            {lang('companyDashboard.organization') || 'Organization'}
           </TabsTrigger>
           <TabsTrigger value="qms" className="text-sm">
             {lang('executiveKPI.operationalHealth')}
@@ -74,6 +82,10 @@ export function ExecutiveKPIDashboard() {
 
         <TabsContent value="project-health" className="space-y-6">
           <ProjectHealthMetrics />
+        </TabsContent>
+
+        <TabsContent value="organization" className="space-y-6">
+          {companyId && <ReadOnlyValueChain companyId={companyId} />}
         </TabsContent>
 
         <TabsContent value="qms" className="space-y-6">

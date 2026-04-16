@@ -239,7 +239,7 @@ export function FeedbackTrackerWidget({ companyId, onRemove, readOnly = false, d
       }
       const { error } = await supabase
         .from("feedback_submissions")
-        .update(updateData)
+        .update(updateData as any)
         .eq("id", selectedId);
       if (error) throw error;
       toast.success("Feedback updated");

@@ -2,12 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { MessageTimeline } from "@/components/communications/MessageTimeline";
+import { ThreadDocumentPicker } from "@/components/communications/ThreadDocumentPicker";
 import { CommunicationThread } from '@/types/communications';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useThreadMessages, useCommunicationThreads, useTypingIndicator } from '@/hooks/useCommunicationThreads';
 import { getParticipantName, getParticipantInitials } from '@/utils/participantUtils';
 import { Skeleton } from "@/components/ui/skeleton";
+import { FileText, X, Link as LinkIcon } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface ThreadDetailSheetProps {
   thread: CommunicationThread | null;
@@ -17,10 +23,49 @@ interface ThreadDetailSheetProps {
 
 export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSheetProps) {
   const { lang } = useTranslation();
+  const queryClient = useQueryClient();
   const { data: messages = [], isLoading: messagesLoading } = useThreadMessages(open ? thread?.id ?? null : null);
   const { markThreadRead, sendMessage } = useCommunicationThreads();
   const { typingUsers, sendTyping } = useTypingIndicator(open ? thread?.id ?? null : null);
   const [markedRead, setMarkedRead] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Fetch linked documents
+  const { data: linkedDocs = [] } = useQuery({
+    queryKey: ['thread-doc-links', thread?.id],
+    queryFn: async () => {
+      const { data: links, error } = await (supabase as any)
+        .from('thread_document_links')
+        .select('id, document_id')
+        .eq('thread_id', thread!.id);
+      if (error) throw error;
+      if (!links || links.length === 0) return [];
+
+      const docIds = links.map((l: any) => l.document_id);
+      const { data: docs } = await supabase
+        .from('phase_assigned_document_template')
+        .select('id, name')
+        .in('id', docIds);
+
+      return (docs || []).map(doc => ({
+        ...doc,
+        linkId: links.find((l: any) => l.document_id === doc.id)?.id,
+      }));
+    },
+    enabled: open && !!thread?.id,
+  });
+
+  const unlinkDocument = async (linkId: string) => {
+    const { error } = await (supabase as any)
+      .from('thread_document_links')
+      .delete()
+      .eq('id', linkId);
+    if (error) {
+      toast.error('Failed to unlink document');
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ['thread-doc-links', thread?.id] });
+  };
 
   // Mark thread as read when opened or when new unread messages arrive while open
   useEffect(() => {
@@ -92,6 +137,30 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
                 : lang('communications.threadPage.participants.count').replace('{{count}}', String(participants.length))}
             </span>
           </div>
+          {/* Linked Documents */}
+          <div className="flex items-center gap-2 flex-wrap pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={() => setPickerOpen(true)}
+            >
+              <LinkIcon className="h-3 w-3" />
+              Link Document
+            </Button>
+            {linkedDocs.map((doc: any) => (
+              <Badge key={doc.id} variant="secondary" className="gap-1 pr-1">
+                <FileText className="h-3 w-3" />
+                <span className="max-w-[160px] truncate">{doc.name}</span>
+                <button
+                  onClick={() => unlinkDocument(doc.linkId)}
+                  className="ml-1 rounded-full hover:bg-muted p-0.5"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
         </SheetHeader>
 
         <div className="flex-1 overflow-hidden pt-4">
@@ -110,6 +179,15 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
           )}
         </div>
       </SheetContent>
+
+      {thread.company_id && (
+        <ThreadDocumentPicker
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          threadId={thread.id}
+          companyId={thread.company_id}
+        />
+      )}
     </Sheet>
   );
 }

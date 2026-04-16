@@ -1,15 +1,16 @@
 import React, { useState, useMemo } from 'react';
-import { GapAnnexIISectionGroup } from '@/components/product/gap-analysis/GapAnnexIISectionGroup';
 import { QualityManualStepRow } from './QualityManualStepRow';
 import { Progress } from '@/components/ui/progress';
-import { BookOpen, Ban, AlertTriangle, FileEdit, ShieldCheck, Sparkles } from 'lucide-react';
+import { BookOpen, Ban, AlertTriangle, FileEdit, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ISO_13485_GROUPS } from '@/config/gapISO13485Sections';
 import type { QualityManualSection, QualityManualData } from '@/hooks/useQualityManual';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 import { getClassBasedExclusions, getHighestDeviceClass, getExclusionSummaryLabel } from '@/config/classBasedExclusions';
+import { QualityManualGenerationConfig, getDefaultConfig, type GenerationConfig } from './QualityManualGenerationConfig';
+import { useLanguage } from '@/context/LanguageContext';
+import { useDraftDocumentNavigation } from '@/hooks/useDraftDocumentNavigation';
 
 interface QualityManualLaunchViewProps {
   sections: QualityManualSection[];
@@ -20,6 +21,8 @@ interface QualityManualLaunchViewProps {
   companyName?: string;
   companyData?: QualityManualData;
   applyClassBasedExclusions?: (deviceClass: string) => void;
+  onGenerateAll?: (config: GenerationConfig) => void;
+  generatingAll?: boolean;
 }
 
 export function QualityManualLaunchView({
@@ -31,18 +34,23 @@ export function QualityManualLaunchView({
   companyName,
   companyData,
   applyClassBasedExclusions,
+  onGenerateAll,
+  generatingAll,
 }: QualityManualLaunchViewProps) {
+  const { language } = useLanguage();
+  const { handleDraftClick, checking } = useDraftDocumentNavigation(companyId, companyName || '');
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
+  const [genConfig, setGenConfig] = useState<GenerationConfig>(() => getDefaultConfig(companyData, language));
   const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
   const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
-  const groups = ISO_13485_GROUPS;
 
   const totalSteps = sections.length;
+  const completedCount = sections.filter(s => s.content && s.content.length > 20).length;
+  const progress = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
+  const nextIncomplete = sections.find(s => !s.content || s.content.length <= 20);
+
+  // Exclusions are at sub-clause level; count unique excluded sub-clauses
   const excludedCount = exclusions.size;
-  const applicableCount = totalSteps - excludedCount;
-  const completedCount = sections.filter(s => !exclusions.has(s.clause) && s.content && s.content.length > 20).length;
-  const progress = applicableCount > 0 ? Math.round((completedCount / applicableCount) * 100) : 0;
-  const nextIncomplete = sections.find(s => !exclusions.has(s.clause) && (!s.content || s.content.length <= 20));
 
   // Determine highest device class from company products
   const highestClass = useMemo(() => {
@@ -58,11 +66,9 @@ export function QualityManualLaunchView({
     return getClassBasedExclusions(highestClass);
   }, [highestClass]);
 
-  // Only show banner if there are unapplied suggestions
   const hasUnappliedSuggestions = suggestedExclusions.some(e => !exclusions.has(e.clause));
   const showExclusionBanner = highestClass && hasUnappliedSuggestions && !exclusionBannerDismissed;
 
-  // Build exclusion summary for §4.2.2 compliance
   const exclusionEntries = Array.from(exclusions.entries());
 
   return (
@@ -79,7 +85,7 @@ export function QualityManualLaunchView({
               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-600 text-white uppercase tracking-wider">ISO 13485</span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Build your complete ISO 13485:2016 Quality Manual. Sections marked <strong>"Optional"</strong> can be excluded with justification if not applicable to your organisation. Click <strong>N/A</strong> on any section to exclude it.
+              Build your lean Quality Manual in 8 chapters. Each chapter covers a full ISO 13485 clause group as a functional process narrative — not a clause-by-clause checklist.
             </p>
             <div className="flex flex-wrap gap-4 mt-3 text-xs text-blue-700 dark:text-blue-400">
               <div className="flex items-center gap-1.5">
@@ -92,7 +98,7 @@ export function QualityManualLaunchView({
               </div>
               <div className="flex items-center gap-1.5">
                 <Ban className="h-3 w-3" />
-                <span>N/A = excluded from scope</span>
+                <span>N/A sub-clauses excluded</span>
               </div>
             </div>
           </div>
@@ -114,17 +120,12 @@ export function QualityManualLaunchView({
                 {getExclusionSummaryLabel(highestClass)}
               </p>
               <div className="space-y-1 mb-3">
-                {suggestedExclusions.filter(e => !exclusions.has(e.clause)).map(e => {
-                  const section = sections.find(s => s.clause === e.clause);
-                  return (
-                    <div key={e.clause} className="flex items-start gap-2 text-xs">
-                      <span className="font-mono font-semibold text-primary flex-shrink-0">§{e.clause}</span>
-                      <span className="text-muted-foreground">
-                        {section?.title}
-                      </span>
-                    </div>
-                  );
-                })}
+                {suggestedExclusions.filter(e => !exclusions.has(e.clause)).map(e => (
+                  <div key={e.clause} className="flex items-start gap-2 text-xs">
+                    <span className="font-mono font-semibold text-primary flex-shrink-0">§{e.clause}</span>
+                    <span className="text-muted-foreground">{e.justification}</span>
+                  </div>
+                ))}
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -149,7 +150,7 @@ export function QualityManualLaunchView({
         </div>
       )}
 
-      {/* Scope & Exclusions Summary (§4.2.2 compliance) */}
+      {/* Scope & Exclusions Summary */}
       {exclusionEntries.length > 0 && (
         <div className="mb-6 p-4 rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20">
           <div className="flex items-center gap-2 mb-2">
@@ -160,21 +161,38 @@ export function QualityManualLaunchView({
             </span>
           </div>
           <p className="text-xs text-muted-foreground mb-3">
-            Per ISO 13485:2016 §4.2.2, the following clauses are excluded from the scope of this Quality Manual with documented justification:
+            Per ISO 13485:2016 §4.2.2, the following sub-clauses are excluded from scope with documented justification:
           </p>
           <div className="space-y-1.5">
-            {exclusionEntries.map(([clause, justification]) => {
-              const section = sections.find(s => s.clause === clause);
-              return (
-                <div key={clause} className="flex items-start gap-2 text-xs">
-                  <span className="font-mono font-semibold text-amber-700 dark:text-amber-400 flex-shrink-0">§{clause}</span>
-                  <span className="text-muted-foreground">
-                    {section?.title} — <em>{justification}</em>
-                  </span>
-                </div>
-              );
-            })}
+            {exclusionEntries.map(([clause, justification]) => (
+              <div key={clause} className="flex items-start gap-2 text-xs">
+                <span className="font-mono font-semibold text-amber-700 dark:text-amber-400 flex-shrink-0">§{clause}</span>
+                <span className="text-muted-foreground"><em>{justification}</em></span>
+              </div>
+            ))}
           </div>
+        </div>
+      )}
+
+      {/* AI Generation Settings */}
+      <QualityManualGenerationConfig
+        config={genConfig}
+        onChange={setGenConfig}
+        companyData={companyData}
+      />
+
+      {/* Generate All Button */}
+      {onGenerateAll && totalSteps > completedCount && (
+        <div className="mb-6">
+          <Button
+            onClick={() => onGenerateAll(genConfig)}
+            disabled={generatingAll}
+            className="w-full gap-2"
+            size="lg"
+          >
+            <Sparkles className="h-4 w-4" />
+            {generatingAll ? 'Generating…' : `Generate All Remaining Chapters (${totalSteps - completedCount})`}
+          </Button>
         </div>
       )}
 
@@ -184,10 +202,10 @@ export function QualityManualLaunchView({
           <div>
             <h3 className="text-base font-semibold text-foreground">Overall Progress</h3>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {completedCount}/{applicableCount} sections complete
-              {excludedCount > 0 && ` (${excludedCount} excluded as N/A)`}
+              {completedCount}/{totalSteps} chapters complete
+              {excludedCount > 0 && ` · ${excludedCount} sub-clause${excludedCount > 1 ? 's' : ''} excluded`}
               {nextIncomplete && !progress && ` · Next: ${nextIncomplete.title}`}
-              {progress >= 100 && ' · All sections addressed'}
+              {progress >= 100 && ' · All chapters addressed'}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -195,10 +213,11 @@ export function QualityManualLaunchView({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setShowDocCIDialog(true)}
+                onClick={() => handleDraftClick(`QM-FULL-${companyId}`, () => setShowDocCIDialog(true))}
+                disabled={checking}
                 className="gap-1.5"
               >
-                <FileEdit className="h-4 w-4" />
+                {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
                 Create Document
               </Button>
             )}
@@ -215,38 +234,33 @@ export function QualityManualLaunchView({
         <Progress value={progress} className="h-2" />
       </div>
 
-      {/* Section Groups */}
-      <div className="space-y-6">
-        {groups.map(group => {
-          const groupSections = sections.filter(s => s.groupId === group.id);
-          const groupExcluded = groupSections.filter(s => exclusions.has(s.clause)).length;
-          const groupApplicable = groupSections.length - groupExcluded;
-          const groupCompleted = groupSections.filter(s => !exclusions.has(s.clause) && s.content && s.content.length > 20).length;
-
+      {/* Section List — flat 8 chapters */}
+      <div className="space-y-2">
+        {sections.map(section => {
+          const isComplete = !!(section.content && section.content.length > 20);
+          // Check if any covered sub-clauses are excluded
+          const excludedSubClauses = section.coveredClauses.filter(c => exclusions.has(c));
           return (
-            <GapAnnexIISectionGroup
-              key={group.id}
-              groupNumber={group.id}
-              groupName={group.name}
-              completedCount={groupCompleted}
-              totalCount={groupApplicable}
-            >
-              {groupSections.map(section => {
-                const isExcluded = exclusions.has(section.clause);
-                const isComplete = !isExcluded && !!(section.content && section.content.length > 20);
-                return (
-                  <QualityManualStepRow
-                    key={section.sectionKey}
-                    section={section}
-                    isComplete={isComplete}
-                    isExcluded={isExcluded}
-                    exclusionJustification={exclusions.get(section.clause)}
-                    onToggleExclusion={() => onToggleExclusion(section.clause)}
-                    onClick={() => onSelectSection(section.sectionKey)}
-                  />
-                );
-              })}
-            </GapAnnexIISectionGroup>
+            <div key={section.sectionKey}>
+              <QualityManualStepRow
+                section={section}
+                isComplete={isComplete}
+                isExcluded={false}
+                exclusionJustification={undefined}
+                onToggleExclusion={() => {}}
+                onClick={() => onSelectSection(section.sectionKey)}
+              />
+              {excludedSubClauses.length > 0 && (
+                <div className="ml-14 mt-1 mb-2 flex flex-wrap gap-1">
+                  {excludedSubClauses.map(c => (
+                    <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+                      <Ban className="h-2.5 w-2.5" />
+                      §{c} N/A
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
@@ -259,8 +273,8 @@ export function QualityManualLaunchView({
             onOpenChange={setShowDocCIDialog}
             title="Complete Quality Manual — ISO 13485"
             htmlContent={sections
-              .filter(s => !exclusions.has(s.clause) && s.content && s.content.length > 20)
-              .map(s => `<h2>§${s.clause} ${s.title}</h2>${s.content}`)
+              .filter(s => s.content && s.content.length > 20)
+              .map(s => `<h2>Ch.${s.chapterNumber} ${s.title}</h2>${s.content}`)
               .join('\n')}
             templateIdKey={`QM-FULL-${companyId}`}
             companyId={companyId}

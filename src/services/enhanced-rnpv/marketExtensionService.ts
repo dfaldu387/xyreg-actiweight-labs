@@ -20,13 +20,13 @@ export class MarketExtensionService {
         is_enabled: marketExtension.isActive,
         revenue_forecast: marketExtension.revenueForecast as any,
         market_specific_investment: marketExtension.marketSpecificCosts.regulatorySubmissionFees || 0,
-        market_commercial_loa: 75, // Default value
+        market_commercial_loa: 75,
         estimated_launch_date: marketExtension.revenueForecast.launchDate?.toISOString(),
         regulatory_requirements: {
           phases: marketExtension.regulatoryPhases,
           commercialFactors: marketExtension.commercialFactors
         } as any
-      })
+      } as any)
       .select()
       .single();
 

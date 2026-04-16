@@ -54,7 +54,7 @@ export class TimelineDriftService {
 
         const { error: updateError } = await supabase
           .from('lifecycle_phases')
-          .update(updateData)
+          .update(updateData as any)
           .eq('id', phase.id);
 
         if (!updateError) snapshotCount++;

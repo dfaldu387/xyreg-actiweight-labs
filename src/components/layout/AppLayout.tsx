@@ -85,6 +85,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/comp
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { ThreadSheetProvider } from "@/context/ThreadSheetContext";
 import { ReturnToValidationButton } from "@/components/infrastructure/ReturnToValidationButton";
+import { useCompanyTimeTracker } from "@/hooks/useCompanyTimeTracker";
 
 
 export default function AppLayout() {
@@ -96,6 +97,9 @@ export default function AppLayout() {
   const { isDevMode } = useDevMode();
   const companyId = useCompanyId();
   const { companyRoles, activeCompanyRole } = useCompanyRole();
+
+  // Track time spent on company/product routes
+  useCompanyTimeTracker();
 
   // Genesis login redirect: LoginForm sets 'genesis_login' in sessionStorage
   // while checking the plan. Show a loader until the check completes.

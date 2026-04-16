@@ -1671,20 +1671,23 @@ export function IntendedPurposeSection({
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="divide-y divide-border rounded-md border">
                       {contraindications.map((item, index) => (
-                        <Badge key={index} variant="outline" className="bg-red-50 border-red-200 text-red-800">
-                          {item}
+                        <div key={index} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                          <span className="flex-1">{index + 1}. {item}</span>
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="ml-1 h-4 w-4 p-0 hover:bg-red-100"
+                            size="icon"
+                            className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
                             onClick={() => handleRemoveContraindication(index)}
                           >
                             <X className="h-3 w-3" />
                           </Button>
-                        </Badge>
+                        </div>
                       ))}
+                      {contraindications.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground italic">No items added yet</div>
+                      )}
                     </div>
                   </div>
 
@@ -1767,20 +1770,23 @@ export function IntendedPurposeSection({
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="divide-y divide-border rounded-md border">
                       {(localIntendedPurposeData.warnings || []).map((item, index) => (
-                        <Badge key={index} variant="outline" className="bg-yellow-50 border-yellow-200 text-yellow-800">
-                          {item}
+                        <div key={index} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                          <span className="flex-1">{index + 1}. {item}</span>
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="ml-1 h-4 w-4 p-0 hover:bg-yellow-100"
+                            size="icon"
+                            className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
                             onClick={() => handleRemoveWarning(index)}
                           >
                             <X className="h-3 w-3" />
                           </Button>
-                        </Badge>
+                        </div>
                       ))}
+                      {(localIntendedPurposeData.warnings || []).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground italic">No items added yet</div>
+                      )}
                     </div>
                   </div>
 
@@ -1862,20 +1868,23 @@ export function IntendedPurposeSection({
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="divide-y divide-border rounded-md border">
                       {clinicalBenefits.map((item, index) => (
-                        <Badge key={index} variant="outline" className="bg-blue-50 border-blue-200 text-blue-800">
-                          {item}
+                        <div key={index} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                          <span className="flex-1">{index + 1}. {item}</span>
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="ml-1 h-4 w-4 p-0 hover:bg-blue-100"
+                            size="icon"
+                            className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
                             onClick={() => handleRemoveBenefit(index)}
                           >
                             <X className="h-3 w-3" />
                           </Button>
-                        </Badge>
+                        </div>
                       ))}
+                      {clinicalBenefits.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground italic">No items added yet</div>
+                      )}
                     </div>
                   </div>
                 </div>

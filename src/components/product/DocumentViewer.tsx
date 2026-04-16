@@ -1334,12 +1334,12 @@ export function DocumentViewer({
           if (isCompanyDocument) {
             await supabase
               .from("documents")
-              .update(updateData)
+              .update(updateData as any)
               .eq("id", cleanDocumentId);
           } else {
             await supabase
               .from("phase_assigned_document_template")
-              .update(updateData)
+              .update(updateData as any)
               .eq("id", cleanDocumentId);
           }
 
@@ -1359,12 +1359,12 @@ export function DocumentViewer({
         if (isCompanyDocument) {
           await supabase
             .from("documents")
-            .update(directUpdateData)
+            .update(directUpdateData as any)
             .eq("id", cleanDocumentId);
         } else {
           await supabase
             .from("phase_assigned_document_template")
-            .update(directUpdateData)
+            .update(directUpdateData as any)
             .eq("id", cleanDocumentId);
         }
 

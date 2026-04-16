@@ -3,6 +3,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ChevronLeft, ChevronRight, ArrowLeft, Plus, Search, Package, X, Clock, Goal, Network, ChevronDown, Lock, Building, Archive } from 'lucide-react';
 import { ModuleConfig, SidebarConfig, MenuItem, createDynamicRoute, getCurrentModuleFromRoute, translateSidebarConfig, DOMAIN_COLOR_CLASSES, DomainColor } from './SidebarConfig';
+import { useDeviceModuleAccess } from '@/hooks/useDeviceModuleAccess';
 
 const DOMAIN_LABELS: Record<string, string> = {
   gold: 'Strategy',
@@ -65,6 +66,7 @@ export function L2ContextualBar({
   const location = useLocation();
   const { companyName: urlCompanyName } = useParams<{ companyName: string }>();
   const { lang } = useTranslation();
+  const { hasAccess: hasDeviceModuleAccess, isLoading: isDeviceModuleLoading } = useDeviceModuleAccess(currentProductId || null);
 
   // Get company name from URL params or session storage (for product pages)
   const getCompanyNameForUpgrade = (): string => {
@@ -1558,6 +1560,44 @@ export function L2ContextualBar({
         }).filter((item): item is MenuItem => item !== null);
       }
 
+      // Filter menu items based on device module access (for product/device context)
+      if (activeModule === 'products' && currentProductId) {
+        if (!isDeviceModuleLoading) {
+          const deviceModuleIdMap: Record<string, string> = {
+            'dashboard': 'device-dashboard',
+            'strategic-growth': 'business-case',
+            'device-definition': 'device-definition',
+            'bom': 'bill-of-materials',
+            'design-risk-controls': 'design-risk-controls',
+            'milestones': 'development-lifecycle',
+            'device-operations': 'operations',
+            'clinical-trials': 'clinical-trials',
+            'quality-governance': 'quality-governance',
+            'device-audit-log': 'audit-log',
+            'compliance-instances': 'regulatory-submissions',
+          };
+
+          filteredMenuItems = filteredMenuItems.filter(item => {
+            const permModuleId = deviceModuleIdMap[item.id];
+            if (!permModuleId) return true; // Not mapped = always show
+            return hasDeviceModuleAccess(permModuleId);
+          }).map(item => {
+            // Filter children (sub-menus) based on granular permissions
+            if (item.children && item.children.length > 0) {
+              const parentPermId = deviceModuleIdMap[item.id];
+              if (parentPermId) {
+                const filteredChildren = item.children.filter(child => {
+                  const subPermId = `${parentPermId}.${child.id}`;
+                  return hasDeviceModuleAccess(subPermId);
+                });
+                return { ...item, children: filteredChildren };
+              }
+            }
+            return item;
+          });
+        }
+      }
+
       items.push(...filteredMenuItems);
     }
 
@@ -1952,7 +1992,16 @@ export function L2ContextualBar({
           }
         }}
       >
-        <div className={`p-4 h-full ${isCollapsed ? 'overflow-y-auto' : 'overflow-y-auto'}`}>
+        <div className={`p-4 h-full ${isCollapsed ? 'overflow-y-auto' : 'overflow-y-auto'} relative`}>
+          {/* Loading overlay while device module permissions are resolving */}
+          {isDeviceModuleLoading && activeModule === 'products' && currentProductId && (
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f8f9fa' }}>
+              <div className="flex flex-col items-center gap-2">
+                <Spinner size={isCollapsed ? 'sm' : 'md'} />
+                {!isCollapsed && <span className="text-xs text-muted-foreground">Loading modules...</span>}
+              </div>
+            </div>
+          )}
           {isCollapsed ? (
             <div className="flex flex-col items-center space-y-2 pt-2">
               {/* Open button for tablet/touch devices - hidden on xl screens and above */}
@@ -1970,8 +2019,6 @@ export function L2ContextualBar({
               </button>
               {/* Show menu items in collapsed state */}
               <div className="space-y-2 w-full flex flex-col items-center mt-2">
-                {/* CRITICAL FIX: Only show empty state when on /app/clients page */}
-                {/* If on a company route, show menu items even if currentCompany is null */}
                 {location.pathname === '/app/clients' ? (
                   <div className="flex flex-col items-center justify-center py-8 px-2 text-center">
                     <Building className={`w-8 h-8 ${customStyles?.textColor || 'text-sidebar-foreground'} opacity-50 mb-2`} />

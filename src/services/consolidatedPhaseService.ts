@@ -588,7 +588,7 @@ export class ConsolidatedPhaseService {
       
       const { error } = await supabase
         .from('company_phases')
-        .update(filteredUpdates)
+        .update(filteredUpdates as any)
         .eq('id', phaseId);
 
       if (error) {

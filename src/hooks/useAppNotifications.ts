@@ -33,8 +33,9 @@ export function useAppNotifications(companyId?: string) {
   useEffect(() => {
     if (!companyId || !user?.id) return;
 
+    const channelId = crypto.randomUUID();
     const channel = supabase
-      .channel(`app-notifications-${user.id}-${companyId}`)
+      .channel(`app-notifications-${user.id}-${companyId}-${channelId}`)
       .on(
         'postgres_changes',
         {

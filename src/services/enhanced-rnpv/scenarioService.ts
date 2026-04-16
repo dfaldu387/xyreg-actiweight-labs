@@ -20,7 +20,7 @@ export class RNPVScenarioService {
         loa_adjustments: scenario.loaAdjustments as any,
         is_baseline: scenario.isBaseline,
         created_by: scenario.createdBy
-      })
+      } as any)
       .select()
       .single();
 
@@ -177,7 +177,7 @@ export class RNPVScenarioService {
 
     const { error } = await supabase
       .from('rnpv_calculations')
-      .insert(insertData);
+      .insert(insertData as any);
 
     if (error) {
       throw new Error(`Failed to save calculation results: ${error.message}`);

@@ -33,6 +33,7 @@ import {
   Clock,
   User,
   Shield,
+  ShieldCheck,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useAuth } from "@/context/AuthContext";
@@ -48,6 +49,16 @@ import type { DocumentTemplate, DocumentSection, ProductContext, DocumentControl
 
 const STORAGE_URL = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public`;
 const CALLBACK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/onlyoffice-callback`;
+
+// Preload OnlyOffice SDK script so it's cached before user opens a document
+const ONLYOFFICE_SERVER = import.meta.env.VITE_ONLYOFFICE_SERVER_URL || "";
+if (ONLYOFFICE_SERVER && typeof window !== "undefined") {
+  const link = document.createElement("link");
+  link.rel = "preload";
+  link.as = "script";
+  link.href = `${ONLYOFFICE_SERVER}/web-apps/apps/api/documents/api.js`;
+  document.head.appendChild(link);
+}
 
 const getDocumentUrl = (filePath?: string): string => {
   if (!filePath) return "";
@@ -120,6 +131,7 @@ interface OnlyOfficeReviewViewerProps {
   companyId: string;
   reviewerGroupId: string;
   userRole?: 'review' | 'author' | 'approver';
+  isAlsoApprover?: boolean;
   documentFile?: {
     path: string;
     name: string;
@@ -136,11 +148,16 @@ export function OnlyOfficeReviewViewer({
   companyId,
   reviewerGroupId,
   userRole,
+  isAlsoApprover,
   documentFile,
 }: OnlyOfficeReviewViewerProps) {
   const { user } = useAuth();
   const [editorKey, setEditorKey] = useState<string | null>(null);
   const [viewerVisible, setViewerVisible] = useState(true);
+
+  // Active role can switch from 'review' → 'approver' within the same session
+  const [activeRole, setActiveRole] = useState(userRole);
+  React.useEffect(() => { setActiveRole(userRole); }, [userRole]);
 
   // Review decision state
   const [showReviewDialog, setShowReviewDialog] = useState(false);
@@ -151,15 +168,15 @@ export function OnlyOfficeReviewViewer({
   // E-Signature state (for approve flow)
   const [fullLegalName, setFullLegalName] = useState("");
   const getDefaultMeaning = (role?: string) => role === 'approver' ? 'approver' : role === 'author' ? 'author' : 'reviewer';
-  const [signatureMeaning, setSignatureMeaning] = useState(() => getDefaultMeaning(userRole));
-  const isMeaningLocked = userRole === 'review' || userRole === 'approver';
+  const [signatureMeaning, setSignatureMeaning] = useState(() => getDefaultMeaning(activeRole));
+  const isMeaningLocked = activeRole === 'review' || activeRole === 'approver';
 
-  // Update meaning when userRole prop changes or when dialog opens
+  // Update meaning when activeRole changes or when dialog opens
   React.useEffect(() => {
     if (open) {
-      setSignatureMeaning(getDefaultMeaning(userRole));
+      setSignatureMeaning(getDefaultMeaning(activeRole));
     }
-  }, [open, userRole]);
+  }, [open, activeRole]);
   const [customMeaning, setCustomMeaning] = useState("");
   const [isSigning, setIsSigning] = useState(false);
   const [signatureRecord, setSignatureRecord] = useState<ESignRecord | null>(null);
@@ -209,7 +226,7 @@ export function OnlyOfficeReviewViewer({
       if (isTemplate) {
         const { data: docRow } = await supabase
           .from('phase_assigned_document_template')
-          .select('file_path, file_name, file_size, file_type, company_id')
+          .select('file_path, file_name, file_size, file_type, company_id, updated_at')
           .eq('id', cleanDocId)
           .single();
         if (docRow?.file_path) {
@@ -220,6 +237,25 @@ export function OnlyOfficeReviewViewer({
             size: docRow.file_size || 0,
             type: docRow.file_type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           });
+
+          // Use a stable key based on file path + updated_at so OnlyOffice can
+          // reuse its cached conversion when the file hasn't changed.
+          // Key format must stay as review-{docId}-{digits} for callback parsing.
+          const keyBase = `${docRow.file_path}-${docRow.updated_at || ''}`;
+          let hash = 0;
+          for (let i = 0; i < keyBase.length; i++) {
+            hash = ((hash << 5) - hash + keyBase.charCodeAt(i)) | 0;
+          }
+          const stableKey = `review-${cleanDocId}-${(Math.abs(hash) + 1000000000000).toString().slice(0, 13)}`;
+
+          // Upsert editor key in parallel — no need to await before setting state
+          supabase.from('document_editor_sessions').upsert({
+            document_id: cleanDocId,
+            editor_key: stableKey,
+            version: 1,
+          }, { onConflict: 'document_id' });
+          setEditorKey(stableKey);
+          return;
         } else if (docRow) {
           // No file attached — try to export draft from document_studio_templates
           const cid = docRow.company_id || companyId;
@@ -282,10 +318,7 @@ export function OnlyOfficeReviewViewer({
         }
       }
 
-      // 2. Generate a new editor key each time the viewer opens.
-      //    This forces the previous OnlyOffice session to close (triggering
-      //    the status-2 callback that saves comments/edits to storage),
-      //    and ensures the viewer loads the latest file from storage.
+      // Fallback: generate a new editor key for non-template docs or draft exports
       const newKey = `review-${cleanDocId}-${Date.now()}`;
 
       await supabase.from('document_editor_sessions').upsert({
@@ -305,7 +338,7 @@ export function OnlyOfficeReviewViewer({
       setReviewStep("decision");
       setReviewComments("");
       setFullLegalName("");
-      setSignatureMeaning(getDefaultMeaning(userRole));
+      setSignatureMeaning(getDefaultMeaning(activeRole));
       setCustomMeaning("");
       setSignatureRecord(null);
       setAuthMethod(null);
@@ -336,8 +369,8 @@ export function OnlyOfficeReviewViewer({
       payload.reviewer_group_ids = [];
       payload.reviewer_user_ids = [];
     }
-    await supabase.from("phase_assigned_document_template").update(payload).eq("id", cleanDocId);
-    await supabase.from("documents").update(payload).eq("id", cleanDocId);
+    await supabase.from("phase_assigned_document_template").update(payload as any).eq("id", cleanDocId);
+    await supabase.from("documents").update(payload as any).eq("id", cleanDocId);
   };
 
   const saveReviewerDecision = async (decision: string, comment?: string) => {
@@ -447,8 +480,8 @@ export function OnlyOfficeReviewViewer({
 
       // Save individual reviewer decision
       await saveReviewerDecision(
-        userRole === 'approver' ? "approved" : "reviewed",
-        reviewComments.trim() || (userRole === 'approver' ? "Approved and signed" : "Reviewed and signed")
+        activeRole === 'approver' ? "approved" : "reviewed",
+        reviewComments.trim() || (activeRole === 'approver' ? "Approved and signed" : "Reviewed and signed")
       );
 
       // Update review assignment to completed
@@ -540,7 +573,7 @@ export function OnlyOfficeReviewViewer({
 
       setSignatureRecord((record as ESignRecord) || null);
       setReviewStep("complete");
-      toast.success(userRole === 'approver' ? "Document approved and signed successfully" : "Document reviewed and signed successfully");
+      toast.success(activeRole === 'approver' ? "Document approved and signed successfully" : "Document reviewed and signed successfully");
     } catch (err: any) {
       console.error("[Review] Signing error:", err);
       toast.error("Failed to apply signature. Please try again.");
@@ -594,73 +627,76 @@ export function OnlyOfficeReviewViewer({
             </div>
           </DialogHeader>
 
-          <div className="flex-1 overflow-hidden" style={{ height: "calc(85vh - 57px)" }}>
-            {!hasServerUrl ? (
-              <div className="flex items-center justify-center h-full p-8">
-                <Alert variant="destructive" className="max-w-lg">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>OnlyOffice Server Required</AlertTitle>
-                  <AlertDescription>
-                    Document preview is not available. The OnlyOffice Document Server
-                    is not configured. Please contact your administrator.
-                  </AlertDescription>
-                </Alert>
-              </div>
-            ) : !editorKey ? (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              </div>
-            ) : !filePath ? (
-              <div className="flex items-center justify-center h-full p-8">
-                <Alert className="max-w-lg">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Preview Not Available</AlertTitle>
-                  <AlertDescription>
-                    No file is attached to this document. The document has not been drafted in Document Studio yet. Please ask the author to create the draft and re-send for review.
-                  </AlertDescription>
-                </Alert>
-              </div>
-            ) : (
-              <DocumentEditor
-                id={`review-editor-${documentId}`}
-                documentServerUrl={documentServerUrl}
-                config={{
-                  document: {
-                    fileType: getFileType(fileName || filePath || documentName),
-                    key: editorKey,
-                    title: fileName || documentName || "Document",
-                    url: documentUrl,
-                    permissions: {
-                      edit: false,
-                      comment: true,
-                      download: true,
-                      print: true,
-                      review: false,
+          <div className="flex overflow-hidden" style={{ height: "calc(85vh - 57px)" }}>
+            <div className="flex-1 overflow-hidden">
+              {!hasServerUrl ? (
+                <div className="flex items-center justify-center h-full p-8">
+                  <Alert variant="destructive" className="max-w-lg">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>OnlyOffice Server Required</AlertTitle>
+                    <AlertDescription>
+                      Document preview is not available. The OnlyOffice Document Server
+                      is not configured. Please contact your administrator.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              ) : !editorKey ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+              ) : !filePath ? (
+                <div className="flex items-center justify-center h-full p-8">
+                  <Alert className="max-w-lg">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Preview Not Available</AlertTitle>
+                    <AlertDescription>
+                      No file is attached to this document. The document has not been drafted in Document Studio yet. Please ask the author to create the draft and re-send for review.
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              ) : (
+                <DocumentEditor
+                  id={`review-editor-${documentId}`}
+                  documentServerUrl={documentServerUrl}
+                  config={{
+                    document: {
+                      fileType: getFileType(fileName || filePath || documentName),
+                      key: editorKey,
+                      title: fileName || documentName || "Document",
+                      url: documentUrl,
+                      permissions: {
+                        edit: false,
+                        comment: true,
+                        download: true,
+                        print: true,
+                        review: false,
+                      },
                     },
-                  },
-                  documentType: getDocumentType(fileName || documentName),
-                  editorConfig: {
-                    mode: "edit",
-                    callbackUrl: filePath ? `${CALLBACK_URL}?path=${encodeURIComponent(filePath)}` : "",
-                    user: {
-                      id: user?.id || "anonymous",
-                      name: userName,
+                    documentType: getDocumentType(fileName || documentName),
+                    editorConfig: {
+                      mode: "edit",
+                      callbackUrl: filePath ? `${CALLBACK_URL}?path=${encodeURIComponent(filePath)}` : "",
+                      user: {
+                        id: user?.id || "anonymous",
+                        name: userName,
+                      },
+                      customization: {
+                        autosave: true,
+                        forcesave: true,
+                        goback: { blank: false },
+                      },
+                      lang: "en",
                     },
-                    customization: {
-                      autosave: true,
-                      forcesave: true,
-                      goback: { blank: false },
-                    },
-                    lang: "en",
-                  },
-                  height: "100%",
-                  width: "100%",
-                }}
-                onLoadComponentError={(errorCode: number, errorDescription: string) => {
-                  console.error("ONLYOFFICE Error:", errorCode, errorDescription);
-                }}
-              />
-            )}
+                    height: "100%",
+                    width: "100%",
+                  }}
+                  onLoadComponentError={(errorCode: number, errorDescription: string) => {
+                    console.error("ONLYOFFICE Error:", errorCode, errorDescription);
+                  }}
+                />
+              )}
+            </div>
+
           </div>
         </DialogContent>
       </Dialog>
@@ -677,13 +713,13 @@ export function OnlyOfficeReviewViewer({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PenTool className="h-5 w-5 text-primary" />
-              {reviewStep === "decision" && (userRole === 'approver' ? "Approval Decision" : "Review Decision")}
-              {reviewStep === "sign" && (userRole === 'approver' ? "E-Signature — Approve Document" : "E-Signature — Review Document")}
+              {reviewStep === "decision" && (activeRole === 'approver' ? "Approval Decision" : "Review Decision")}
+              {reviewStep === "sign" && (activeRole === 'approver' ? "E-Signature — Approve Document" : "E-Signature — Review Document")}
               {reviewStep === "complete" && "Signature Applied"}
             </DialogTitle>
             <DialogDescription>
-              {reviewStep === "decision" && (userRole === 'approver' ? `Provide your approval decision for "${documentName}"` : `Provide your review decision for "${documentName}"`)}
-              {reviewStep === "sign" && (userRole === 'approver' ? "Sign to confirm your approval per FDA 21 CFR Part 11" : "Sign to confirm your review per FDA 21 CFR Part 11")}
+              {reviewStep === "decision" && (activeRole === 'approver' ? `Provide your approval decision for "${documentName}"` : `Provide your review decision for "${documentName}"`)}
+              {reviewStep === "sign" && (activeRole === 'approver' ? "Sign to confirm your approval per FDA 21 CFR Part 11" : "Sign to confirm your review per FDA 21 CFR Part 11")}
               {reviewStep === "complete" && "Your signature has been recorded"}
             </DialogDescription>
           </DialogHeader>
@@ -703,7 +739,7 @@ export function OnlyOfficeReviewViewer({
               </div>
 
               <div className="flex flex-col gap-2 pt-2">
-                {userRole === 'approver' ? (
+                {activeRole === 'approver' ? (
                   <Button
                     onClick={handleApproveClick}
                     className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
@@ -838,7 +874,7 @@ export function OnlyOfficeReviewViewer({
                   ) : (
                     <PenTool className="h-4 w-4" />
                   )}
-                  {isSigning ? "Applying Signature..." : userRole === 'approver' ? "Sign & Approve" : "Sign & Complete Review"}
+                  {isSigning ? "Applying Signature..." : activeRole === 'approver' ? "Sign & Approve" : "Sign & Complete Review"}
                 </Button>
               </div>
             </div>
@@ -863,7 +899,7 @@ export function OnlyOfficeReviewViewer({
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
                   <CheckCircle className="h-8 w-8 text-green-600" />
                 </div>
-                <h3 className="text-lg font-semibold text-green-800">{userRole === 'approver' ? "Document Approved & Signed" : "Document Reviewed & Signed"}</h3>
+                <h3 className="text-lg font-semibold text-green-800">{activeRole === 'approver' ? "Document Approved & Signed" : "Document Reviewed & Signed"}</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   Signed by <span className="font-medium text-foreground">{fullLegalName}</span> on {dateStr} at {timeStr}
                 </p>
@@ -910,10 +946,33 @@ export function OnlyOfficeReviewViewer({
                   <Shield className="h-4 w-4" />
                   View Audit Trail
                 </Button>
-                <Button onClick={handleActualClose} className="gap-2">
-                  <CheckCircle className="h-4 w-4" />
-                  Close
-                </Button>
+                <div className="flex gap-2">
+                  {/* If user just reviewed and is also an approver, show "Proceed to Approve" */}
+                  {activeRole === 'review' && isAlsoApprover && (
+                    <Button
+                      variant="default"
+                      className="gap-2 bg-green-600 hover:bg-green-700"
+                      onClick={() => {
+                        // Switch to approver mode and reset dialog for approval flow
+                        setActiveRole('approver');
+                        setReviewStep("decision");
+                        setReviewComments("");
+                        setFullLegalName("");
+                        setSignatureMeaning("approver");
+                        setCustomMeaning("");
+                        setSignatureRecord(null);
+                        setAuthMethod(null);
+                      }}
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+                      Proceed to Approve
+                    </Button>
+                  )}
+                  <Button onClick={handleActualClose} variant={activeRole === 'review' && isAlsoApprover ? "outline" : "default"} className="gap-2">
+                    <CheckCircle className="h-4 w-4" />
+                    {activeRole === 'review' && isAlsoApprover ? "Close" : "Close"}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

@@ -300,7 +300,7 @@ export function SendToReviewGroupDialog({
 
       const { error: updateError } = await supabase
         .from('phase_assigned_document_template')
-        .update(updatePayload)
+        .update(updatePayload as any)
         .eq('id', cleanDocumentId);
 
       if (updateError) throw updateError;

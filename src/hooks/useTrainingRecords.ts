@@ -107,7 +107,7 @@ export function useUpdateTrainingRecord() {
       
       const { data, error } = await supabase
         .from('training_records')
-        .update(updates)
+        .update(updates as any)
         .eq('id', id)
         .select()
         .single();
@@ -155,7 +155,7 @@ export function useCompleteTraining() {
       
       const { data, error } = await supabase
         .from('training_records')
-        .update(updates)
+        .update(updates as any)
         .eq('id', recordId)
         .select()
         .single();

@@ -89,8 +89,8 @@ export function useCompanyUsers(companyId?: string) {
       const mappedUsers: CompanyUser[] = (data || []).map((access: any) => {
         const email = access.user_profiles?.email || 'No email';
         const externalRole = access.external_role || invitationRoleMap[email] || null;
-        // Owner = created the company (is_primary=true and not an invited user)
-        const isOwner = access.is_primary === true && !access.is_invite_user;
+        // Owner = designated as primary user of the company
+        const isOwner = access.is_primary === true;
 
         return {
           id: access.user_id,

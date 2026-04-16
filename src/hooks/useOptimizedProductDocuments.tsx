@@ -505,12 +505,12 @@ export function useOptimizedProductDocuments(productId: string, companyId: strin
       if (documentId.startsWith("template-")) {
         const { error } = await supabase
           .from('phase_assigned_document_template')
-          .update({ status, reviewer_group_id: reviewerGroupId })
+          .update({ status, reviewer_group_id: reviewerGroupId } as any)
           .eq('id', documentId);
       } else {
         const { error } = await supabase
           .from('documents')
-          .update({ status, reviewer_group_id: reviewerGroupId })
+          .update({ status, reviewer_group_id: reviewerGroupId } as any)
           .eq('id', documentId);
       }
 

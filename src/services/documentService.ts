@@ -198,7 +198,7 @@ export class DocumentService {
 
         const { error: insertError } = await supabase
           .from('phase_assigned_documents')
-          .insert(assignments);
+          .insert(assignments as any);
 
         if (insertError) throw insertError;
       }

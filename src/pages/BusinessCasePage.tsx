@@ -10,6 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Share2, Lock, Eye } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { usePlanMenuAccess } from "@/hooks/usePlanMenuAccess";
+import { useDeviceModuleAccess } from "@/hooks/useDeviceModuleAccess";
 import { DEVICES_MENU_ACCESS } from "@/constants/menuAccessKeys";
 import { PlanUpgradeRequired } from "@/components/subscription/PlanUpgradeRequired";
 import { RestrictedFeatureProvider } from "@/contexts/RestrictedFeatureContext";
@@ -162,6 +163,7 @@ export default function BusinessCasePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { lang } = useTranslation();
+  const { hasAccess: hasDeviceModuleAccess } = useDeviceModuleAccess(productId || null);
 
   // Get translated tab label
   const getTabLabel = (tabValue: string): string => {
@@ -663,6 +665,23 @@ export default function BusinessCasePage() {
                           // Show indicator for incomplete investor-relevant tabs in investor flow
                           const showInvestorIndicator = isInvestorFlow && tab.investorRelevant && !tabComplete;
 
+                          // Check device module access for this sub-tab
+                          const deviceModuleTabMap: Record<string, string> = {
+                            'venture-blueprint': 'business-case.venture-blueprint',
+                            'business-canvas': 'business-case.business-canvas',
+                            'team-profile': 'business-case.team-profile',
+                            'market-analysis': 'business-case.market-analysis',
+                            'gtm-strategy': 'business-case.gtm-strategy',
+                            'use-of-proceeds': 'business-case.use-of-proceeds',
+                            'rnpv': 'business-case.rnpv',
+                            'reimbursement': 'business-case.reimbursement',
+                            'pricing-strategy': 'business-case.pricing',
+                            'exit-strategy': 'business-case.exit-strategy',
+                            'ip-strategy': 'business-case.ip-strategy',
+                          };
+                          const devicePermId = deviceModuleTabMap[tab.value];
+                          const hasDeviceAccess = !devicePermId || hasDeviceModuleAccess(devicePermId);
+
                           // While loading plan access, show tabs in a neutral/loading state
                           if (isLoadingPlanAccess) {
                             return (
@@ -682,10 +701,12 @@ export default function BusinessCasePage() {
                             <TabsTrigger
                               key={tab.value}
                               value={tab.value}
-                              className={showInvestorIndicator ? "!text-indigo-600 data-[state=active]:!text-indigo-600 font-medium" : ""}
+                              disabled={!hasDeviceAccess}
+                              className={`${showInvestorIndicator ? "!text-indigo-600 data-[state=active]:!text-indigo-600 font-medium" : ""} ${!hasDeviceAccess ? "opacity-40 cursor-not-allowed" : ""}`}
                             >
                               {showInvestorIndicator && <Eye className="h-4 w-4 mr-1.5 flex-shrink-0 text-indigo-600" />}
-                              {!enabled && !showInvestorIndicator && <Lock className="h-4 w-4 mr-1.5 flex-shrink-0" />}
+                              {!hasDeviceAccess && <Lock className="h-3.5 w-3.5 mr-1 flex-shrink-0 text-muted-foreground" />}
+                              {!enabled && hasDeviceAccess && !showInvestorIndicator && <Lock className="h-4 w-4 mr-1.5 flex-shrink-0" />}
                               {getTabLabel(tab.value)}
                             </TabsTrigger>
                           );

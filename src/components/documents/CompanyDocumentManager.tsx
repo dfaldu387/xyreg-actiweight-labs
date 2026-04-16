@@ -224,18 +224,49 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
   // Deep-link: auto-open drawer when docId param is present
   useEffect(() => {
     const docId = searchParams.get('docId');
-    if (docId && documents && documents.length > 0 && !draftDrawerDocument) {
-      const targetDoc = documents.find(d => d.id === docId);
-      if (targetDoc) {
-        setDraftDrawerDocument(targetDoc);
+    if (!docId || draftDrawerDocument) return;
+
+    // Wait for documents to load
+    if (isLoading) return;
+
+    const targetDoc = documents.find(d => d.id === docId);
+    if (targetDoc) {
+      setDraftDrawerDocument(targetDoc);
+      setSearchParams(prev => {
+        const newParams = new URLSearchParams(prev);
+        newParams.delete('docId');
+        return newParams;
+      }, { replace: true });
+    } else {
+      // Fallback: fetch the document directly from the DB (it may be product-scoped)
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('phase_assigned_document_template')
+            .select('id, name, document_type, status, created_at, updated_at')
+            .eq('id', docId)
+            .maybeSingle();
+          if (!error && data) {
+            setDraftDrawerDocument({
+              id: data.id,
+              name: data.name || 'Document',
+              document_type: data.document_type || 'Standard',
+              status: data.status || 'Draft',
+              tech_applicability: '',
+              created_at: data.created_at,
+              updated_at: data.updated_at,
+              source_table: 'phase_assigned_document_template',
+            } as CompanyDocument);
+          }
+        } catch { /* ignore */ }
         setSearchParams(prev => {
           const newParams = new URLSearchParams(prev);
           newParams.delete('docId');
           return newParams;
         }, { replace: true });
-      }
+      })();
     }
-  }, [searchParams, documents, draftDrawerDocument, setSearchParams]);
+  }, [searchParams, documents, draftDrawerDocument, setSearchParams, isLoading]);
 
   // Get dynamic document types
   const { documentTypes, isLoading: isLoadingDocTypes } = useDocumentTypes(companyId);
@@ -521,7 +552,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
 
       const { error } = await supabase
         .from(table)
-        .update({ [field]: value })
+        .update({ [field]: value } as any)
         .eq("id", docId);
       if (error) {
         console.error('Bulk update error for', docId, '(table:', table, '):', error);

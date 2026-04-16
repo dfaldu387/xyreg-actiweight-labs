@@ -52,7 +52,7 @@ export function SystemConfigTab({ companyId, companyName }: SystemConfigTabProps
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
 
   const { settings, updateSetting, saveSettings } = useTemplateSettings(companyId);
-  const { apiKeys, getApiKey, createApiKey, updateApiKey } = useCompanyApiKeys(companyId);
+  const { apiKeys, getApiKey, createApiKey, updateApiKey, deleteApiKey } = useCompanyApiKeys(companyId);
   const { defaultPortfolioView, defaultMilestonesView, showPhaseCategories, isSaving: isSavingPreferences, savePortfolioViewPreference, saveMilestonesViewPreference, saveShowPhaseCategoriesPreference } = useUserPreferences();
   const { entries, saveEntries, isLoading: isPrefixesLoading } = useTraceabilityPrefixes(companyId);
 
@@ -206,6 +206,22 @@ export function SystemConfigTab({ companyId, companyName }: SystemConfigTabProps
     setLocalApiKeys(prev => ({ ...prev, [keyName]: value }));
   };
 
+  const handleDeleteApiKey = async (keyType: 'openai' | 'anthropic' | 'gemini' | 'google_vertex') => {
+    const existingKey = getApiKey(keyType as any);
+    if (!existingKey) {
+      setLocalApiKeys(prev => ({ ...prev, [keyType]: '' }));
+      return;
+    }
+    if (!window.confirm(lang('settings.systemConfig.apiKeys.deleteConfirm') || 'Remove this API key?')) return;
+    const ok = await deleteApiKey(existingKey.id);
+    if (ok) {
+      setLocalApiKeys(prev => ({ ...prev, [keyType]: '' }));
+      toast.success(lang('settings.systemConfig.apiKeys.deleteSuccess') || 'API key removed');
+    } else {
+      toast.error(lang('settings.systemConfig.apiKeys.deleteError') || 'Failed to remove API key');
+    }
+  };
+
   const handleSaveApiKeys = async () => {
     try {
       setIsSavingApiKeys(true);
@@ -221,6 +237,9 @@ export function SystemConfigTab({ companyId, companyName }: SystemConfigTabProps
           } else {
             await createApiKey(keyType, keyValue);
           }
+        } else if (existingKey) {
+          // Field was cleared — remove the stored key
+          await deleteApiKey(existingKey.id);
         }
       }
 
@@ -678,13 +697,27 @@ export function SystemConfigTab({ companyId, companyName }: SystemConfigTabProps
 
                   <div className="space-y-2">
                     <Label htmlFor="google_vertex_api_key">{lang('settings.systemConfig.apiKeys.googleVertex')}</Label>
-                    <Input
-                      id="google_vertex_api_key"
-                      type="password"
-                      value={localApiKeys.google_vertex || ""}
-                      onChange={(e) => handleApiKeyChange("google_vertex", e.target.value)}
-                      placeholder={lang('settings.systemConfig.apiKeys.googleVertexPlaceholder')}
-                    />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="google_vertex_api_key"
+                        type="password"
+                        value={localApiKeys.google_vertex || ""}
+                        onChange={(e) => handleApiKeyChange("google_vertex", e.target.value)}
+                        placeholder={lang('settings.systemConfig.apiKeys.googleVertexPlaceholder')}
+                      />
+                      {getApiKey('google_vertex' as any) && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleDeleteApiKey('google_vertex')}
+                          title={lang('settings.systemConfig.apiKeys.deleteConfirm') || 'Remove API key'}
+                          aria-label="Remove Google Vertex AI key"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       {lang('settings.systemConfig.apiKeys.googleVertexDescription')}
                     </p>

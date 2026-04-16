@@ -6,6 +6,7 @@ import { QualityManualLaunchView } from './QualityManualLaunchView';
 import { useQualityManual } from '@/hooks/useQualityManual';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import type { GenerationConfig } from './QualityManualGenerationConfig';
 
 interface QualityManualDashboardProps {
   companyId: string;
@@ -36,8 +37,8 @@ export function QualityManualDashboard({ companyId }: QualityManualDashboardProp
     setActiveSection(sectionKey);
   }, []);
 
-  const handleGenerateAll = useCallback(async () => {
-    const missing = sections.filter(s => !exclusions.has(s.clause) && (!s.content || s.content.length <= 20));
+  const handleGenerateAll = useCallback(async (config: GenerationConfig) => {
+    const missing = sections.filter(s => !s.content || s.content.length <= 20);
     if (missing.length === 0) {
       toast.info('All applicable sections already have content');
       return;
@@ -46,7 +47,13 @@ export function QualityManualDashboard({ companyId }: QualityManualDashboardProp
     let generated = 0;
     for (const section of missing) {
       try {
-        await generateSection(section.sectionKey);
+        await generateSection(section.sectionKey, {
+          outputLanguage: config.outputLanguage,
+          additionalPrompt: config.additionalInstructions || undefined,
+          detailLevel: config.detailLevel,
+          companySize: config.companySize,
+          regulatoryMaturity: config.regulatoryMaturity,
+        });
         generated++;
       } catch { /* continue */ }
     }
@@ -88,6 +95,8 @@ export function QualityManualDashboard({ companyId }: QualityManualDashboardProp
           companyName={decodedCompanyName}
           companyData={companyData}
           applyClassBasedExclusions={applyClassBasedExclusions}
+          onGenerateAll={handleGenerateAll}
+          generatingAll={generatingAll}
         />
       )}
 
@@ -97,6 +106,9 @@ export function QualityManualDashboard({ companyId }: QualityManualDashboardProp
         activeSection={activeSection}
         onSelectSection={handleSelectSection}
         generating={generating}
+        companyId={companyId}
+        companyName={decodedCompanyName}
+        exclusions={exclusions}
       />
     </div>
   );

@@ -118,19 +118,43 @@ async function getAccessTokenFromServiceAccount(serviceAccount: ServiceAccount):
   }
 }
 
-function isServiceAccountJson(key: string): boolean {
+// Normalize a stored credential into strict JSON so JSON.parse can handle
+// JS object-literal form (unquoted keys, trailing ';', trailing commas) and
+// double-stringified JSON.
+function normalizeToJson(input: string): string {
+  let s = input.trim();
+  if (s.startsWith('"') && s.endsWith('"')) {
+    try { s = JSON.parse(s); } catch { /* fall through */ }
+  }
+  if (typeof s !== "string") return s;
+  s = s.trim().replace(/;+\s*$/, "");
+  s = s.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":');
+  s = s.replace(/,(\s*[}\]])/g, "$1");
+  return s;
+}
+
+function tryParseServiceAccount(key: string): ServiceAccount | null {
   try {
-    const parsed = JSON.parse(key);
-    return (
+    const normalized = normalizeToJson(key);
+    const parsed = typeof normalized === "string" ? JSON.parse(normalized) : normalized;
+    if (
+      parsed &&
       parsed.type === "service_account" &&
       parsed.private_key &&
       parsed.client_email &&
       parsed.token_uri &&
       parsed.project_id
-    );
+    ) {
+      return parsed as ServiceAccount;
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function isServiceAccountJson(key: string): boolean {
+  return tryParseServiceAccount(key) !== null;
 }
 
 serve(async (req) => {
@@ -192,7 +216,7 @@ serve(async (req) => {
 
     if (isServiceAccount) {
       try {
-        const serviceAccount = JSON.parse(decryptedKey) as ServiceAccount;
+        const serviceAccount = tryParseServiceAccount(decryptedKey) as ServiceAccount;
         projectId = serviceAccount.project_id;
         console.log("[google-vertex-generate-text] Using company service account authentication");
         accessToken = await getAccessTokenFromServiceAccount(serviceAccount);

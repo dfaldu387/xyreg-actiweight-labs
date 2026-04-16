@@ -3,6 +3,7 @@ import { KeyFeature } from '@/utils/keyFeaturesNormalizer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Lock, GitBranch } from "lucide-react";
+import { useDeviceModuleAccess } from "@/hooks/useDeviceModuleAccess";
 import { Badge } from "@/components/ui/badge";
 import { GeneralTabsSection } from './tabs/general/GeneralTabsSection';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -472,6 +473,7 @@ export function ComprehensiveDeviceInformation({
   };
 
   const { isMenuAccessKeyEnabled, planName, isLoading: isLoadingPlanAccess } = usePlanMenuAccess();
+  const { hasAccess: hasDeviceModuleAccess } = useDeviceModuleAccess(productId || null);
 
   // Check if a tab is enabled based on plan's menu_access
   const isTabEnabled = (menuAccessKey: string): boolean => {
@@ -930,19 +932,35 @@ export function ComprehensiveDeviceInformation({
               const isInvestorRelevantTab = tab.value === 'purpose' || tab.value === 'basics';
               const showInvestorIndicator = isInvestorFlow && isInvestorRelevantTab;
 
+              // Check device module access for this sub-tab
+              const deviceTabPermMap: Record<string, string> = {
+                'overview': 'device-definition.overview',
+                'basics': 'device-definition.general',
+                'purpose': 'device-definition.purpose',
+                'markets-regulatory': 'device-definition.markets-tab',
+                'identification': 'device-definition.identification',
+                'bundles': 'device-definition.bundles',
+                'variants': 'device-definition.variants',
+              };
+              const devicePermId = deviceTabPermMap[tab.value];
+              const hasDeviceAccess = !devicePermId || hasDeviceModuleAccess(devicePermId);
+
               return (
                 <Tooltip key={tab.value}>
                   <TooltipTrigger asChild>
-                    <TabsTrigger 
-                      value={tab.value} 
+                    <TabsTrigger
+                      value={tab.value}
+                      disabled={!hasDeviceAccess}
                       className={cn(
-                        "flex items-center gap-1.5", 
+                        "flex items-center gap-1.5",
                         activeTab === tab.value && "bg-white",
-                        showInvestorIndicator && "!text-indigo-600 data-[state=active]:!text-indigo-600"
+                        showInvestorIndicator && "!text-indigo-600 data-[state=active]:!text-indigo-600",
+                        !hasDeviceAccess && "opacity-40 cursor-not-allowed"
                       )}
                     >
                       {showInvestorIndicator && <InvestorVisibleIcon className="text-indigo-600" />}
-                      {!enabled && <Lock className="h-3 w-3 text-slate-500" />}
+                      {!hasDeviceAccess && <Lock className="h-3 w-3 text-muted-foreground" />}
+                      {!enabled && hasDeviceAccess && <Lock className="h-3 w-3 text-slate-500" />}
                       <span>{tab.label}</span>
                     </TabsTrigger>
                   </TooltipTrigger>

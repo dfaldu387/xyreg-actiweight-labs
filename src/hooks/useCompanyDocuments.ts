@@ -277,7 +277,7 @@ export function useCompanyDocuments(companyId: string) {
       // Update in phase_assigned_document_template table only
       const { error } = await supabase
         .from('phase_assigned_document_template')
-        .update(updateData)
+        .update(updateData as any)
         .eq('id', documentId);
 
       if (error) throw error;

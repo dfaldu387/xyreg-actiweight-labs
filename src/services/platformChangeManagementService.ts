@@ -43,7 +43,7 @@ export class PlatformChangeManagementService {
             version: change.version,
             affected_documents: change.affected_documents || []
           })
-        })
+        } as any)
         .select('id')
         .single();
 
@@ -100,7 +100,7 @@ export class PlatformChangeManagementService {
 
       const { error: insertError } = await supabase
         .from('activities')
-        .insert(actionItems);
+        .insert(actionItems as any);
 
       if (insertError) {
         console.error('Error creating action items:', insertError);

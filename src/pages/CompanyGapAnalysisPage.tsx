@@ -204,16 +204,18 @@ export default function CompanyGapAnalysisPage() {
       featureName={lang('gapAnalysis.featureName')}
     >
       <div className="flex h-full min-h-0 flex-col">
+      <div className="mr-[280px] lg:mr-[300px] xl:mr-[320px]">
         <ConsistentPageHeader
           breadcrumbs={breadcrumbs}
           title={lang('gapAnalysis.pageTitle').replace('{{companyName}}', decodedCompanyName)}
           subtitle={lang('gapAnalysis.subtitle')}
           actions={headerActions}
         />
+      </div>
 
         {isRestricted && <RestrictedPreviewBanner className="mt-6 !mb-0" />}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto mr-[280px] lg:mr-[300px] xl:mr-[320px]">
           <div className="w-full pt-4" data-tour="gap-analysis">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4 flex-wrap h-auto gap-1">

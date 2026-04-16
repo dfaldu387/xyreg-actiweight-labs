@@ -87,7 +87,7 @@ export function GapAnalysisDocumentUpload({
           uploaded_at: new Date().toISOString(),
           reviewer_group_id: selectedReviewerGroup || null,
           company_id: companyId
-        })
+        } as any)
         .select()
         .single();
 

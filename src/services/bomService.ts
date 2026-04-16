@@ -70,7 +70,7 @@ export class BomService {
   static async updateRevision(id: string, updates: Partial<BomRevision>): Promise<BomRevision> {
     const { data, error } = await supabase
       .from('bom_revisions')
-      .update(updates)
+      .update(updates as any)
       .eq('id', id)
       .select()
       .single();

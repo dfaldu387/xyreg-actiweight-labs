@@ -30,6 +30,7 @@ import { AdvancedSettingsProvider } from './context/AdvancedSettingsContext'
 import { HelpModeProvider } from './context/HelpModeContext'
 import { GapAnalysisHelpProvider } from './context/GapAnalysisHelpContext'
 import { Toaster } from "sonner";
+import { RightRailProvider } from './context/RightRailContext';
 // Ensure we have an element to mount the app - BrowserRouter must wrap all providers
 const rootElement = document.getElementById("root");
 
@@ -58,8 +59,10 @@ root.render(
                         <HelpModeProvider>
                           <GapAnalysisHelpProvider>
                             <ConfirmDialogProvider>
-                              <App />
-                              <Toaster position="top-center" richColors />
+                              <RightRailProvider>
+                                <App />
+                                <Toaster position="top-center" richColors />
+                              </RightRailProvider>
                             </ConfirmDialogProvider>
                           </GapAnalysisHelpProvider>
                         </HelpModeProvider>

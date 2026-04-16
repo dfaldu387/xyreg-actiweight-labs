@@ -10,11 +10,11 @@ const STANDARDS_TO_CHECK = [
   { framework_key: "ISO_13485", standard_name: "ISO 13485:2016", url: "https://www.iso.org/standard/59752.html" },
   { framework_key: "ISO_14971", standard_name: "ISO 14971:2019", url: "https://www.iso.org/standard/72704.html" },
   { framework_key: "IEC_62304", standard_name: "IEC 62304:2006+AMD1:2015", url: "https://webstore.iec.ch/en/publication/22794" },
-  { framework_key: "IEC_62366", standard_name: "IEC 62366-1:2015+AMD1:2020", url: "https://webstore.iec.ch/en/publication/67220" },
+  { framework_key: "IEC_62366_1", standard_name: "IEC 62366-1:2015+AMD1:2020", url: "https://webstore.iec.ch/en/publication/67220" },
   { framework_key: "IEC_60601_1", standard_name: "IEC 60601-1:2005+AMD1:2012+AMD2:2020", url: "https://webstore.iec.ch/en/publication/67497" },
   { framework_key: "IEC_60601_1_2", standard_name: "IEC 60601-1-2:2014+AMD1:2020", url: "https://webstore.iec.ch/en/publication/67236" },
   { framework_key: "IEC_60601_1_6", standard_name: "IEC 60601-1-6:2010+AMD1:2013+AMD2:2020", url: "https://webstore.iec.ch/en/publication/67498" },
-  { framework_key: "ISO_15223", standard_name: "ISO 15223-1:2021/Amd 1:2025", url: "https://www.iso.org/standard/77326.html" },
+  { framework_key: "ISO_15223_1", standard_name: "ISO 15223-1:2021/Amd 1:2025", url: "https://www.iso.org/standard/77326.html" },
   { framework_key: "ISO_20417", standard_name: "ISO 20417:2021", url: "https://www.iso.org/standard/78122.html" },
   { framework_key: "ISO_10993", standard_name: "ISO 10993-1:2018", url: "https://www.iso.org/standard/68936.html" },
   { framework_key: "IEC_20957", standard_name: "IEC 20957-1:2013", url: "https://webstore.iec.ch/en/publication/6129" },
@@ -26,7 +26,7 @@ const STANDARDS_TO_CHECK = [
   { framework_key: "AAMI_ST79", standard_name: "AAMI ST79:2017", url: "https://www.aami.org/store/products/ansi-aami-st79-2017" },
   // IEEE
   { framework_key: "IEEE_11073", standard_name: "IEEE 11073-10101:2020", url: "https://standards.ieee.org/ieee/11073-10101/10542/" },
-  { framework_key: "IEEE_14971", standard_name: "IEEE 14971:2019", url: "https://standards.ieee.org/ieee/14971/7382/" },
+  { framework_key: "ISO_14971_DEVICE", standard_name: "IEEE 14971:2019", url: "https://standards.ieee.org/ieee/14971/7382/" },
   // CLSI
   { framework_key: "CLSI_EP05", standard_name: "CLSI EP05-A3:2014", url: "https://clsi.org/standards/products/method-evaluation/documents/ep05/" },
   { framework_key: "CLSI_EP17", standard_name: "CLSI EP17-A2:2012", url: "https://clsi.org/standards/products/method-evaluation/documents/ep17/" },

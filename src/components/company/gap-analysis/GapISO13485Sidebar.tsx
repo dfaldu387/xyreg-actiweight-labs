@@ -1,12 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle, Circle, Shield, Home, ChevronRight, Target, Loader2 } from 'lucide-react';
+import { CheckCircle, Circle, Shield, Home, ChevronRight, Target, Loader2, FileEdit } from 'lucide-react';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ISO_13485_SECTIONS, ISO_13485_GROUPS, type ISO13485SectionItem } from '@/config/gapISO13485Sections';
 import type { GapAnalysisItem } from '@/types/client';
+import { useRegisterRightRail } from '@/context/RightRailContext';
+import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useCompanyId } from '@/hooks/useCompanyId';
 
 interface GapISO13485SidebarProps {
   items: GapAnalysisItem[];
@@ -30,10 +35,15 @@ function getCompletionMap(items: GapAnalysisItem[]): Map<string, { isComplete: b
 }
 
 export function GapISO13485Sidebar({ items, disabled = false }: GapISO13485SidebarProps) {
+  useRegisterRightRail();
   const navigate = useNavigate();
   const { companyName } = useParams();
+  const companyId = useCompanyId();
+  const decodedCompanyName = companyName ? decodeURIComponent(companyName) : '';
   const completionMap = getCompletionMap(items);
   const [creating, setCreating] = useState(false);
+  const [showDocCIDialog, setShowDocCIDialog] = useState(false);
+  const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
 
   const totalSteps = ISO_13485_SECTIONS.reduce((sum, s) => sum + (s.subItems?.length || 1), 0);
   const completedCount = ISO_13485_SECTIONS.reduce((sum, s) => {
@@ -126,11 +136,28 @@ export function GapISO13485Sidebar({ items, disabled = false }: GapISO13485Sideb
 
       {/* Header */}
       <div className="p-4 border-b bg-background/50">
-        <div className="flex items-center gap-2 mb-3">
-          <Shield className="h-4 w-4 text-green-600" />
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            ISO 13485 QMS
-          </span>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-green-600" />
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              ISO 13485 QMS
+            </span>
+          </div>
+          {companyId && decodedCompanyName && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setShowDocCIDialog(true)}
+                    className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                  >
+                    <FileEdit className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="left"><p>Create Document Draft</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
         <h3 className="font-semibold text-foreground text-sm truncate">
@@ -271,6 +298,37 @@ export function GapISO13485Sidebar({ items, disabled = false }: GapISO13485Sideb
           })}
         </div>
       </div>
+
+      {/* Document Draft Dialog */}
+      {companyId && decodedCompanyName && (
+        <>
+          <SaveContentAsDocCIDialog
+            open={showDocCIDialog}
+            onOpenChange={setShowDocCIDialog}
+            title="ISO 13485 Gap Analysis Report"
+            htmlContent={ISO_13485_SECTIONS
+              .map(s => {
+                const entry = completionMap.get(s.section);
+                const status = entry?.isComplete ? '✅ Compliant' : '⚠️ Non-compliant';
+                return `<h2>§${s.section} ${s.title}</h2><p><strong>Status:</strong> ${status}</p>`;
+              })
+              .join('\n')}
+            templateIdKey={`GAP-ISO13485-${companyId}`}
+            companyId={companyId}
+            companyName={decodedCompanyName}
+            defaultScope="enterprise"
+            onDocumentCreated={(docId, docName, docType) => setDraftDrawerDoc({ id: docId, name: docName, type: docType })}
+          />
+          <DocumentDraftDrawer
+            open={!!draftDrawerDoc}
+            onOpenChange={(open) => { if (!open) setDraftDrawerDoc(null); }}
+            documentId={draftDrawerDoc?.id || ''}
+            documentName={draftDrawerDoc?.name || ''}
+            documentType={draftDrawerDoc?.type || ''}
+            companyId={companyId}
+          />
+        </>
+      )}
     </div>
   );
 }

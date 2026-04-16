@@ -111,7 +111,7 @@ export const kolService = {
   async updateKOLGroup(id: string, updates: Partial<KOLGroup>): Promise<KOLGroup> {
     const { data, error } = await supabase
       .from('kol_groups')
-      .update(updates)
+      .update(updates as any)
       .eq('id', id)
       .select()
       .single();

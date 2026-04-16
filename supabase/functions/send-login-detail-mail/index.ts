@@ -213,25 +213,52 @@ serve(async (req)=>{
         .eq('invitation_id', invitation.id)
         .maybeSingle();
 
-      if (!existingDeviceErr && existingUserDeviceAccess?.product_ids?.length > 0) {
-        console.log('Creating device access for existing user:', existingUserDeviceAccess.product_ids.length, 'products');
+      // Also fetch per-device module restrictions
+      const { data: existingUserDeviceModuleRows, error: existingDeviceModuleErr } = await supabaseAdmin
+        .from('invitation_device_module_access')
+        .select('device_id, module_ids')
+        .eq('invitation_id', invitation.id);
+
+      const existingDeviceModulesMap: Record<string, string[]> = {};
+      if (!existingDeviceModuleErr && Array.isArray(existingUserDeviceModuleRows)) {
+        for (const row of existingUserDeviceModuleRows) {
+          if (row?.device_id && Array.isArray(row.module_ids) && row.module_ids.length > 0) {
+            existingDeviceModulesMap[row.device_id] = row.module_ids;
+          }
+        }
+      }
+      const hasExistingDeviceModules = Object.keys(existingDeviceModulesMap).length > 0;
+      const hasExistingDeviceAccess = !existingDeviceErr && existingUserDeviceAccess?.product_ids?.length > 0;
+
+      if (hasExistingDeviceAccess || hasExistingDeviceModules) {
+        console.log('Applying device access + module restrictions for existing user:',
+          existingUserDeviceAccess?.product_ids?.length || 0, 'products,',
+          Object.keys(existingDeviceModulesMap).length, 'device-module configs');
         const userTypeMap = { viewer: 'viewer', editor: 'editor', admin: 'admin', consultant: 'viewer' };
         // Check for existing active record (partial unique index prevents upsert)
         const { data: existingMatrix } = await supabaseAdmin
           .from('user_product_matrix')
-          .select('id')
+          .select('id, permissions, product_ids')
           .eq('user_id', existingUserByEmail.id)
           .eq('company_id', companyId)
           .eq('is_active', true)
           .maybeSingle();
 
         if (existingMatrix) {
+          const mergedPermissions = {
+            ...((existingMatrix.permissions as any) || {}),
+            ...(hasExistingDeviceModules ? { device_modules: existingDeviceModulesMap } : {}),
+          };
+          const updatePayload: any = {
+            user_type: userTypeMap[accessLevel] || 'viewer',
+            assigned_at: new Date().toISOString(),
+            permissions: mergedPermissions,
+          };
+          if (hasExistingDeviceAccess) {
+            updatePayload.product_ids = existingUserDeviceAccess.product_ids;
+          }
           const { error: updateErr } = await supabaseAdmin.from('user_product_matrix')
-            .update({
-              product_ids: existingUserDeviceAccess.product_ids,
-              user_type: userTypeMap[accessLevel] || 'viewer',
-              assigned_at: new Date().toISOString(),
-            })
+            .update(updatePayload)
             .eq('id', existingMatrix.id);
           if (updateErr) console.error('Error updating device access for existing user:', updateErr);
         } else {
@@ -239,10 +266,11 @@ serve(async (req)=>{
             .insert({
               user_id: existingUserByEmail.id,
               company_id: companyId,
-              product_ids: existingUserDeviceAccess.product_ids,
+              product_ids: hasExistingDeviceAccess ? existingUserDeviceAccess.product_ids : [],
               user_type: userTypeMap[accessLevel] || 'viewer',
               is_active: true,
               assigned_at: new Date().toISOString(),
+              permissions: hasExistingDeviceModules ? { device_modules: existingDeviceModulesMap } : {},
             });
           if (insertErr) console.error('Error inserting device access for existing user:', insertErr);
         }
@@ -476,17 +504,37 @@ serve(async (req)=>{
       .eq('invitation_id', invitation.id)
       .maybeSingle();
 
-    if (!newUserDeviceErr && newUserDeviceAccess?.product_ids?.length > 0) {
-      console.log('Creating device access for new user:', newUserDeviceAccess.product_ids.length, 'products');
+    // Also fetch per-device module restrictions for new user
+    const { data: newUserDeviceModuleRows, error: newUserDeviceModuleErr } = await supabaseAdmin
+      .from('invitation_device_module_access')
+      .select('device_id, module_ids')
+      .eq('invitation_id', invitation.id);
+
+    const newUserDeviceModulesMap: Record<string, string[]> = {};
+    if (!newUserDeviceModuleErr && Array.isArray(newUserDeviceModuleRows)) {
+      for (const row of newUserDeviceModuleRows) {
+        if (row?.device_id && Array.isArray(row.module_ids) && row.module_ids.length > 0) {
+          newUserDeviceModulesMap[row.device_id] = row.module_ids;
+        }
+      }
+    }
+    const hasNewUserDeviceModules = Object.keys(newUserDeviceModulesMap).length > 0;
+    const hasNewUserDeviceAccess = !newUserDeviceErr && newUserDeviceAccess?.product_ids?.length > 0;
+
+    if (hasNewUserDeviceAccess || hasNewUserDeviceModules) {
+      console.log('Applying device access + module restrictions for new user:',
+        newUserDeviceAccess?.product_ids?.length || 0, 'products,',
+        Object.keys(newUserDeviceModulesMap).length, 'device-module configs');
       const userTypeMap = { viewer: 'viewer', editor: 'editor', admin: 'admin', consultant: 'viewer' };
       const { error: insertErr } = await supabaseAdmin.from('user_product_matrix')
         .insert({
           user_id: authUser.user.id,
           company_id: companyId,
-          product_ids: newUserDeviceAccess.product_ids,
+          product_ids: hasNewUserDeviceAccess ? newUserDeviceAccess.product_ids : [],
           user_type: userTypeMap[accessLevel] || 'viewer',
           is_active: true,
           assigned_at: new Date().toISOString(),
+          permissions: hasNewUserDeviceModules ? { device_modules: newUserDeviceModulesMap } : {},
         });
       if (insertErr) {
         console.error('Error inserting device access for new user:', insertErr);

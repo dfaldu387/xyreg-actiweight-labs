@@ -51,7 +51,7 @@ export class ProductUpdateService {
       // Update the product in the database
       const { error } = await supabase
         .from('products')
-        .update({ [field]: value })
+        .update({ [field]: value } as any)
         .eq('id', productId);
 
       if (error) {

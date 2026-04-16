@@ -153,7 +153,8 @@ export function NotificationBell() {
     if (notification.source === 'app' && notification.category === 'review' && currentCompanyName) {
       const entityId = notification.entity_id || '';
       // Add timestamp to force re-trigger when already on the review page
-      const params = entityId ? `?highlight=${entityId}&t=${Date.now()}` : '';
+      const isApproval = notification.type === 'approval_assigned';
+      const params = entityId ? `?highlight=${entityId}&t=${Date.now()}${isApproval ? '&role=approver' : ''}` : '';
       navigate(`/app/company/${encodeURIComponent(currentCompanyName)}/review${params}`);
     } else if (notification.action_url) {
       navigate(notification.action_url);

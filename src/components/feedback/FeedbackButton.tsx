@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useRightRail } from '@/context/RightRailContext';
 
 interface FeedbackButtonProps {
   onClick: () => void;
@@ -14,6 +15,7 @@ interface FeedbackButtonProps {
 }
 
 export function FeedbackButton({ onClick, className }: FeedbackButtonProps) {
+  const { isRightRailOpen } = useRightRail();
   return (
     <TooltipProvider>
       <Tooltip>
@@ -26,7 +28,10 @@ export function FeedbackButton({ onClick, className }: FeedbackButtonProps) {
             onClick();
           }}
           className={cn(
-            'fixed bottom-6 right-6 z-[9999]',
+            'fixed bottom-6 z-[9999]',
+            isRightRailOpen
+              ? 'right-[296px] lg:right-[316px] xl:right-[336px]'
+              : 'right-6',
             'h-14 w-14 rounded-full',
             'bg-primary text-primary-foreground',
             'shadow-lg hover:shadow-xl',

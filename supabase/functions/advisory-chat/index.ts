@@ -1,10 +1,57 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+// Agents that should receive live regulatory intelligence
+const REGULATORY_INTEL_AGENTS = new Set([
+  "professor-xyreg",
+  "dr-elena",
+  "dr-suzi",
+]);
+
+async function fetchRegulatoryNews(agentId: string): Promise<string> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Filter by region for region-specific agents
+    let query = supabase
+      .from("regulatory_news_items")
+      .select("title, summary, source_name, category, region, published_at, url")
+      .order("scraped_at", { ascending: false })
+      .limit(10);
+
+    if (agentId === "dr-elena") {
+      query = query.in("region", ["EU", "Global"]);
+    } else if (agentId === "dr-suzi") {
+      query = query.in("region", ["US", "Global"]);
+    }
+
+    const { data, error } = await query;
+    if (error || !data?.length) return "";
+
+    let block = "\n\n--- REGULATORY INTELLIGENCE (LIVE) ---\n";
+    block += "The following are the most recent regulatory news items from your intelligence feed. Reference these when relevant to the user's question.\n\n";
+    for (const item of data) {
+      block += `• [${item.source_name}] ${item.title}`;
+      if (item.published_at) block += ` (${item.published_at.slice(0, 10)})`;
+      block += "\n";
+      if (item.summary) block += `  ${item.summary}\n`;
+      if (item.url) block += `  Link: ${item.url}\n`;
+    }
+    block += "--- END REGULATORY INTELLIGENCE ---";
+    return block;
+  } catch (e) {
+    console.error("Failed to fetch regulatory news for context:", e);
+    return "";
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -29,6 +76,15 @@ serve(async (req) => {
       );
     }
 
+    // Inject regulatory intelligence for eligible agents
+    let enhancedPrompt = systemPrompt;
+    if (agentId && REGULATORY_INTEL_AGENTS.has(agentId)) {
+      const newsContext = await fetchRegulatoryNews(agentId);
+      if (newsContext) {
+        enhancedPrompt += newsContext;
+      }
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -38,7 +94,7 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: enhancedPrompt },
           ...messages,
         ],
       }),

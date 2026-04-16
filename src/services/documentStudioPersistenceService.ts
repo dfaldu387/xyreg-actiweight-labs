@@ -192,6 +192,8 @@ export class DocumentStudioPersistenceService {
 
       if (productId) {
         query = query.eq('product_id', productId);
+      } else {
+        query = query.is('product_id', null);
       }
 
       const { data, error } = await query.order('updated_at', { ascending: false });
@@ -201,10 +203,42 @@ export class DocumentStudioPersistenceService {
         return { success: false, error: error.message };
       }
 
-      return {
-        success: true,
-        data: Array.isArray(data) ? data : [],
-      };
+      if (data && data.length > 0) {
+        return { success: true, data };
+      }
+
+      // Fallback: check document_studio_templates metadata for drafts whose
+      // document_reference was previously overwritten by the DS-{id} pattern.
+      try {
+        const { data: studioRecords } = await supabase
+          .from('document_studio_templates')
+          .select('template_id')
+          .eq('company_id', companyId)
+          .contains('metadata', { templateIdKey: documentReference } as any);
+
+        if (studioRecords && studioRecords.length > 0) {
+          const ciIds = studioRecords
+            .map(r => r.template_id)
+            .filter((id): id is string => !!id);
+
+          if (ciIds.length > 0) {
+            const { data: ciRows } = await supabase
+              .from('phase_assigned_document_template')
+              .select('id, updated_at')
+              .in('id', ciIds)
+              .eq('company_id', companyId)
+              .order('updated_at', { ascending: false });
+
+            if (ciRows && ciRows.length > 0) {
+              return { success: true, data: ciRows };
+            }
+          }
+        }
+      } catch {
+        // Non-critical fallback — continue with empty result
+      }
+
+      return { success: true, data: [] };
     } catch (error) {
       console.error('Error in getDocumentCIsByReference:', error);
       return { success: false, error: String(error) };
@@ -275,7 +309,7 @@ export class DocumentStudioPersistenceService {
         // Update existing template
         const { data: updatedData, error } = await supabase
           .from('document_studio_templates')
-          .update(templateData)
+          .update(templateData as any)
           .eq('id', data.id)
           .eq('company_id', data.company_id)
           .select()
@@ -292,7 +326,7 @@ export class DocumentStudioPersistenceService {
         // Create new template
         const { data: newData, error } = await supabase
           .from('document_studio_templates')
-          .insert(templateData)
+          .insert(templateData as any)
           .select()
           .single();
 
@@ -333,15 +367,15 @@ export class DocumentStudioPersistenceService {
           updates.status = 'Draft';
         }
 
-        // Link the document_reference to the studio template if not already set
-        if (studioId && (!ciRecord.document_reference || !ciRecord.document_reference.startsWith('DS-'))) {
+        // Link the document_reference to the studio template only if completely empty
+        if (studioId && !ciRecord.document_reference) {
           updates.document_reference = `DS-${studioId}`;
         }
 
         if (Object.keys(updates).length > 1) { // more than just updated_at
           await supabase
             .from('phase_assigned_document_template')
-            .update(updates)
+            .update(updates as any)
             .eq('id', ciRecord.id);
         }
       }
@@ -674,7 +708,7 @@ export class DocumentStudioPersistenceService {
       if (existing?.id) {
         const { data, error } = await supabase
           .from('phase_assigned_document_template')
-          .update(record)
+          .update(record as any)
           .eq('id', existing.id)
           .select('id')
           .single();

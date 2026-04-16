@@ -373,7 +373,7 @@ export class ModelManagementService {
         regulatory_override_reason: reason,
         regulatory_override_by: userId,
         regulatory_override_at: new Date().toISOString()
-      })
+      } as any)
       .eq('id', productId);
 
     if (error) throw error;

@@ -57,7 +57,7 @@ export function CreateFamilyDialog({ isOpen, onClose, products, refetch }: Creat
       if (otherIds.length > 0) {
         const { error: memberError } = await supabase
           .from('products')
-          .update(updateData)
+          .update(updateData as any)
           .in('id', otherIds);
 
         if (memberError) throw memberError;

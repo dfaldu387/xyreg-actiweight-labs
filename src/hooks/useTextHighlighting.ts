@@ -68,7 +68,7 @@ export function useTextHighlighting(documentId: string) {
           position: data.position,
           reviewer_group_id: data.reviewer_group_id,
           user_id: user.user.id
-        })
+        } as any)
         .select()
         .single();
 

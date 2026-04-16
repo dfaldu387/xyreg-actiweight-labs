@@ -227,7 +227,7 @@ export class GanttSubTaskSyncService {
 
       const { error } = await supabase
         .from('audits')
-        .update(updateData)
+        .update(updateData as any)
         .eq('id', auditId);
 
       if (error) {

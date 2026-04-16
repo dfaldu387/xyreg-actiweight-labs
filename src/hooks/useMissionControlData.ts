@@ -484,34 +484,48 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
 
           const reviewerGroupIds = (membershipData || []).map(m => m.group_id);
 
-          if (reviewerGroupIds.length > 0) {
-            const ACTIONABLE_STATUSES = ['Not Started', 'In Progress', 'Under Review', 'In Review', 'Pending', 'Changes Requested'];
+          {
+            const ACTIONABLE_STATUSES = ['Not Started', 'In Progress', 'Under Review', 'In Review', 'Pending', 'Changes Requested', 'Reviewed', 'Approved'];
 
-            // Fetch phase-assigned docs needing review
+            // Build OR filter for phase docs - include both reviewer and approver matches
+            const orConditions: string[] = [`reviewer_user_ids.cs.{${user.id}}`, `approver_user_ids.cs.{${user.id}}`];
+            if (reviewerGroupIds.length > 0) {
+              orConditions.push(`reviewer_group_ids.ov.{${reviewerGroupIds.join(',')}}`);
+              orConditions.push(`approver_group_ids.ov.{${reviewerGroupIds.join(',')}}`);
+            }
+
+            // Fetch phase-assigned docs needing review or approval
             const { data: phaseDocs } = await supabase
               .from('phase_assigned_document_template')
               .select('id, name, status, due_date, deadline, company_phases!inner(company_id)')
               .eq('company_phases.company_id', targetCompanyId)
-              .or(`reviewer_group_ids.ov.{${reviewerGroupIds.join(',')}},reviewer_user_ids.cs.{${user.id}}`)
+              .or(orConditions.join(','))
               .eq('is_excluded', false)
               .in('status', ACTIONABLE_STATUSES)
               .limit(20);
 
-            // Fetch regular docs needing review
-            const { data: regularDocs } = await supabase
-              .from('documents')
-              .select('id, name, status, due_date')
-              .eq('company_id', targetCompanyId)
-              .overlaps('reviewer_group_ids', reviewerGroupIds)
-              .in('status', ACTIONABLE_STATUSES)
-              .limit(20);
+            // Fetch regular docs needing review (only if user is in reviewer groups)
+            let regularDocs: any[] | null = null;
+            if (reviewerGroupIds.length > 0) {
+              const { data } = await supabase
+                .from('documents')
+                .select('id, name, status, due_date')
+                .eq('company_id', targetCompanyId)
+                .overlaps('reviewer_group_ids', reviewerGroupIds)
+                .in('status', ACTIONABLE_STATUSES)
+                .limit(20);
+              regularDocs = data;
+            }
 
             (phaseDocs || []).forEach((doc: any) => {
+              const isApproval = doc.status === 'Reviewed' || doc.status === 'Approved';
               actionItems.push({
                 id: `review-phase-${doc.id}`,
-                title: `Review: ${doc.name}`,
-                description: `Document awaiting review (${doc.status || 'Pending'})`,
-                type: 'review',
+                title: isApproval ? `Approval: ${doc.name}` : `Review: ${doc.name}`,
+                description: isApproval
+                  ? `Document ${doc.status === 'Approved' ? 'approved' : 'reviewed and awaiting approval'} (${doc.status})`
+                  : `Document awaiting review (${doc.status || 'Pending'})`,
+                type: isApproval ? 'approval' : 'review',
                 priority: doc.status === 'Changes Requested' ? 'high' : 'medium',
                 dueDate: doc.due_date || doc.deadline ? new Date(doc.due_date || doc.deadline) : undefined,
                 url: '/app/review',

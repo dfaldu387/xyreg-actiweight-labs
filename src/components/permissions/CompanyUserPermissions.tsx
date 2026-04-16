@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Trash2, Save, X, Camera, Upload } from "lucide-react";
+import { Trash2, Save, X, Camera, Upload,ChevronRight, ChevronDown, MoreVertical } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CompanyUser, useCompanyUsers } from "@/hooks/useCompanyUsers";
 import { SmartRoleSelector } from "@/components/permissions/SmartRoleSelector";
 import { MultiDepartmentSelector, DepartmentAssignment, MultiDepartmentSelectorRef } from "@/components/permissions/MultiDepartmentSelector";
@@ -92,6 +93,7 @@ const getDepartmentColor = (functionalArea: string | null): string => {
 export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUserPermissionsProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(() => {
     if (user.avatar) {
@@ -115,6 +117,13 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
   
   // Temporary state for product dialog (only committed on Save)
   const [tempSelectedProductIds, setTempSelectedProductIds] = useState<string[]>([]);
+
+  // Device Module Permissions state (per-device granular access)
+  const [hasDeviceModuleRestriction, setHasDeviceModuleRestriction] = useState(false);
+  const [isDeviceModuleDialogOpen, setIsDeviceModuleDialogOpen] = useState(false);
+  const [deviceModulePermissions, setDeviceModulePermissions] = useState<Record<string, string[]>>({});
+  const [tempDeviceModulePermissions, setTempDeviceModulePermissions] = useState<Record<string, string[]>>({});
+  const [expandedDeviceInModuleDialog, setExpandedDeviceInModuleDialog] = useState<string | null>(null);
 
   // Company Module Access state
   const [hasModuleRestriction, setHasModuleRestriction] = useState(false);
@@ -166,6 +175,37 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
 
   const handleAvatarClick = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleAvatarDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsUploadingAvatar(true);
+    try {
+      // Delete from storage
+      const currentAvatarUrl = user.avatar || avatarUrl;
+      if (currentAvatarUrl) {
+        const oldPath = currentAvatarUrl.split('/avatars/')[1]?.split('?')[0];
+        if (oldPath) {
+          await supabase.storage.from('avatars').remove([oldPath]);
+        }
+      }
+
+      // Clear avatar_url in database
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({ avatar_url: null })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      setAvatarUrl(null);
+      toast.success('Profile photo removed');
+    } catch (error: any) {
+      console.error('Error deleting avatar:', error);
+      toast.error(error.message || 'Failed to remove profile photo');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
   };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -320,10 +360,22 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
           if (!productsError && products) {
             setSelectedProductNames(products.map(p => ({ id: p.id, name: p.name })));
           }
+
+          // Load device module permissions from permissions JSON field
+          const perms = matrix.permissions as any;
+          if (perms?.device_modules && typeof perms.device_modules === 'object') {
+            setDeviceModulePermissions(perms.device_modules);
+            const hasAnyRestriction = Object.values(perms.device_modules as Record<string, string[]>).some(
+              (mods) => mods && mods.length > 0
+            );
+            setHasDeviceModuleRestriction(hasAnyRestriction);
+          }
         } else {
           setHasProductRestriction(false);
           setSelectedProductIds([]);
           setSelectedProductNames([]);
+          setDeviceModulePermissions({});
+          setHasDeviceModuleRestriction(false);
         }
       } catch (error) {
         console.error('Error loading Device access:', error);
@@ -430,7 +482,7 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
 
   const handleSave = async () => {
     let assignmentsToSave = departmentAssignments;
-    if (editData.is_internal && departmentSelectorRef.current) {
+    if (departmentSelectorRef.current) {
       const updatedAssignments = departmentSelectorRef.current.commitPendingAssignment();
       if (updatedAssignments === null) {
         return;
@@ -465,7 +517,7 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
 
       const success = await updateUserPermissions(user.id, updateData);
 
-      if (success && editData.is_internal) {
+      if (success) {
         // Save department assignments to the new table
         // Delete existing assignments
         await supabase
@@ -581,10 +633,12 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                 </Avatar>
                 <div
                   className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
-                  onClick={handleAvatarClick}
+                  onClick={avatarUrl ? handleAvatarDelete : handleAvatarClick}
                 >
                   {isUploadingAvatar ? (
                     <div className="w-5 h-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : avatarUrl ? (
+                    <Trash2 className="w-5 h-5 text-white" />
                   ) : (
                     <Camera className="w-5 h-5 text-white" />
                   )}
@@ -594,7 +648,7 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                   type="file"
                   accept="image/*"
                   onChange={handleAvatarUpload}
-                  className="hidden"  
+                  className="hidden"
                 />
               </div>
               <div className="flex-1">
@@ -655,10 +709,7 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                       role: "",
                       external_role: null
                     }));
-                    // Clear department assignments when switching to external
-                    if (!checked) {
-                      setDepartmentAssignments([]);
-                    }
+                    // Keep department assignments when switching to external
                   }}
                   disabled={isUpdating}
                 />
@@ -669,16 +720,7 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
             </div>
           </div>
 
-          {editData.is_internal ? (
-            <MultiDepartmentSelector
-              ref={departmentSelectorRef}
-              companyId={companyId}
-              userId={user.id}
-              currentAssignments={departmentAssignments}
-              onChange={setDepartmentAssignments}
-              disabled={isUpdating}
-            />
-          ) : (
+          {!editData.is_internal && (
             <div className="space-y-2">
               <Label>Role</Label>
               <Select
@@ -702,6 +744,15 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
               </Select>
             </div>
           )}
+
+          <MultiDepartmentSelector
+            ref={departmentSelectorRef}
+            companyId={companyId}
+            userId={user.id}
+            currentAssignments={departmentAssignments}
+            onChange={setDepartmentAssignments}
+            disabled={isUpdating}
+          />
 
           <div className="flex justify-end space-x-2">
             <Button
@@ -730,7 +781,7 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
           {/* Department Color Header */}
           <div className={`bg-gradient-to-r ${departmentColor} p-4 text-white`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 min-w-0">
                 <div className="relative">
                   <Avatar className="h-16 w-16 cursor-pointer border-2 border-white/20" onClick={handleAvatarClick}>
                     <AvatarImage src={avatarUrl || undefined} />
@@ -740,10 +791,12 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                   </Avatar>
                   <div
                     className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
-                    onClick={handleAvatarClick}
+                    onClick={avatarUrl ? handleAvatarDelete : handleAvatarClick}
                   >
                     {isUploadingAvatar ? (
                       <div className="w-4 h-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    ) : avatarUrl ? (
+                      <Trash2 className="w-4 h-4 text-white" />
                     ) : (
                       <Camera className="w-4 h-4 text-white" />
                     )}
@@ -756,14 +809,12 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                     className="hidden"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-lg">{displayData.name}</h3>
-                    {user.is_owner && (
-                      <Badge className="bg-white text-teal-700 text-xs">Owner</Badge>
-                    )}
+                    <h3 className="font-semibold text-lg truncate">{displayData.name}</h3>
+                    <Badge className="bg-white/90 text-teal-700 text-xs capitalize">{displayData.access_level || 'viewer'}</Badge>
                   </div>
-                  <p className="text-white/90 text-sm">{user.email}</p>
+                  <p className="text-white/90 text-sm truncate">{user.email}</p>
                   {/* Only show role for internal users with department assignments OR external users with external_role */}
                   {displayData.is_internal && departmentAssignments.length > 0 && departmentAssignments[0].role && departmentAssignments[0].role.length > 0 && (
                     <p className="text-white/80 text-sm font-medium">{departmentAssignments[0].role[0]}</p>
@@ -774,32 +825,31 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2">
-                {/* {!user.is_owner && ( */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    savedDepartmentAssignmentsRef.current = [...departmentAssignments];
-                    setIsEditing(true);
-                  }}
-                  disabled={isUpdating}
-                  className="text-white/80 hover:text-white hover:bg-white/20"
-                >
-                  Edit
-                </Button>
-                {/* )} */}
-                {!user.is_owner && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onRemove}
-                    disabled={isUpdating}
-                    className="text-white/80 hover:text-white hover:bg-white/20"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
+              <div className="flex items-center space-x-2 flex-shrink-0">
+                <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="text-white/80 hover:text-white hover:bg-white/20 h-8 w-8">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => {
+                      setMenuOpen(false);
+                      savedDepartmentAssignmentsRef.current = [...departmentAssignments];
+                      setIsEditing(true);
+                    }} disabled={isUpdating}>
+                      Edit
+                    </DropdownMenuItem>
+                    {!user.is_owner && (
+                      <DropdownMenuItem onClick={() => {
+                        setMenuOpen(false);
+                        onRemove();
+                      }} disabled={isUpdating} className="text-destructive">
+                        Remove
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -808,8 +858,8 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Access Level:</Label>
-                <Badge className={getAccessLevelColor(displayData.access_level)}>
-                  {displayData.access_level}
+                <Badge className={getAccessLevelColor(displayData.access_level || 'viewer')}>
+                  {displayData.access_level || 'viewer'}
                 </Badge>
               </div>
 
@@ -821,8 +871,8 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
               </div>
             </div>
 
-            {/* Display department assignments for internal users */}
-            {displayData.is_internal && departmentAssignments.length > 0 && (
+            {/* Display department assignments for all users */}
+            {departmentAssignments.length > 0 && (
               <div className="space-y-2">
                 <Label>Department Assignments:</Label>
                 <div className="space-y-2">
@@ -967,6 +1017,57 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                 >
                   {selectedProductIds.length} device{selectedProductIds.length !== 1 ? 's' : ''} selected
                 </p>
+              )}
+
+              {/* Device Modules */}
+              {hasProductRestriction && selectedProductIds.length > 0 && (
+                <>
+                  <Label>Device Modules:</Label>
+                  <Switch
+                    checked={hasDeviceModuleRestriction}
+                    onCheckedChange={async (checked) => {
+                      setHasDeviceModuleRestriction(checked);
+                      if (checked) {
+                        setTempDeviceModulePermissions({...deviceModulePermissions});
+                        setExpandedDeviceInModuleDialog(null);
+                        setIsDeviceModuleDialogOpen(true);
+                      } else {
+                        // Clear device module restrictions
+                        setDeviceModulePermissions({});
+                        try {
+                          const matrix = await UserProductMatrixService.getUserMatrix(user.id, companyId);
+                          if (matrix) {
+                            const existingPerms = (matrix.permissions as any) || {};
+                            const updatedPerms = { ...existingPerms, device_modules: {} };
+                            await supabase
+                              .from('user_product_matrix')
+                              .update({ permissions: updatedPerms, updated_at: new Date().toISOString() })
+                              .eq('id', matrix.id);
+                          }
+                          toast.success('Device module restrictions removed — user can access all modules');
+                        } catch (error) {
+                          console.error('Error clearing device module access:', error);
+                        }
+                      }
+                    }}
+                    disabled={isUpdating}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {hasDeviceModuleRestriction ? 'Restricted' : 'All Modules'}
+                  </span>
+                  {hasDeviceModuleRestriction && (
+                    <p
+                      className="col-span-3 text-xs text-primary -mt-2 cursor-pointer hover:underline"
+                      onClick={() => {
+                        setTempDeviceModulePermissions({...deviceModulePermissions});
+                        setExpandedDeviceInModuleDialog(null);
+                        setIsDeviceModuleDialogOpen(true);
+                      }}
+                    >
+                      {Object.keys(deviceModulePermissions).filter(k => deviceModulePermissions[k]?.length > 0).length} device{Object.keys(deviceModulePermissions).filter(k => deviceModulePermissions[k]?.length > 0).length !== 1 ? 's' : ''} configured
+                    </p>
+                  )}
+                </>
               )}
 
               {/* Documents */}
@@ -1369,6 +1470,221 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                   </Button>
                 </DialogFooter>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Device Module Permissions Dialog */}
+          <Dialog open={isDeviceModuleDialogOpen} onOpenChange={setIsDeviceModuleDialogOpen}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Device Module Access</DialogTitle>
+                <DialogDescription>
+                  Configure which modules <span className="font-bold">{displayData.name}</span> can access per device. Click a device to expand and toggle modules on/off.
+                </DialogDescription>
+              </DialogHeader>
+
+              <ScrollArea className="h-[400px]">
+                <div className="space-y-1 pr-4">
+                  {selectedProductNames.map(device => {
+                    const isExpanded = expandedDeviceInModuleDialog === device.id;
+                    const deviceMods = tempDeviceModulePermissions[device.id] || [];
+                    const allModuleIds = [
+                      'device-dashboard', 'business-case', 'device-definition',
+                      'bill-of-materials', 'design-risk-controls', 'development-lifecycle',
+                      'operations', 'clinical-trials', 'quality-governance',
+                      'audit-log', 'regulatory-submissions'
+                    ];
+                    const moduleCount = deviceMods.filter(m => allModuleIds.includes(m)).length;
+
+                    return (
+                      <div key={device.id} className="border rounded-lg overflow-hidden">
+                        {/* Device header — click to expand/collapse */}
+                        <div
+                          className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50"
+                          onClick={() => setExpandedDeviceInModuleDialog(isExpanded ? null : device.id)}
+                        >
+                          <div className="flex items-center gap-2">
+                            {isExpanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                            <span className="text-sm font-medium">{device.name}</span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {moduleCount === 0 ? 'No restrictions' : `${moduleCount} of ${allModuleIds.length} modules`}
+                          </span>
+                        </div>
+
+                        {/* Expanded module list */}
+                        {isExpanded && (
+                          <div className="border-t bg-muted/20 p-2 space-y-0.5">
+                            <div className="flex justify-end mb-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs"
+                                onClick={() => {
+                                  if (moduleCount === allModuleIds.length) {
+                                    setTempDeviceModulePermissions(prev => ({ ...prev, [device.id]: [] }));
+                                  } else {
+                                    setTempDeviceModulePermissions(prev => ({ ...prev, [device.id]: [...allModuleIds] }));
+                                  }
+                                }}
+                              >
+                                {moduleCount === allModuleIds.length ? 'Deselect All' : 'Select All'}
+                              </Button>
+                            </div>
+                            {[
+                              { id: 'device-dashboard', label: 'Device Dashboard', subs: [] as {id: string; label: string}[] },
+                              { id: 'business-case', label: 'Business Case', subs: [
+                                { id: 'xyreg-genesis', label: 'XyReg Genesis' }, { id: 'venture-blueprint', label: 'Venture Blueprint' },
+                                { id: 'business-canvas', label: 'Business Canvas' }, { id: 'team-profile', label: 'Team' },
+                                { id: 'market-analysis', label: 'Market Analysis' }, { id: 'gtm-strategy', label: 'GTM' },
+                                { id: 'use-of-proceeds', label: 'Use of Proceeds' }, { id: 'rnpv', label: 'rNPV Analysis' },
+                                { id: 'reimbursement', label: 'Reimbursement' }, { id: 'pricing', label: 'Pricing Strategy' },
+                                { id: 'exit-strategy', label: 'Strategic Horizon' }, { id: 'ip-strategy', label: 'IP Strategy' },
+                              ]},
+                              { id: 'device-definition', label: 'Device Definition', subs: [
+                                { id: 'overview', label: 'Overview' }, { id: 'general', label: 'General' },
+                                { id: 'purpose', label: 'Intended Purpose' }, { id: 'markets-tab', label: 'Market & Regulatory' },
+                                { id: 'identification', label: 'Identification' }, { id: 'bundles', label: 'Bundles' },
+                                { id: 'variants', label: 'Variants' },
+                              ]},
+                              { id: 'bill-of-materials', label: 'Bill of Materials', subs: [] as {id: string; label: string}[] },
+                              { id: 'design-risk-controls', label: 'Design & Risk Controls', subs: [
+                                { id: 'requirements', label: 'Requirements' }, { id: 'architecture', label: 'Architecture' },
+                                { id: 'risk-mgmt', label: 'Risk Management' }, { id: 'vv', label: 'Verification & Validation' },
+                                { id: 'usability-engineering', label: 'Usability Engineering' }, { id: 'traceability', label: 'Traceability' },
+                              ]},
+                              { id: 'development-lifecycle', label: 'Development Lifecycle', subs: [] as {id: string; label: string}[] },
+                              { id: 'operations', label: 'Operations', subs: [
+                                { id: 'supply-chain', label: 'Supply Chain' }, { id: 'incoming-inspection', label: 'Incoming Inspection' },
+                                { id: 'production', label: 'Production' }, { id: 'sterilization-cleanliness', label: 'Sterilization & Cleanliness' },
+                                { id: 'preservation-handling', label: 'Preservation & Handling' },
+                                { id: 'installation-servicing', label: 'Installation & Servicing' }, { id: 'customer-property', label: 'Customer Property' },
+                              ]},
+                              { id: 'clinical-trials', label: 'Clinical Trials', subs: [] as {id: string; label: string}[] },
+                              { id: 'quality-governance', label: 'Quality Governance', subs: [
+                                { id: 'audits', label: 'Audits' }, { id: 'nonconformity', label: 'Nonconformity' },
+                                { id: 'product-capa', label: 'CAPA' }, { id: 'product-change-control', label: 'Change Control' },
+                                { id: 'design-review', label: 'Design Review' }, { id: 'user-access', label: 'User Access' },
+                              ]},
+                              { id: 'audit-log', label: 'Audit Log', subs: [] as {id: string; label: string}[] },
+                              { id: 'regulatory-submissions', label: 'Regulatory & Submissions', subs: [
+                                { id: 'gap-analysis', label: 'Gap Analysis' }, { id: 'activities', label: 'Activities' },
+                                { id: 'documents', label: 'Technical Documentation' }, { id: 'technical-file', label: 'Technical File' },
+                                { id: 'pms', label: 'Post-Market Surveillance' },
+                              ]},
+                            ].map((mod) => {
+                              const subIds = mod.subs.map(s => `${mod.id}.${s.id}`);
+                              const enabledSubCount = subIds.filter(id => deviceMods.includes(id)).length;
+                              return (
+                              <div key={mod.id}>
+                                <div className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-background">
+                                  <label htmlFor={`dm-${device.id}-${mod.id}`} className="text-sm font-medium cursor-pointer">
+                                    {mod.label}
+                                    {mod.subs.length > 0 && <span className="text-xs text-muted-foreground ml-1">({enabledSubCount}/{mod.subs.length})</span>}
+                                  </label>
+                                  <Switch
+                                    id={`dm-${device.id}-${mod.id}`}
+                                    checked={deviceMods.includes(mod.id)}
+                                    onCheckedChange={(checked) => {
+                                      setTempDeviceModulePermissions(prev => {
+                                        const current = prev[device.id] || [];
+                                        if (checked) {
+                                          // Add module + all sub-menus
+                                          return { ...prev, [device.id]: [...new Set([...current, mod.id, ...subIds])] };
+                                        } else {
+                                          // Remove module + all sub-menus
+                                          const removeSet = new Set([mod.id, ...subIds]);
+                                          return { ...prev, [device.id]: current.filter(id => !removeSet.has(id)) };
+                                        }
+                                      });
+                                    }}
+                                    className="scale-75"
+                                  />
+                                </div>
+                                {mod.subs.length > 0 && deviceMods.includes(mod.id) && (
+                                  <div className="ml-6 mb-1 space-y-0.5 border-l-2 border-muted pl-3">
+                                    {mod.subs.map((sub) => {
+                                      const subFullId = `${mod.id}.${sub.id}`;
+                                      return (
+                                        <div key={sub.id} className="flex items-center justify-between py-0.5 pr-1">
+                                          <label htmlFor={`dm-${device.id}-${subFullId}`} className="text-xs text-muted-foreground cursor-pointer">
+                                            {sub.label}
+                                          </label>
+                                          <Switch
+                                            id={`dm-${device.id}-${subFullId}`}
+                                            checked={deviceMods.includes(subFullId)}
+                                            onCheckedChange={(checked) => {
+                                              setTempDeviceModulePermissions(prev => {
+                                                const current = prev[device.id] || [];
+                                                return {
+                                                  ...prev,
+                                                  [device.id]: checked
+                                                    ? [...current, subFullId]
+                                                    : current.filter(id => id !== subFullId),
+                                                };
+                                              });
+                                            }}
+                                            className="scale-[0.6]"
+                                          />
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              <Separator className="mt-1" />
+                              </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+
+              <Separator />
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (Object.keys(deviceModulePermissions).length === 0) {
+                      setHasDeviceModuleRestriction(false);
+                    }
+                    setIsDeviceModuleDialogOpen(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const newPermissions = {...tempDeviceModulePermissions};
+                      setDeviceModulePermissions(newPermissions);
+
+                      // Save to user_product_matrix.permissions JSON field
+                      const matrix = await UserProductMatrixService.getUserMatrix(user.id, companyId);
+                      if (matrix) {
+                        const existingPerms = (matrix.permissions as any) || {};
+                        const updatedPerms = { ...existingPerms, device_modules: newPermissions };
+                        await supabase
+                          .from('user_product_matrix')
+                          .update({ permissions: updatedPerms, updated_at: new Date().toISOString() })
+                          .eq('id', matrix.id);
+                      }
+
+                      toast.success('Device module access updated');
+                      setIsDeviceModuleDialogOpen(false);
+                    } catch (error) {
+                      console.error('Error saving device module access:', error);
+                      toast.error('Failed to save device module access');
+                    }
+                  }}
+                >
+                  Save Changes
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
         </>

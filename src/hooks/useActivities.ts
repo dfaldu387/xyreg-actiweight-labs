@@ -122,7 +122,7 @@ export function useActivities(companyId: string | null, productId?: string | nul
         .insert({
           ...activity,
           product_id: activity.product_id || null
-        })
+        } as any)
         .select()
         .single();
 

@@ -166,7 +166,7 @@ export const toggleDocumentExclusion = async (documentId: string, isExcluded: bo
       is_excluded: isExcluded,
       exclusion_reason: isExcluded ? reason : null,
       updated_at: new Date().toISOString()
-    })
+    } as any)
     .eq('id', documentId);
 
   if (error) {

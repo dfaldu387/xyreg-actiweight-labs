@@ -32,6 +32,7 @@ interface PhaseTimelineVisualizerProps {
   currentPhase: string;
   productId: string;
   onPhaseChange?: () => void;
+  onPhaseClick?: (phaseName: string) => void;
 }
 
 type PhaseStatus = 'completed' | 'current' | 'upcoming' | 'overdue' | 'inactive';
@@ -153,7 +154,8 @@ export function PhaseTimelineVisualizer({
   phases,
   currentPhase,
   productId,
-  onPhaseChange
+  onPhaseChange,
+  onPhaseClick
 }: PhaseTimelineVisualizerProps) {
   const { lang } = useTranslation();
   const { toast } = useToast();
@@ -341,7 +343,7 @@ export function PhaseTimelineVisualizer({
         .update({
           status: 'Completed',
           actual_completion_date: new Date().toISOString()
-        })
+        } as any)
         .eq('id', currentPhaseData.id);
 
       if (updateError) throw updateError;
@@ -465,6 +467,7 @@ export function PhaseTimelineVisualizer({
                     progress={allPhasesProgress?.get(phase.id)}
                     isFirst={index === 0}
                     isLast={index === timelinePhases.length - 1}
+                    onPhaseClick={onPhaseClick}
                   />
                 );
               }
@@ -476,6 +479,7 @@ export function PhaseTimelineVisualizer({
                     index={originalIndex}
                     status={status}
                     progress={allPhasesProgress?.get(phase.id)}
+                    onPhaseClick={onPhaseClick}
                   />
                 </div>
               );
@@ -505,6 +509,7 @@ export function PhaseTimelineVisualizer({
                     index={originalIndex}
                     status={status}
                     progress={allPhasesProgress?.get(phase.id)}
+                    onPhaseClick={onPhaseClick}
                   />
                   {/* {!isLast && (
                     <div
@@ -538,11 +543,13 @@ function PhaseSegment({
   index,
   status,
   progress,
+  onPhaseClick,
 }: {
   phase: Phase;
   index: number;
   status: PhaseStatus;
   progress?: PhaseProgressData;
+  onPhaseClick?: (phaseName: string) => void;
 }) {
   const { lang } = useTranslation();
   const styles = getPhaseStyles(status);
@@ -584,8 +591,9 @@ function PhaseSegment({
           <div className="flex flex-col items-center gap-2">
             {/* Phase Pill */}
             <div
+              onClick={() => onPhaseClick?.(phase.name)}
               className={`
-                relative flex items-center gap-2 px-4 py-2.5 rounded-full 
+                relative flex items-center gap-2 px-4 py-2.5 rounded-full
                 whitespace-nowrap transition-all cursor-pointer hover:scale-105
                 ${styles.container}
                 ${status === 'current' ? 'border-4' : 'border-2'}
@@ -639,6 +647,7 @@ function ChevronPhaseSegment({
   progress,
   isFirst,
   isLast,
+  onPhaseClick,
 }: {
   phase: Phase;
   index: number;
@@ -646,6 +655,7 @@ function ChevronPhaseSegment({
   progress?: PhaseProgressData;
   isFirst: boolean;
   isLast: boolean;
+  onPhaseClick?: (phaseName: string) => void;
 }) {
   const { lang } = useTranslation();
   const styles = getPhaseStyles(status);
@@ -684,7 +694,8 @@ function ChevronPhaseSegment({
       <Tooltip delayDuration={200}>
         <TooltipTrigger asChild>
           <div
-            className={`relative ${!isFirst ? '-ml-5' : ''}`}
+            onClick={() => onPhaseClick?.(phase.name)}
+            className={`relative cursor-pointer ${!isFirst ? '-ml-5' : ''}`}
             style={{ zIndex: 10 - index }}
           >
             {/* Outer wrapper for border - slightly larger */}

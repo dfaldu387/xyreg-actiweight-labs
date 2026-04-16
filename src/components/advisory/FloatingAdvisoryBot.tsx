@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
-import { useLocation } from 'react-router-dom';
+import { cn } from '@/lib/utils';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useCompanyApiKeys } from '@/hooks/useCompanyApiKeys';
+import { AlertCircle } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,6 +20,7 @@ import { useCompanyId } from '@/hooks/useCompanyId';
 import { useAdvisoryContext } from '@/hooks/useAdvisoryContext';
 import { formatDistanceToNow } from 'date-fns';
 import { documentContextStore } from '@/stores/documentContextStore';
+import { useRightRail } from '@/context/RightRailContext';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -175,6 +179,7 @@ async function speakElevenLabs(text: string, voiceId?: string) {
 }
 
 export function FloatingAdvisoryBot() {
+  const { isRightRailOpen } = useRightRail();
   const documentContext = useSyncExternalStore(documentContextStore.subscribe, documentContextStore.get);
   const [open, setOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AdvisoryAgent | null>(getAgentById('professor-xyreg') || ADVISORY_AGENTS[0]);
@@ -189,6 +194,7 @@ export function FloatingAdvisoryBot() {
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [conversationMode, setConversationMode] = useState(false);
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
   const recognitionRef = useRef<any>(null);
   const conversationModeRef = useRef(false);
   const isDragging = useRef(false);
@@ -197,6 +203,8 @@ export function FloatingAdvisoryBot() {
   const { toast } = useToast();
   const location = useLocation();
   const companyId = useCompanyId();
+  const navigate = useNavigate();
+  const { getApiKey, apiKeys: companyApiKeys } = useCompanyApiKeys(companyId);
   const { data: systemContext } = useAdvisoryContext(companyId, open);
 
   const { conversations, loading: threadsLoading, fetchConversations, createConversation, loadMessages, saveMessage, deleteConversation } = useAdvisoryThreads(companyId);
@@ -284,6 +292,15 @@ export function FloatingAdvisoryBot() {
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isLoading || !selectedAgent) return;
+
+    // Guard: Google Vertex AI key must be configured for this company.
+    // Show an inline error banner in the chat panel with a button to go set it.
+    if (!companyApiKeys.isLoading && !getApiKey('google_vertex' as any)) {
+      setApiKeyMissing(true);
+      return;
+    }
+    if (apiKeyMissing) setApiKeyMissing(false);
+
     // Prewarm audio on user gesture to satisfy Chrome autoplay policy
     if (voiceEnabled) prewarmAudio();
     const text = input.trim();
@@ -316,14 +333,28 @@ export function FloatingAdvisoryBot() {
         const snippet = documentContext.content.slice(0, 2000);
         systemPrompt += `\n\n--- DOCUMENT CONTEXT ---\nThe user is currently editing the "${documentContext.sectionTitle}" section in Document Studio.\nSection content (first 2000 chars):\n${snippet}\n--- END DOCUMENT CONTEXT ---\nUse this to answer questions about their document content. You can suggest improvements but do NOT directly edit the document.`;
       }
-      const response = await supabase.functions.invoke('advisory-chat', {
+      const response = await supabase.functions.invoke('vertex-advisory-chat', {
         body: {
           messages: updated.map(m => ({ role: m.role, content: m.content })),
           systemPrompt,
           agentId: selectedAgent.id,
+          companyId,
         }
       });
-      if (response.error) throw response.error;
+      if (response.error) {
+        const ctx = (response.error as any)?.context;
+        try {
+          if (ctx && typeof ctx.text === 'function') {
+            const bodyText = await ctx.text();
+            console.error('[vertex-advisory-chat] edge fn error body:', bodyText);
+          } else {
+            console.error('[vertex-advisory-chat] edge fn error context:', ctx);
+          }
+        } catch (logErr) {
+          console.error('[vertex-advisory-chat] failed to read error body:', logErr);
+        }
+        throw response.error;
+      }
       const data = response.data;
       if (data?.error) {
         toast({ title: 'Error', description: data.error, variant: 'destructive' });
@@ -347,7 +378,7 @@ export function FloatingAdvisoryBot() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, selectedAgent, messages, voiceEnabled, selectedVoice, toast, pageContext, activeConversationId, createConversation, saveMessage]);
+  }, [input, isLoading, selectedAgent, messages, voiceEnabled, selectedVoice, toast, pageContext, activeConversationId, createConversation, saveMessage, companyApiKeys.isLoading, getApiKey, navigate, apiKeyMissing]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -449,15 +480,21 @@ export function FloatingAdvisoryBot() {
     document.addEventListener('mouseup', handleMouseUp);
   }, [currentWidth, currentHeight]);
 
+  const railOffset = isRightRailOpen ? 296 : 24;
   const posStyle = position
     ? { left: position.x, top: position.y }
-    : { right: 24, bottom: 80 };
+    : { right: railOffset, bottom: 80 };
 
   if (!open) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-[5.5rem] right-6 z-50 h-14 w-14 rounded-full bg-[#D4AF37] text-white shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-200 flex items-center justify-center group"
+        className={cn(
+          "fixed bottom-[5.5rem] z-50 h-14 w-14 rounded-full bg-[#D4AF37] text-white shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-200 flex items-center justify-center group",
+          isRightRailOpen
+            ? 'right-[296px] lg:right-[316px] xl:right-[336px]'
+            : 'right-6'
+        )}
         title="Technical Advisory Board"
       >
         <Users className="h-6 w-6 group-hover:scale-110 transition-transform" />
@@ -604,6 +641,31 @@ export function FloatingAdvisoryBot() {
         <>
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            {apiKeyMissing && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-medium">Google Vertex AI key required</p>
+                    <p className="text-[11px] mt-0.5 text-destructive/90">
+                      Add a Google Vertex AI service-account key in Company Settings → General → API Keys to use the advisory chat.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 text-xs w-full"
+                  onClick={() => {
+                    const ctx = CompanyContextService.get();
+                    const slug = ctx?.companyName ? encodeURIComponent(ctx.companyName) : null;
+                    if (slug) navigate(`/app/company/${slug}/settings?tab=general`);
+                  }}
+                >
+                  Set API key
+                </Button>
+              </div>
+            )}
             {(product || companyContext) && (
               <div className="bg-muted/50 rounded-md px-2.5 py-1.5 text-[10px] text-muted-foreground border border-border/50">
                 <span className="font-medium">Context:</span>{' '}

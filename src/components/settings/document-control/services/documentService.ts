@@ -295,7 +295,7 @@ export class DocumentService {
               public_url: docProps.public_url,
               status: 'Not Started',
               document_scope: 'company_template' as const
-            });
+            } as any);
 
           if (insertError) throw insertError;
         }

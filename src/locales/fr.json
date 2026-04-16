@@ -3370,7 +3370,10 @@
     "allNotificationsMarkedRead": "Toutes les notifications marquées comme lues",
     "notificationRemoved": "Notification supprimée",
     "qmsFoundation": "Fondation QMS",
-    "qmsFoundationSubtitle": "Infrastructure au niveau de l'entreprise • Échelons 1 & 5"
+    "qmsFoundationSubtitle": "Infrastructure au niveau de l'entreprise • Échelons 1 & 5",
+    "organization": "Organisation",
+    "organizationValueChain": "Chaîne de valeur organisationnelle",
+    "noValueChainData": "Aucune structure de département configurée. Configurez les départements dans les Paramètres."
   },
   "commercial": {
     "clientCompass": "Boussole clients",

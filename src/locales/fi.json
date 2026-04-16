@@ -3370,7 +3370,10 @@
     "allNotificationsMarkedRead": "All Ilmoitukset marked as read",
     "notificationRemoved": "Ilmoitus poistettu",
     "qmsFoundation": "QMS-perusta",
-    "qmsFoundationSubtitle": "Yritystason infrastruktuuri • Portaat 1 & 5"
+    "qmsFoundationSubtitle": "Yritystason infrastruktuuri • Portaat 1 & 5",
+    "organization": "Organisaatio",
+    "organizationValueChain": "Organisaation arvoketju",
+    "noValueChainData": "Osastorakennetta ei ole vielä määritetty. Määritä osastot Asetuksissa."
   },
   "commercial": {
     "clientCompass": "Asiakaskompassi",

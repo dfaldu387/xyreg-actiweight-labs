@@ -6,6 +6,7 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Dialog
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AddCompanyUserDialog } from "@/components/permissions/AddCompanyUserDialog";
 import { UserInvitationsTable } from "@/components/permissions/UserInvitationsTable";
+import { PendingUsersTable } from "@/components/permissions/PendingUsersTable";
 import { CompanyUserPermissions } from "@/components/permissions/CompanyUserPermissions";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useCompanyUsers } from "@/hooks/useCompanyUsers";
@@ -22,16 +23,19 @@ export function HybridUserManagement({ companyId }: HybridUserManagementProps) {
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [userToRemove, setUserToRemove] = useState<string | null>(null);
   const [isRemoving, setIsRemoving] = useState(false);
+  const [activeTab, setActiveTab] = useState("users");
   const { lang } = useTranslation();
 
   const { users, isLoading: usersLoading, error: usersError, removeUser, fetchUsers } = useCompanyUsers(companyId);
   const { invitations, isLoading: invitationsLoading, fetchInvitations } = useInvitations(companyId);
+  const { pendingUsers, isLoading: pendingUsersLoading, fetchPendingUsers } = usePendingUsers(companyId);
 
   const handleUserAction = async () => {
     setAddUserDialogOpen(false);
     await Promise.all([
       fetchUsers(),
-      fetchInvitations()
+      fetchInvitations(),
+      fetchPendingUsers()
     ]);
   };
 
@@ -49,7 +53,7 @@ export function HybridUserManagement({ companyId }: HybridUserManagementProps) {
     setUserToRemove(null);
   };
 
-  const isLoading = usersLoading || invitationsLoading;
+  const isLoading = usersLoading || invitationsLoading || pendingUsersLoading;
 
   if (isLoading) {
     return (
@@ -70,7 +74,7 @@ export function HybridUserManagement({ companyId }: HybridUserManagementProps) {
     );
   }
 
-  const pendingInvitationsCount = invitations?.filter(inv => inv.status === 'pending').length || 0;
+  const pendingInvitationsCount = (invitations?.filter(inv => inv.status === 'pending').length || 0) + (pendingUsers?.length || 0);
   
   return (
     <div className="space-y-6">
@@ -93,7 +97,7 @@ export function HybridUserManagement({ companyId }: HybridUserManagementProps) {
         </div>
       </div>
 
-      <Tabs defaultValue="users" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="users">{lang('companySettings.usersAccess.activeUsers')} ({users.length})</TabsTrigger>
           <TabsTrigger value="invitations">
@@ -136,8 +140,9 @@ export function HybridUserManagement({ companyId }: HybridUserManagementProps) {
           )}
         </TabsContent>
 
-        <TabsContent value="invitations">
-          <UserInvitationsTable companyId={companyId} />
+        <TabsContent value="invitations" className="space-y-4">
+          <PendingUsersTable companyId={companyId} onChanged={() => fetchPendingUsers()} />
+          <UserInvitationsTable companyId={companyId} onChanged={() => fetchInvitations()} />
         </TabsContent>
       </Tabs>
 

@@ -240,7 +240,7 @@ export class ProductDocumentInstantiationService {
 
       const { data, error } = await supabase
         .from('documents')
-        .insert(newDocument)
+        .insert(newDocument as any)
         .select()
         .single();
 

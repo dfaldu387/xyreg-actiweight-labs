@@ -26,6 +26,16 @@ const STORAGE_URL = `${SUPABASE_URL}/storage/v1/object/public`;
 // For production, store this in environment variables
 const ONLYOFFICE_JWT_SECRET = import.meta.env.VITE_ONLYOFFICE_JWT_SECRET || "";
 
+// Preload OnlyOffice SDK script so it's cached before user opens a document
+const ONLYOFFICE_SERVER = import.meta.env.VITE_ONLYOFFICE_SERVER_URL || "";
+if (ONLYOFFICE_SERVER && typeof window !== "undefined") {
+  const link = document.createElement("link");
+  link.rel = "preload";
+  link.as = "script";
+  link.href = `${ONLYOFFICE_SERVER}/web-apps/apps/api/documents/api.js`;
+  document.head.appendChild(link);
+}
+
 const getDocumentUrl = (filePath?: string): string => {
   if (!filePath) return "";
   if (filePath.startsWith("http://") || filePath.startsWith("https://")) return filePath;

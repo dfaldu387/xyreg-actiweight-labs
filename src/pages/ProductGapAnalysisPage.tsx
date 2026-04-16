@@ -334,7 +334,7 @@ export default function ProductGapAnalysisPage() {
         featureName={lang('gapAnalysis.featureName')}
       >
         {isRestricted && <RestrictedPreviewBanner className="mt-2 !mb-0" />}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto mr-[280px] lg:mr-[300px] xl:mr-[320px]">
           <div className="w-full py-2 sm:py-3 lg:py-4" data-tour="gap-analysis">
             {/* Family sharing is now per-standard in each banner */}
             {/* Main tabs */}

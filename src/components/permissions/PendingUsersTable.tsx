@@ -7,34 +7,28 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Trash2, Clock, Edit, Save, X, Users } from "lucide-react";
+import { Trash2, Clock, Edit, Save, X, Users, Send } from "lucide-react";
 import { usePendingUsers, PendingUser } from "@/hooks/usePendingUsers";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { DeleteConfirmationDialog } from "@/components/ui/DeleteConfirmationDialog";
 
 interface PendingUsersTableProps {
   companyId: string;
+  onChanged?: () => void;
 }
 
-export function PendingUsersTable({ companyId }: PendingUsersTableProps) {
+export function PendingUsersTable({ companyId, onChanged }: PendingUsersTableProps) {
   const { pendingUsers, isLoading, deletePendingUser, updatePendingUser, activateAllPendingUsers } = usePendingUsers(companyId);
   const [isActivating, setIsActivating] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<PendingUser>>({});
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
-  const handleDelete = async (pendingUserId: string, userName: string) => {
-    if (confirm(`Are you sure you want to delete pending user ${userName}?`)) {
-      await deletePendingUser(pendingUserId);
+  const confirmDelete = async () => {
+    if (deleteTarget) {
+      await deletePendingUser(deleteTarget.id);
+      setDeleteTarget(null);
+      onChanged?.();
     }
   };
 
@@ -81,21 +75,12 @@ export function PendingUsersTable({ companyId }: PendingUsersTableProps) {
 
   if (pendingUsers.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <div className="text-center">
-            <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-            <p className="text-muted-foreground">No pending users</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Pending users will appear here when created by admins
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+     <></>
     );
   }
 
   return (
+    <>
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -103,32 +88,6 @@ export function PendingUsersTable({ companyId }: PendingUsersTableProps) {
             <Clock className="h-5 w-5" />
             Pending Users ({pendingUsers.length})
           </CardTitle>
-          {process.env.NODE_ENV === 'development' && pendingUsers.length > 0 && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" disabled={isActivating}>
-                  <Users className="h-4 w-4 mr-2" />
-                  DEV: Activate All ({pendingUsers.length})
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Activate All Pending Users?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will create {pendingUsers.length} active user profile(s) and grant them access to the company.
-                    <br /><br />
-                    <strong className="text-destructive">⚠️ Development Only:</strong> This feature is for testing purposes only and will create real user records in the database.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleActivateAll}>
-                    Activate {pendingUsers.length} User(s)
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -251,9 +210,6 @@ export function PendingUsersTable({ companyId }: PendingUsersTableProps) {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <h4 className="font-medium">{pendingUser.name}</h4>
-                    <Badge variant="outline" className="text-xs">
-                      Pending Signup
-                    </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">{pendingUser.email}</p>
                   <div className="flex gap-2 flex-wrap">
@@ -288,14 +244,32 @@ export function PendingUsersTable({ companyId }: PendingUsersTableProps) {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => handleEdit(pendingUser)}
+                    title="Send Invitation"
+                    onClick={async () => {
+                      const { sendInvitationDirect } = await import("@/hooks/useInvitations");
+                      const nameParts = pendingUser.name.split(' ');
+                      const firstName = nameParts[0] || '';
+                      const lastName = nameParts.slice(1).join(' ') || '';
+                      const result = await sendInvitationDirect(pendingUser.company_id, {
+                        email: pendingUser.email,
+                        access_level: pendingUser.access_level,
+                        is_internal: pendingUser.is_internal,
+                        firstName,
+                        lastName,
+                        functional_area: pendingUser.functional_area || null,
+                        external_role: pendingUser.external_role || null,
+                      });
+                      if (result.success) {
+                        await deletePendingUser(pendingUser.id);
+                      }
+                    }}
                   >
-                    <Edit className="h-4 w-4" />
+                    <Send className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => handleDelete(pendingUser.id, pendingUser.name)}
+                    onClick={() => setDeleteTarget({ id: pendingUser.id, name: pendingUser.name })}
                     className="text-destructive hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -307,5 +281,22 @@ export function PendingUsersTable({ companyId }: PendingUsersTableProps) {
         ))}
       </CardContent>
     </Card>
+
+    <DeleteConfirmationDialog
+      open={!!deleteTarget}
+      onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      onConfirm={async (_reason: string) => {
+        if (deleteTarget) {
+          const id = deleteTarget.id;
+          setDeleteTarget(null);
+          await deletePendingUser(id);
+          onChanged?.();
+        }
+      }}
+      title="Remove Pending User"
+      description="Are you sure you want to remove this pending user? This action cannot be undone."
+      itemName={deleteTarget?.name || ''}
+    />
+    </>
   );
 }
