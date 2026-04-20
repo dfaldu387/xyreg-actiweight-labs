@@ -35,6 +35,8 @@ import {
   Timer,
   BookOpen,
   Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -76,6 +78,8 @@ import { ReturnToGenesisButton } from "@/components/funnel/ReturnToGenesisButton
 import { FullPageLoader } from "@/components/ui/loading-spinner";
 import { FloatingReturnButton } from "../funnel/FloatingReturnButton";
 import { GlobalHelpSidebar } from "@/components/help/GlobalHelpSidebar";
+import { GuidedPlatformTour } from "@/components/help/GuidedPlatformTour";
+import { BackToTourButton } from "@/components/help/BackToTourButton";
 import { useHelpKeyboardShortcut } from "@/hooks/useHelpKeyboardShortcut";
 import { NavigationSearchDialog } from "@/components/layout/NavigationSearchDialog";
 import { useNavigationSearch } from "@/hooks/useNavigationSearch";
@@ -402,6 +406,24 @@ export default function AppLayout() {
   const { showTour, showContextualHelp, completeTour, skipTour, dismissContextualHelp } = useOnboarding();
   const [helpSidebarOpen, setHelpSidebarOpen] = useState(false);
   const [navSearchOpen, setNavSearchOpen] = useState(false);
+  const [guidedTourActive, setGuidedTourActive] = useState(false);
+  const [tourCalloutDismissed, setTourCalloutDismissed] = useState(false);
+  const [pendingGuidedTourStart, setPendingGuidedTourStart] = useState(false);
+
+  // Sequence: when a tour start is pending, wait until the help sheet is fully closed,
+  // then activate the guided tour. This prevents the tour card from rendering on top
+  // of the still-open Help & Guide sheet.
+  useEffect(() => {
+    if (!pendingGuidedTourStart) return;
+    if (helpSidebarOpen) return;
+    // Sheet animation ~200-300ms; wait a tick before activating tour
+    const t = setTimeout(() => {
+      setGuidedTourActive(true);
+      setTourCalloutDismissed(false);
+      setPendingGuidedTourStart(false);
+    }, 320);
+    return () => clearTimeout(t);
+  }, [pendingGuidedTourStart, helpSidebarOpen]);
 
   // Keyboard shortcut to open help (? key)
   useHelpKeyboardShortcut(() => setHelpSidebarOpen(true));
@@ -855,6 +877,7 @@ export default function AppLayout() {
         currentProductId={currentProductId}
         companyProducts={productsForMenu}
         onCollapseChange={setIsL2Collapsed}
+        forceOpen={guidedTourActive && !tourCalloutDismissed}
       />
 
       {/* Main Content Area - dynamic margin based on L2 collapse state */}
@@ -865,6 +888,27 @@ export default function AppLayout() {
           className={`fixed top-0 right-0 ${isL2Collapsed ? "left-[104px]" : "left-[352px]"} h-16 flex items-center justify-between gap-2 px-4 border-b bg-background z-40 overflow-hidden`}
         >
           <div className="flex items-center gap-3 min-w-0 flex-shrink">
+            {/* Back/Forward Navigation */}
+            <div className="flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => navigate(-1)}
+                aria-label="Go back"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => navigate(1)}
+                aria-label="Go forward"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
             {/* Company Name or Mission Control */}
             <div className="text-2xl font-semibold text-teal-700 truncate">
               {currentCompany || superAdminLang("appLayout.dashboard")}
@@ -949,8 +993,39 @@ export default function AppLayout() {
       )}
 
       {/* Enhanced Help System Components */}
-      <GlobalHelpSidebar open={helpSidebarOpen} onOpenChange={setHelpSidebarOpen} />
+      <GlobalHelpSidebar
+        open={helpSidebarOpen}
+        onOpenChange={setHelpSidebarOpen}
+        listenForGlobalEvents
+        onStartTour={() => {
+          // Close the help sheet first; the effect above will activate the tour
+          // once the sheet has finished closing.
+          setHelpSidebarOpen(false);
+          setPendingGuidedTourStart(true);
+        }}
+      />
       <NavigationSearchDialog open={navSearchOpen} onOpenChange={setNavSearchOpen} />
+
+      {/* Guided Platform Basics Tour */}
+      <GuidedPlatformTour
+        isActive={guidedTourActive && !tourCalloutDismissed}
+        onClose={() => {
+          setGuidedTourActive(false);
+          setTourCalloutDismissed(false);
+        }}
+        onEnsureL2Open={() => setIsL2Collapsed(false)}
+        contextCompanyName={
+          currentCompany ||
+          productOwnerCompany ||
+          selectedCompanyName ||
+          activeCompanyRole?.companyName ||
+          undefined
+        }
+      />
+      <BackToTourButton
+        isActive={guidedTourActive && tourCalloutDismissed}
+        onClick={() => setTourCalloutDismissed(false)}
+      />
 
       {/* <EnhancedOnboardingTour isActive={showTour} onComplete={completeTour} onSkip={skipTour} /> */}
 

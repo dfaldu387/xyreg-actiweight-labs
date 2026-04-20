@@ -26,6 +26,7 @@ export interface DocumentCreationParams {
   documentReference?: string;
   version?: string;
   date?: string;
+  startDate?: string;
   dueDate?: string;
   isCurrentEffectiveVersion?: boolean;
   briefSummary?: string;
@@ -60,7 +61,7 @@ export class DocumentCreationService {
     const {
       name, description, documentType, scope, companyId, productId, phaseId, techApplicability,
       filePath, fileName, fileSize, fileType, hardcodedTemplateId, reviewerGroupIds, status,
-      subSection, sectionIds, documentReference, version, date, dueDate, isCurrentEffectiveVersion,
+      subSection, sectionIds, documentReference, version, date, startDate, dueDate, isCurrentEffectiveVersion,
       briefSummary, authors_ids, needTemplateUpdate, isRecord
     } = params;
 
@@ -179,7 +180,7 @@ export class DocumentCreationService {
     const {
       name, description, documentType, phaseId, techApplicability, companyId,
       filePath, fileName, fileSize, fileType, reviewerGroupIds, status,
-      subSection, sectionIds, documentReference, version, date, dueDate, isCurrentEffectiveVersion,
+      subSection, sectionIds, documentReference, version, date, startDate, dueDate, isCurrentEffectiveVersion,
       briefSummary, authors_ids, needTemplateUpdate, isRecord
     } = params;
 
@@ -210,6 +211,7 @@ export class DocumentCreationService {
         document_reference: documentReference || null,
         version: version || null,
         date: date || null,
+        start_date: startDate || null,
         due_date: dueDate || null,
         is_current_effective_version: isCurrentEffectiveVersion || false,
         brief_summary: briefSummary || null,
@@ -261,7 +263,7 @@ export class DocumentCreationService {
     const {
       name, description, documentType, companyId, productId, techApplicability,
       filePath, fileName, fileSize, fileType, phaseId, reviewerGroupIds, status,
-      subSection, sectionIds, documentReference, version, date, dueDate, isCurrentEffectiveVersion,
+      subSection, sectionIds, documentReference, version, date, startDate, dueDate, isCurrentEffectiveVersion,
       briefSummary, authors_ids, needTemplateUpdate, isRecord, approval_date
     } = params;
 
@@ -293,7 +295,8 @@ export class DocumentCreationService {
           document_reference: documentReference || null,
           version: version || null,
           date: date || null,
-          due_date: dueDate || null,
+          start_date: startDate || null,
+        due_date: dueDate || null,
           is_current_effective_version: isCurrentEffectiveVersion || false,
           brief_summary: briefSummary || null,
           authors_ids: authors_ids && authors_ids.length > 0 ? authors_ids : null,
@@ -394,7 +397,7 @@ export class DocumentCreationService {
   private static async createCompanyDocument(params: DocumentCreationParams): Promise<string> {
     const {
       name, description, documentType, companyId, techApplicability, filePath, fileName,
-      reviewerGroupIds, status, subSection, sectionIds, documentReference, version, date, dueDate,
+      reviewerGroupIds, status, subSection, sectionIds, documentReference, version, date, startDate, dueDate,
       phaseId, isCurrentEffectiveVersion, briefSummary, authors_ids, needTemplateUpdate, isRecord, approval_date
     } = params;
 
@@ -436,6 +439,7 @@ export class DocumentCreationService {
         document_reference: documentReference || null,
         version: version || null,
         date: date || null,
+        start_date: startDate || null,
         due_date: dueDate || null,
         is_current_effective_version: isCurrentEffectiveVersion || false,
         brief_summary: briefSummary || null,

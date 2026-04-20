@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ZoomIn, ZoomOut, RotateCcw, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { useTranslation } from "@/hooks/useTranslation";
 import {
   calculateDuration,
@@ -33,7 +34,10 @@ import {
   mapCompanyDependenciesToProduct,
   calculateTaskTypeFromDates,
 } from "@/utils/ganttUtils";
-import { taskTypes } from "@/components/gantt-chart/config/ganttChartConfig";
+import { taskTypes as baseTaskTypes } from "@/components/gantt-chart/config/ganttChartConfig";
+import { detectCircularDependency, getLinkTypeText } from "@/utils/ganttLinkUtils";
+
+const taskTypes = [...baseTaskTypes, { id: "device", label: "Device" }];
 import { GanttTask } from "@/types/ganttChart";
 import {
   GanttPhaseDocumentService,
@@ -43,12 +47,29 @@ import { Badge } from "../ui/badge";
 
 // Add CSS for smooth Gantt chart animations
 const ganttAnimationStyles = `
-  .wx-gantt .wx-task-bar {
+  .wx-gantt .wx-task-bar.wx-summary {
     transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1) !important;
   }
 
   .wx-gantt .wx-task-bar:hover {
     filter: brightness(1.1);
+  }
+
+  .wx-gantt .wx-task-bar.wx-task {
+    cursor: grab;
+  }
+  .wx-gantt .wx-task-bar.wx-task:active {
+    cursor: grabbing;
+  }
+
+  /* Hide dependency link dots and resize handles on device bars only */
+  .wx-gantt .wx-bar.wx-task.device .wx-link,
+  .wx-gantt .wx-bar.wx-summary .wx-link {
+    display: none !important;
+    pointer-events: none !important;
+  }
+  .wx-gantt .wx-bar.wx-task.device {
+    cursor: pointer !important;
   }
 
   .hide-link-delete .wx-link-delete-icon {
@@ -229,6 +250,12 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
   const [companyDependencies, setCompanyDependencies] = useState<any[]>([]);
   const [productDependencies, setProductDependencies] = useState<any[]>([]);
   const dependenciesFetchedRef = useRef<string | null>(null);
+  // Refs to track dragged dates — prevents useMemo recompute snap-back
+  const draggedDocDatesRef = useRef<Record<string, { start_date: string; due_date: string }>>({});
+  const draggedAuditDatesRef = useRef<Record<string, { start_date: string; end_date: string }>>({});
+  const draggedActivityDatesRef = useRef<Record<string, { start_date: string; end_date: string }>>({});
+  const [enterpriseLinks, setEnterpriseLinks] = useState<any[]>([]);
+  const enterpriseLinksRef = useRef<any[]>([]);
 
   // Translated zoom level names
   const translatedZoomLevelNames = useMemo(() => ({
@@ -435,6 +462,21 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
           start_date: a.start_date || null,
           end_date: a.end_date || null,
         })));
+
+        // Fetch enterprise task dependency links
+        const { data: entLinksData } = await supabase
+          .from('enterprise_task_dependencies')
+          .select('id, source_task_id, target_task_id, type, task_type')
+          .eq('company_id', activeCompanyRole.companyId);
+
+        const links = (entLinksData || []).map((l: any) => ({
+          id: l.id,
+          source: l.source_task_id,
+          target: l.target_task_id,
+          type: l.type || 'e2s',
+        }));
+        setEnterpriseLinks(links);
+        enterpriseLinksRef.current = links;
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to fetch company data"
@@ -578,27 +620,462 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
 
     // Click on device row → navigate to device Gantt
     const unsubscribeSelectTask = api.on("select-task", (ev: any) => {
-      console.log('[Enterprise Gantt] select-task event:', ev);
       if (ev && ev.id) {
         const taskId = ev.id.toString();
-        console.log('[Enterprise Gantt] Task clicked:', taskId);
+
+        // Device click → navigate to device Gantt
         if (taskId.startsWith('product-')) {
           const productId = taskId.replace('product-', '');
-          console.log('[Enterprise Gantt] Navigating to device Gantt:', productId);
           navigate(`/app/product/${productId}/milestones?tab=gantt`);
         }
+
+        // Document click → navigate to company documents with search query
+        if (taskId.startsWith('ent-doc-')) {
+          const task = api.getTask(taskId);
+          const docName = task?.text || '';
+          if (docName) {
+            navigate(`/app/company/${encodeURIComponent(companyName)}/documents?q=${encodeURIComponent(docName)}`);
+          }
+        }
+
       }
     });
 
-    // Prevent link deletion and addition in company milestones
-    const unsubscribeDeleteLink = api.intercept("delete-link", () => false);
-    const unsubscribeAddLink = api.intercept("add-link", () => false);
+    // --- Enterprise dependency recalculation (DFS, same pattern as GanttChart.tsx) ---
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    const recalcEnterpriseDependenciesInternal = async (
+      sourceTaskId: string,
+      ganttApi: any,
+      visited: Set<string>,
+    ) => {
+      if (!ganttApi) return;
+      if (visited.has(sourceTaskId)) {
+        console.warn('[Enterprise Gantt] Circular dependency during recalc:', Array.from(visited).concat(sourceTaskId).join(' → '));
+        return;
+      }
+
+      const updatedVisited = new Set(visited);
+      updatedVisited.add(sourceTaskId);
+
+      const currentLinks = enterpriseLinksRef.current;
+      const outgoingLinks = currentLinks.filter((l: any) => String(l.source) === sourceTaskId);
+      if (outgoingLinks.length === 0) return;
+
+      const sourceTask = ganttApi.getTask(sourceTaskId);
+      if (!sourceTask) return;
+
+      const sourceStart = sourceTask.start ? new Date(sourceTask.start) : null;
+      const sourceEnd = sourceTask.end ? new Date(sourceTask.end) : null;
+      if (!sourceStart || !sourceEnd) return;
+
+      for (const link of outgoingLinks) {
+        const targetId = String(link.target);
+        const targetTask = ganttApi.getTask(targetId);
+        if (!targetTask) continue;
+
+        const targetStart = targetTask.start ? new Date(targetTask.start) : null;
+        const targetEnd = targetTask.end ? new Date(targetTask.end) : null;
+        if (!targetStart || !targetEnd) continue;
+
+        const durationDays = Math.max(1, Math.ceil((targetEnd.getTime() - targetStart.getTime()) / DAY_MS));
+
+        let newTargetStart = targetStart;
+        let newTargetEnd = targetEnd;
+        let needsUpdate = false;
+
+        switch (link.type) {
+          case 'e2s':
+            if (targetStart.getTime() !== sourceEnd.getTime()) {
+              newTargetStart = new Date(sourceEnd);
+              newTargetEnd = new Date(newTargetStart.getTime() + durationDays * DAY_MS);
+              needsUpdate = true;
+            }
+            break;
+          case 's2s':
+            if (targetStart.getTime() !== sourceStart.getTime()) {
+              newTargetStart = new Date(sourceStart);
+              newTargetEnd = new Date(newTargetStart.getTime() + durationDays * DAY_MS);
+              needsUpdate = true;
+            }
+            break;
+          case 'e2e':
+            if (targetEnd.getTime() !== sourceEnd.getTime()) {
+              newTargetEnd = new Date(sourceEnd);
+              newTargetStart = new Date(newTargetEnd.getTime() - durationDays * DAY_MS);
+              needsUpdate = true;
+            }
+            break;
+          case 's2e':
+            if (targetEnd.getTime() !== sourceStart.getTime()) {
+              newTargetEnd = new Date(sourceStart);
+              newTargetStart = new Date(newTargetEnd.getTime() - durationDays * DAY_MS);
+              needsUpdate = true;
+            }
+            break;
+        }
+
+        if (!needsUpdate) continue;
+
+        try {
+          const updatedDuration = Math.max(1, Math.ceil((newTargetEnd.getTime() - newTargetStart.getTime()) / DAY_MS));
+
+          // Update bar in Gantt (fires on-update-task which saves to DB)
+          ganttApi.exec('update-task', {
+            id: targetId,
+            task: { ...targetTask, start: newTargetStart, end: newTargetEnd, duration: updatedDuration },
+          });
+
+          console.log('[Enterprise Gantt] Recalculated:', targetTask.text, '| new start:', newTargetStart.toISOString(), '| new end:', newTargetEnd.toISOString());
+
+          // Update dragged dates ref + recalculate parent summary
+          const dbStart = newTargetStart.toISOString().split('T')[0];
+          const dbEnd = newTargetEnd.toISOString().split('T')[0];
+
+          if (targetId.startsWith('ent-doc-')) {
+            const id = targetId.replace('ent-doc-', '');
+            draggedDocDatesRef.current[id] = { start_date: dbStart, due_date: dbEnd };
+            recalcParentSummary('enterprise-docs', 'ent-doc-', enterpriseDocuments, draggedDocDatesRef.current, id, newTargetStart, newTargetEnd, { start: 'start_date', end: 'due_date' });
+          } else if (targetId.startsWith('ent-audit-')) {
+            const id = targetId.replace('ent-audit-', '');
+            draggedAuditDatesRef.current[id] = { start_date: dbStart, end_date: dbEnd };
+            recalcParentSummary('enterprise-audits', 'ent-audit-', enterpriseAudits, draggedAuditDatesRef.current, id, newTargetStart, newTargetEnd, { start: 'start_date', end: 'end_date' });
+          } else if (targetId.startsWith('ent-activity-')) {
+            const id = targetId.replace('ent-activity-', '');
+            draggedActivityDatesRef.current[id] = { start_date: dbStart, end_date: dbEnd };
+            recalcParentSummary('enterprise-activities', 'ent-activity-', enterpriseActivities, draggedActivityDatesRef.current, id, newTargetStart, newTargetEnd, { start: 'start_date', end: 'end_date' });
+          }
+
+          // Recursively follow the chain
+          await recalcEnterpriseDependenciesInternal(targetId, ganttApi, updatedVisited);
+        } catch (err) {
+          console.error('[Enterprise Gantt] Error recalculating:', targetId, err);
+        }
+      }
+    };
+
+    const recalcEnterpriseDependencies = async (sourceTaskId: string, ganttApi: any) => {
+      await recalcEnterpriseDependenciesInternal(sourceTaskId, ganttApi, new Set());
+    };
+
+    // --- Enterprise dependency link support ---
+    // Helper: get task type prefix
+    const getTaskTypePrefix = (taskId: string): string | null => {
+      if (taskId.startsWith('ent-doc-')) return 'document';
+      if (taskId.startsWith('ent-audit-')) return 'audit';
+      if (taskId.startsWith('ent-activity-')) return 'activity';
+      return null;
+    };
+
+    // Add link — only same-type connections, with circular dependency check
+    const unsubscribeAddLink = api.intercept("add-link", async (ev: any) => {
+      const source = String(ev.link?.source || '');
+      const target = String(ev.link?.target || '');
+      const linkType = ev.link?.type || 'e2s';
+
+      const sourceType = getTaskTypePrefix(source);
+      const targetType = getTaskTypePrefix(target);
+
+      // Block if either end is not a doc/audit/activity
+      if (!sourceType || !targetType) {
+        toast.info('Dependencies can only be created between documents, audits, or activities');
+        return false;
+      }
+
+      // Block cross-type links
+      if (sourceType !== targetType) {
+        toast.info(`Cannot link ${sourceType} to ${targetType}. Only same-type connections allowed.`);
+        return false;
+      }
+
+      // Self-reference check
+      if (source === target) {
+        toast.info('Cannot create dependency to itself');
+        return false;
+      }
+
+      // Circular dependency check
+      const wouldCreateCycle = detectCircularDependency(source, target, enterpriseLinksRef.current);
+      if (wouldCreateCycle) {
+        const sourceName = api.getTask(source)?.text || source;
+        const targetName = api.getTask(target)?.text || target;
+        toast.info(`Circular dependency detected: ${sourceName} ↔ ${targetName}`);
+        return false;
+      }
+
+      // Save to DB
+      const companyId = activeCompanyRole?.companyId;
+      if (!companyId) return false;
+
+      try {
+        const { data, error } = await supabase.from('enterprise_task_dependencies').insert({
+          company_id: companyId,
+          source_task_id: source,
+          target_task_id: target,
+          type: linkType,
+          task_type: sourceType,
+        }).select('id').single();
+
+        if (error) {
+          if (error.code === '23505') {
+            toast.info('This dependency already exists');
+          } else {
+            toast.error('Failed to create dependency');
+            console.error('[Enterprise Gantt] Link create error:', error);
+          }
+          return false;
+        }
+
+        // Update local state
+        const newLink = { id: data.id, source, target, type: linkType };
+        setEnterpriseLinks(prev => [...prev, newLink]);
+        enterpriseLinksRef.current = [...enterpriseLinksRef.current, newLink];
+
+        const sourceName = api.getTask(source)?.text || source;
+        const targetName = api.getTask(target)?.text || target;
+        const linkTypeLabel = getLinkTypeText(linkType);
+        toast.success(`Dependency: ${sourceName} → ${targetName} (${linkTypeLabel})`);
+
+        // Auto-recalculate dependencies (same DFS pattern as GanttChart.tsx)
+        try {
+          await recalcEnterpriseDependencies(source, api);
+        } catch (err) {
+          console.error('[Enterprise Gantt] Error during auto-recalculation:', err);
+        }
+
+        return true;
+      } catch (err) {
+        console.error('[Enterprise Gantt] Link create exception:', err);
+        toast.error('Failed to create dependency');
+        return false;
+      }
+    });
+
+    // Delete link
+    const unsubscribeDeleteLink = api.intercept("delete-link", async (ev: any) => {
+      const linkId = String(ev?.id || '');
+      if (!linkId) return false;
+
+      // Only allow deleting enterprise links
+      const link = enterpriseLinksRef.current.find(l => String(l.id) === linkId);
+      if (!link) return false;
+
+      try {
+        const { error } = await supabase.from('enterprise_task_dependencies')
+          .delete().eq('id', linkId);
+
+        if (error) {
+          toast.error('Failed to delete dependency');
+          return false;
+        }
+
+        setEnterpriseLinks(prev => prev.filter(l => String(l.id) !== linkId));
+        enterpriseLinksRef.current = enterpriseLinksRef.current.filter(l => String(l.id) !== linkId);
+        toast.success('Dependency removed');
+        return true;
+      } catch {
+        toast.error('Failed to delete dependency');
+        return false;
+      }
+    });
+
+    // --- Document drag/resize support ---
+    // Debounce map for saving document date changes
+    const updateTimers = new Map<string, NodeJS.Timeout>();
+
+    const isChildTask = (taskId: string) =>
+      taskId.startsWith('ent-doc-') || taskId.startsWith('ent-audit-') || taskId.startsWith('ent-activity-');
+
+    const isSummaryParent = (taskId: string) =>
+      taskId === 'enterprise-docs' || taskId === 'enterprise-audits' || taskId === 'enterprise-activities';
+
+    // Block drag — only child items (doc/audit/activity bars), NOT summary parents or devices
+    const unsubscribeDragTask = api.intercept("drag-task", (ev: any) => {
+      const id = ev?.id?.toString() || '';
+      const allowed = isChildTask(id);
+      if (!allowed && id) console.log('[Enterprise Gantt] BLOCKED drag on:', id);
+      return allowed;
+    });
+
+    // Block update — allow child items + summary parents (for programmatic auto-extend)
+    const unsubscribeInterceptUpdate = api.intercept("update-task", (ev: any) => {
+      const taskId = ev?.id?.toString() || '';
+      return isChildTask(taskId) || isSummaryParent(taskId);
+    });
+
+    // Helper: recalculate parent summary bar from children min/max
+    const recalcParentSummary = (parentId: string, childPrefix: string, items: any[], datesRef: Record<string, any>, currentId: string, currentStart: Date, currentEnd: Date, dateFields: { start: string; end: string }) => {
+      try {
+        const parentTask = api.getTask(parentId);
+        if (!parentTask) return;
+
+        let minStart = currentStart;
+        let maxEnd = currentEnd;
+
+        for (const item of items) {
+          let dStart: Date, dEnd: Date;
+          if (item.id === currentId) {
+            dStart = currentStart;
+            dEnd = currentEnd;
+          } else if (datesRef[item.id]) {
+            dStart = new Date(datesRef[item.id][dateFields.start]);
+            dEnd = new Date(datesRef[item.id][dateFields.end]);
+          } else {
+            const taskInGantt = api.getTask(`${childPrefix}${item.id}`);
+            if (taskInGantt) {
+              dStart = taskInGantt.start instanceof Date ? taskInGantt.start : new Date(taskInGantt.start);
+              dEnd = taskInGantt.end instanceof Date ? taskInGantt.end : new Date(taskInGantt.end);
+            } else continue;
+          }
+          if (dStart < minStart) minStart = dStart;
+          if (dEnd > maxEnd) maxEnd = dEnd;
+        }
+
+        const pStart = parentTask.start instanceof Date ? parentTask.start : new Date(parentTask.start);
+        const pEnd = parentTask.end instanceof Date ? parentTask.end : new Date(parentTask.end);
+        const needsExtend = minStart.getTime() !== pStart.getTime() || maxEnd.getTime() !== pEnd.getTime();
+        console.log('[Enterprise Gantt] recalcParentSummary | parent:', parentId, '| needsExtend:', needsExtend,
+          '| parent start:', pStart.toISOString(), '→', minStart.toISOString(),
+          '| parent end:', pEnd.toISOString(), '→', maxEnd.toISOString());
+        if (needsExtend) {
+          api.exec('update-task', { id: parentId, task: { start: minStart, end: maxEnd } });
+          console.log('[Enterprise Gantt] Parent extended:', parentId);
+        }
+      } catch (err) {
+        console.warn('[Enterprise Gantt] Failed to recalculate parent:', parentId, err);
+      }
+    };
+
+    // Save dates after drag/resize (on runs AFTER update — ev.task has NEW dates)
+    const unsubscribeOnUpdate = api.on("update-task", (ev: any) => {
+      const taskId = ev?.id?.toString() || '';
+      const newStart = ev.task?.start;
+      const newEnd = ev.task?.end;
+      if (!newStart || !newEnd) return;
+
+      const startDate = newStart instanceof Date ? new Date(newStart.getTime()) : new Date(newStart);
+      const endDate = newEnd instanceof Date ? new Date(newEnd.getTime()) : new Date(newEnd);
+      const dbStartStr = startDate.toISOString().split('T')[0];
+      const dbEndStr = endDate.toISOString().split('T')[0];
+
+      // === DOCUMENTS ===
+      if (taskId.startsWith('ent-doc-')) {
+        const docId = taskId.replace('ent-doc-', '');
+        draggedDocDatesRef.current[docId] = { start_date: dbStartStr, due_date: dbEndStr };
+
+        // Recalculate parent summary
+        recalcParentSummary('enterprise-docs', 'ent-doc-', enterpriseDocuments, draggedDocDatesRef.current, docId, startDate, endDate, { start: 'start_date', end: 'due_date' });
+
+        // Auto-recalculate dependent tasks
+        recalcEnterpriseDependencies(taskId, api).catch(err =>
+          console.error('[Enterprise Gantt] Dependency recalc error:', err));
+
+        toast.loading('Saving document dates...', { id: `save-${docId}` });
+        if (updateTimers.has(docId)) clearTimeout(updateTimers.get(docId)!);
+
+        const timerId = setTimeout(async () => {
+          try {
+            const { GanttPhaseDocumentService } = await import('@/services/ganttPhaseDocumentService');
+            const result = await GanttPhaseDocumentService.updateDocumentDates(docId, endDate, startDate);
+            if (result.success) {
+              toast.success('Document dates updated', { id: `save-${docId}` });
+            } else {
+              toast.error(`Failed: ${result.error}`, { id: `save-${docId}` });
+            }
+          } catch {
+            const { error: err1 } = await supabase.from('phase_assigned_document_template')
+              .update({ start_date: dbStartStr, due_date: dbEndStr }).eq('id', docId);
+            if (err1) {
+              // document_studio_templates has no date columns; nothing to do as fallback
+              console.warn('Could not persist dates for', docId);
+            }
+            toast.success('Document dates updated', { id: `save-${docId}` });
+          } finally { updateTimers.delete(docId); }
+        }, 1000);
+        updateTimers.set(docId, timerId);
+      }
+
+      // === AUDITS ===
+      if (taskId.startsWith('ent-audit-')) {
+        const auditId = taskId.replace('ent-audit-', '');
+        draggedAuditDatesRef.current[auditId] = { start_date: dbStartStr, end_date: dbEndStr };
+
+        // Recalculate parent summary
+        recalcParentSummary('enterprise-audits', 'ent-audit-', enterpriseAudits, draggedAuditDatesRef.current, auditId, startDate, endDate, { start: 'start_date', end: 'end_date' });
+
+        // Auto-recalculate dependent tasks
+        recalcEnterpriseDependencies(taskId, api).catch(err =>
+          console.error('[Enterprise Gantt] Dependency recalc error:', err));
+
+        toast.loading('Saving audit dates...', { id: `save-${auditId}` });
+        if (updateTimers.has(auditId)) clearTimeout(updateTimers.get(auditId)!);
+
+        const timerId = setTimeout(async () => {
+          try {
+            const { error } = await supabase.from('company_audits')
+              .update({ start_date: dbStartStr, end_date: dbEndStr })
+              .eq('id', auditId);
+            if (error) {
+              toast.error('Failed to save audit dates', { id: `save-${auditId}` });
+            } else {
+              toast.success('Audit dates updated', { id: `save-${auditId}` });
+            }
+          } catch {
+            toast.error('Failed to save audit dates', { id: `save-${auditId}` });
+          } finally { updateTimers.delete(auditId); }
+        }, 1000);
+        updateTimers.set(auditId, timerId);
+      }
+
+      // === ACTIVITIES ===
+      if (taskId.startsWith('ent-activity-')) {
+        const activityId = taskId.replace('ent-activity-', '');
+        draggedActivityDatesRef.current[activityId] = { start_date: dbStartStr, end_date: dbEndStr };
+
+        // Recalculate parent summary
+        recalcParentSummary('enterprise-activities', 'ent-activity-', enterpriseActivities, draggedActivityDatesRef.current, activityId, startDate, endDate, { start: 'start_date', end: 'end_date' });
+
+        // Auto-recalculate dependent tasks
+        recalcEnterpriseDependencies(taskId, api).catch(err =>
+          console.error('[Enterprise Gantt] Dependency recalc error:', err));
+
+        toast.loading('Saving activity dates...', { id: `save-${activityId}` });
+        if (updateTimers.has(activityId)) clearTimeout(updateTimers.get(activityId)!);
+
+        const timerId = setTimeout(async () => {
+          try {
+            const { error } = await supabase.from('activities')
+              .update({ start_date: dbStartStr, end_date: dbEndStr })
+              .eq('id', activityId);
+            if (error) {
+              toast.error('Failed to save activity dates', { id: `save-${activityId}` });
+            } else {
+              toast.success('Activity dates updated', { id: `save-${activityId}` });
+            }
+          } catch {
+            toast.error('Failed to save activity dates', { id: `save-${activityId}` });
+          } finally { updateTimers.delete(activityId); }
+        }, 1000);
+        updateTimers.set(activityId, timerId);
+      }
+    });
+
+    // Block inline editor and task deletion
+    const unsubscribeShowEditor = api.intercept("show-editor", () => false);
+    const unsubscribeDeleteTask = api.intercept("delete-task", () => false);
 
     return () => {
       if (unsubscribeOpenTask) unsubscribeOpenTask();
       if (unsubscribeSelectTask) unsubscribeSelectTask();
       if (unsubscribeDeleteLink) unsubscribeDeleteLink();
       if (unsubscribeAddLink) unsubscribeAddLink();
+      if (unsubscribeDragTask) unsubscribeDragTask();
+      if (unsubscribeInterceptUpdate) unsubscribeInterceptUpdate();
+      if (unsubscribeOnUpdate) unsubscribeOnUpdate();
+      if (unsubscribeShowEditor) unsubscribeShowEditor();
+      if (unsubscribeDeleteTask) unsubscribeDeleteTask();
+      // Clear pending timers
+      updateTimers.forEach(t => clearTimeout(t));
     };
   }, [apiReady, navigate]);
 
@@ -664,12 +1141,17 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
 
     // Helper: resolve best start/end dates for an enterprise document
     const getEntDocDates = (doc: EnterpriseDocument, fallbackStart: Date) => {
-      const docStart = doc.start_date ? new Date(doc.start_date)
+      // Check if this doc was dragged — use dragged dates (ref, no re-render)
+      const dragged = draggedDocDatesRef.current[doc.id];
+      const startSrc = dragged?.start_date || doc.start_date;
+      const dueSrc = dragged?.due_date || doc.due_date;
+
+      const docStart = startSrc ? new Date(startSrc)
         : doc.date ? new Date(doc.date)
         : fallbackStart;
-      const docEnd = doc.due_date ? new Date(doc.due_date)
+      const docEnd = dueSrc ? new Date(dueSrc)
         : doc.deadline ? new Date(doc.deadline)
-        : doc.date ? new Date(new Date(doc.date).getTime() + 30 * 24 * 60 * 60 * 1000) // 1 week from date
+        : doc.date ? new Date(new Date(doc.date).getTime() + 30 * 24 * 60 * 60 * 1000)
         : new Date(docStart.getTime() + 30 * 24 * 60 * 60 * 1000);
       return { docStart, docEnd };
     };
@@ -703,14 +1185,14 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
         open: taskExpansionState['enterprise-docs'] === true,
       });
 
-      enterpriseDocuments.forEach(doc => {
+      [...enterpriseDocuments].sort((a, b) => a.name.localeCompare(b.name)).forEach(doc => {
         const { docStart, docEnd } = getEntDocDates(doc, entStart);
         tasks.push({
           id: `ent-doc-${doc.id}`,
           text: doc.name,
           start: docStart,
           end: docEnd,
-          type: calculateTaskTypeFromDates(docStart, docEnd, doc.status === 'Completed' ? 'completed' : 'running'),
+          type: 'task',
           parent: 'enterprise-docs',
         });
       });
@@ -738,9 +1220,12 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
         open: taskExpansionState['enterprise-audits'] === true,
       });
 
-      enterpriseAudits.forEach(audit => {
-        const aStart = audit.start_date ? new Date(audit.start_date) : auditsStart;
-        const aEnd = audit.end_date ? new Date(audit.end_date)
+      [...enterpriseAudits].sort((a, b) => a.audit_name.localeCompare(b.audit_name)).forEach(audit => {
+        const dragged = draggedAuditDatesRef.current[audit.id];
+        const aStart = dragged ? new Date(dragged.start_date)
+          : audit.start_date ? new Date(audit.start_date) : auditsStart;
+        const aEnd = dragged ? new Date(dragged.end_date)
+          : audit.end_date ? new Date(audit.end_date)
           : audit.deadline_date ? new Date(audit.deadline_date)
           : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
         tasks.push({
@@ -748,7 +1233,7 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
           text: audit.audit_name,
           start: aStart,
           end: aEnd,
-          type: calculateTaskTypeFromDates(aStart, aEnd, audit.status === 'completed' ? 'completed' : 'running'),
+          type: 'task',
           parent: 'enterprise-audits',
         });
       });
@@ -775,16 +1260,19 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
         open: taskExpansionState['enterprise-activities'] === true,
       });
 
-      enterpriseActivities.forEach(activity => {
-        const aStart = activity.start_date ? new Date(activity.start_date) : activitiesStart;
-        const aEnd = activity.end_date ? new Date(activity.end_date)
+      [...enterpriseActivities].sort((a, b) => a.name.localeCompare(b.name)).forEach(activity => {
+        const dragged = draggedActivityDatesRef.current[activity.id];
+        const aStart = dragged ? new Date(dragged.start_date)
+          : activity.start_date ? new Date(activity.start_date) : activitiesStart;
+        const aEnd = dragged ? new Date(dragged.end_date)
+          : activity.end_date ? new Date(activity.end_date)
           : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
         tasks.push({
           id: `ent-activity-${activity.id}`,
           text: activity.name,
           start: aStart,
           end: aEnd,
-          type: calculateTaskTypeFromDates(aStart, aEnd, activity.status === 'completed' ? 'completed' : 'running'),
+          type: 'task',
           parent: 'enterprise-activities',
         });
       });
@@ -801,7 +1289,7 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
       open: taskExpansionState['devices-container'] === true,
     });
 
-    companyData.forEach((product) => {
+    [...companyData].sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach((product) => {
       // Skip if product is null/undefined or has no ID
       if (!product || !product.id) return;
 
@@ -833,13 +1321,13 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
         }
       }
 
-      // Product level — non-expandable task (click to navigate to device Gantt)
+      // Product level — non-expandable, non-draggable device bar
       tasks.push({
         id: `product-${product.id}`,
         text: product.name,
         start: productStart,
         end: productEnd,
-        type: "task",
+        type: "summary",
         parent: "devices-container",
       });
 
@@ -1043,14 +1531,14 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
             className="w-full border rounded-md overflow-hidden"
             style={{ maxHeight: "800px" }}
           >
-            <div className="hide-progress hide-links hide-drag hide-link-delete h-full overflow-hidden">
+            <div className="hide-progress h-full overflow-hidden">
               <Willow>
                 <Tooltip api={ganttApiRef.current} content={MyTooltipContent}>
                   <Gantt
                     init={(api: any) => handleGanttReady(api)}
                     zoom={zoomConfig}
                     tasks={ganttTasks}
-                    links={ganttLinks}
+                    links={[...ganttLinks, ...enterpriseLinks]}
                     taskTypes={taskTypes}
                     markers={ganttMarkers}
                     columns={[
@@ -1059,7 +1547,7 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
                       { id: "end", header: "End Date", width: 100 },
                       { id: "duration", header: lang('gantt.duration'), width: 80, align: "center" as const },
                     ]}
-                    readonly={true}
+                    readonly={false}
                   />
                 </Tooltip>
               </Willow>

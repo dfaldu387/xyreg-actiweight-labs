@@ -10,7 +10,8 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useThreadMessages, useCommunicationThreads, useTypingIndicator } from '@/hooks/useCommunicationThreads';
 import { getParticipantName, getParticipantInitials } from '@/utils/participantUtils';
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, X, Link as LinkIcon } from 'lucide-react';
+import { FileText, X, Link as LinkIcon, Archive, UserPlus } from 'lucide-react';
+import { InviteParticipantDialog } from './InviteParticipantDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -29,6 +30,7 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
   const { typingUsers, sendTyping } = useTypingIndicator(open ? thread?.id ?? null : null);
   const [markedRead, setMarkedRead] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   // Fetch linked documents
   const { data: linkedDocs = [] } = useQuery({
@@ -88,8 +90,26 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
       case 'Active': return 'bg-green-100 text-green-800 border-green-200';
       case 'Awaiting Response': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'Closed': return 'bg-gray-100 text-gray-800 border-gray-200';
+      case 'Archived': return 'bg-orange-100 text-orange-800 border-orange-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
+  };
+
+  const isArchived = thread.status === 'Archived';
+
+  const handleArchive = async () => {
+    const { error } = await supabase
+      .from('communication_threads')
+      .update({ status: 'Archived' })
+      .eq('id', thread.id);
+    if (error) {
+      toast.error('Failed to archive thread');
+      return;
+    }
+    toast.success('Thread archived');
+    queryClient.invalidateQueries({ queryKey: ['communication-threads'] });
+    queryClient.invalidateQueries({ queryKey: ['communication-threads-stats'] });
+    onOpenChange(false);
   };
 
   const participants = thread.participants || [];
@@ -108,6 +128,12 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
             <Badge variant="outline" className={getStatusColor(thread.status || 'Active')}>
               {thread.status || 'Active'}
             </Badge>
+            {!isArchived && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={handleArchive}>
+                <Archive className="h-3.5 w-3.5" />
+                Archive
+              </Button>
+            )}
             {thread.related_entity_name && (
               <span className="text-sm text-muted-foreground">
                 {lang('communications.threadPage.relatedTo')} {thread.related_entity_name}
@@ -136,6 +162,12 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
                 ? lang('communications.threadPage.participants.countSingular').replace('{{count}}', '1')
                 : lang('communications.threadPage.participants.count').replace('{{count}}', String(participants.length))}
             </span>
+            {!isArchived && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setInviteOpen(true)}>
+                <UserPlus className="h-3.5 w-3.5" />
+                Invite
+              </Button>
+            )}
           </div>
           {/* Linked Documents */}
           <div className="flex items-center gap-2 flex-wrap pt-1">
@@ -175,6 +207,7 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
               onSendMessage={handleSendMessage}
               typingUsers={typingUsers}
               onTyping={sendTyping}
+              disabled={isArchived}
             />
           )}
         </div>
@@ -186,6 +219,15 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
           onOpenChange={setPickerOpen}
           threadId={thread.id}
           companyId={thread.company_id}
+        />
+      )}
+      {thread.company_id && (
+        <InviteParticipantDialog
+          open={inviteOpen}
+          onOpenChange={setInviteOpen}
+          threadId={thread.id}
+          companyId={thread.company_id}
+          existingUserIds={participants.map(p => p.user_id).filter(Boolean) as string[]}
         />
       )}
     </Sheet>

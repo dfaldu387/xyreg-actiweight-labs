@@ -9,6 +9,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
 import { ReferenceDocumentService } from '@/services/referenceDocumentService';
+import { useAdvisoryContext } from '@/hooks/useAdvisoryContext';
+import { useDocumentNumberingContext } from '@/hooks/useDocumentNumberingContext';
 import { Checkbox } from '@/components/ui/checkbox';
 
 const ALWAYS_PRECHECK = ['ISO 13485', 'ISO 14971', 'IEC 62366'];
@@ -21,6 +23,7 @@ interface AIContentGenerationModalProps {
   onContentGenerated: (newContent: string) => void;
   setShowAIModal: (show: boolean) => void;
   companyId?: string;
+  documentId?: string | null;
 }
 
 interface AISuggestion {
@@ -38,8 +41,11 @@ export function AIContentGenerationModal({
   currentContent,
   onContentGenerated,
   setShowAIModal,
-  companyId
+  companyId,
+  documentId
 }: AIContentGenerationModalProps) {
+  const { data: advisoryContext } = useAdvisoryContext(companyId, isOpen);
+  const numberingContext = useDocumentNumberingContext(documentId, companyId);
   const [customPrompt, setCustomPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(null);
@@ -260,6 +266,15 @@ export function AIContentGenerationModal({
         enhancedPrompt += `\n\nEnsure compliance with the following standards and regulations: ${selectedStds.map((s) => s.name || s.framework).join(', ')}.`;
       }
 
+      // Append company system context (settings, prefixes, products) to reference context
+      let fullReferenceContext = referenceContext || '';
+      if (advisoryContext) {
+        fullReferenceContext = fullReferenceContext ? `${fullReferenceContext}\n\n${advisoryContext}` : advisoryContext;
+      }
+      if (numberingContext) {
+        fullReferenceContext = fullReferenceContext ? `${fullReferenceContext}\n\n${numberingContext}` : numberingContext;
+      }
+
       // Call the AI content generator edge function
       const { data, error } = await supabase.functions.invoke('ai-content-generator', {
         body: {
@@ -267,7 +282,7 @@ export function AIContentGenerationModal({
           sectionTitle,
           currentContent: mode === 'edit' ? currentContent : undefined,
           mode,
-          referenceContext: referenceContext || undefined,
+          referenceContext: fullReferenceContext || undefined,
         }
       });
 

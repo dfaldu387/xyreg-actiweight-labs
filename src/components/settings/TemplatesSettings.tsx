@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Brain, Upload } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -8,6 +9,7 @@ import { EnhancedTemplateUploadDialog } from './document-control/templates/Enhan
 import { TemplateUploadData } from '@/types/templateManagement';
 import { TemplateManagementService } from '@/services/templateManagementService';
 import { useToast } from '@/hooks/use-toast';
+import { SopAutoSeedStatus } from './document-control/SopAutoSeedStatus';
 
 interface TemplatesSettingsProps {
   companyId: string;
@@ -15,6 +17,8 @@ interface TemplatesSettingsProps {
 
 export function TemplatesSettings({ companyId }: TemplatesSettingsProps) {
   const { lang } = useTranslation();
+  const { companyName: rawCompanyName } = useParams<{ companyName: string }>();
+  const companyName = rawCompanyName ? decodeURIComponent(rawCompanyName) : '';
   const [aiTemplateDialogOpen, setAiTemplateDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -52,6 +56,9 @@ export function TemplatesSettings({ companyId }: TemplatesSettingsProps) {
 
   return (
     <div className="space-y-6" data-tour="document-templates">
+      {/* Foundation SOP auto-seed status & manual backfill */}
+      <SopAutoSeedStatus companyId={companyId} companyName={companyName} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

@@ -56,6 +56,7 @@ const ProductDesignRiskLandingPage = lazy(() => import("@/pages/ProductDesignRis
 const CompanyDocumentsPage = lazy(() => import("@/pages/CompanyDocumentsPage"));
 const CompanyAuditsPage = lazy(() => import("@/pages/CompanyAuditsPage"));
 const CompanyGapAnalysisPage = lazy(() => import("@/pages/CompanyGapAnalysisPage"));
+const EHDSDataVaultPage = lazy(() => import("@/pages/EHDSDataVaultPage"));
 const CompanyMilestonesPage = lazy(() => import("@/pages/CompanyMilestonesPage"));
 const RoleAccessControlPage = lazy(() => import("@/pages/RoleAccessControlPage"));
 const CompanyDashboardWrapper = lazy(() => import("@/pages/CompanyDashboardWrapper"));
@@ -731,6 +732,16 @@ function App() {
                   <ErrorBoundary level="component">
                     <CompanyRouteGuard>
                       <ProductGapItemDetailPage />
+                    </CompanyRouteGuard>
+                  </ErrorBoundary>
+                </Suspense>
+              } />
+
+              <Route path="company/:companyName/ehds-data-vault" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary level="component">
+                    <CompanyRouteGuard>
+                      <EHDSDataVaultPage />
                     </CompanyRouteGuard>
                   </ErrorBoundary>
                 </Suspense>

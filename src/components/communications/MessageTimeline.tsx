@@ -17,6 +17,7 @@ interface MessageTimelineProps {
   onSendMessage?: (content: string, files?: File[]) => Promise<void>;
   typingUsers?: string[];
   onTyping?: () => void;
+  disabled?: boolean;
 }
 
 interface PendingAttachment {
@@ -25,7 +26,7 @@ interface PendingAttachment {
   preview?: string;
 }
 
-export function MessageTimeline({ messages, threadId, onSendMessage, typingUsers = [], onTyping }: MessageTimelineProps) {
+export function MessageTimeline({ messages, threadId, onSendMessage, typingUsers = [], onTyping, disabled = false }: MessageTimelineProps) {
   const { lang } = useTranslation();
   const { user } = useAuth();
   const [newMessage, setNewMessage] = useState('');
@@ -266,71 +267,77 @@ export function MessageTimeline({ messages, threadId, onSendMessage, typingUsers
       )}
 
       {/* Sticky compose area */}
-      <div className="shrink-0 border-t bg-background p-4">
-        <div className="space-y-3">
-          {pendingAttachments.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {pendingAttachments.map((attachment) => (
-                <div key={attachment.id} className="relative">
-                  <img
-                    src={attachment.preview}
-                    alt={attachment.file.name}
-                    className="h-16 w-16 object-cover rounded-lg border border-border"
-                  />
-                  <button
-                    onClick={() => removeAttachment(attachment.id)}
-                    className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full h-5 w-5 flex items-center justify-center"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+      {disabled ? (
+        <div className="shrink-0 border-t bg-muted/50 p-4 text-center">
+          <p className="text-sm text-muted-foreground">This thread is archived and read-only.</p>
+        </div>
+      ) : (
+        <div className="shrink-0 border-t bg-background p-4">
+          <div className="space-y-3">
+            {pendingAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {pendingAttachments.map((attachment) => (
+                  <div key={attachment.id} className="relative">
+                    <img
+                      src={attachment.preview}
+                      alt={attachment.file.name}
+                      className="h-16 w-16 object-cover rounded-lg border border-border"
+                    />
+                    <button
+                      onClick={() => removeAttachment(attachment.id)}
+                      className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full h-5 w-5 flex items-center justify-center"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
-          <Textarea
-            placeholder={lang('communications.messageTimeline.compose.placeholder')}
-            value={newMessage}
-            onChange={(e) => { setNewMessage(e.target.value); onTyping?.(); }}
-            className="min-h-[80px] resize-none"
-            disabled={isLoading}
-          />
+            <Textarea
+              placeholder={lang('communications.messageTimeline.compose.placeholder')}
+              value={newMessage}
+              onChange={(e) => { setNewMessage(e.target.value); onTyping?.(); }}
+              className="min-h-[80px] resize-none"
+              disabled={isLoading}
+            />
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                multiple
-                className="hidden"
-                accept=".jpg,.jpeg,.png"
-              />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileSelect}
+                  multiple
+                  className="hidden"
+                  accept=".jpg,.jpeg,.png"
+                />
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                >
+                  <Paperclip className="h-4 w-4" />
+                  {lang('communications.messageTimeline.compose.attachFiles')}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  JPG, PNG only. Max 10MB
+                </span>
+              </div>
+
               <Button
-                variant="outline"
                 className="gap-2"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading}
+                onClick={handleSendMessage}
+                disabled={isLoading || (!newMessage.trim() && pendingAttachments.length === 0)}
               >
-                <Paperclip className="h-4 w-4" />
-                {lang('communications.messageTimeline.compose.attachFiles')}
+                <Send className="h-4 w-4" />
+                {isLoading ? lang('communications.messageTimeline.compose.sending') : lang('communications.messageTimeline.compose.send')}
               </Button>
-              <span className="text-xs text-muted-foreground">
-                JPG, PNG only. Max 10MB
-              </span>
             </div>
-
-            <Button
-              className="gap-2"
-              onClick={handleSendMessage}
-              disabled={isLoading || (!newMessage.trim() && pendingAttachments.length === 0)}
-            >
-              <Send className="h-4 w-4" />
-              {isLoading ? lang('communications.messageTimeline.compose.sending') : lang('communications.messageTimeline.compose.send')}
-            </Button>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Fullscreen image preview */}
       {previewUrl && (

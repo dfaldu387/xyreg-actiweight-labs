@@ -83,10 +83,26 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
     // Start with non-communication action items only (avoid duplicates from useMissionControlData)
     const items = (actionItems || []).filter(i => i.type !== 'communication');
 
-    // Add each communication and system notification as its own action item
-    const existingIds = new Set(items.map(i => i.id));
+    // Deduplicate communication threads: keep only the latest notification per thread
+    const threadLatest = new Map<string, typeof appNotifications[number]>();
+    const nonThreadNotifs: typeof appNotifications[number][] = [];
+
     (appNotifications || []).forEach((notif) => {
       if (notif.category !== 'communication' && notif.category !== 'system') return;
+      if (notif.category === 'communication' && notif.entity_type === 'communication_thread' && notif.entity_id) {
+        const existing = threadLatest.get(notif.entity_id);
+        if (!existing || notif.created_at > existing.created_at) {
+          threadLatest.set(notif.entity_id, notif);
+        }
+      } else {
+        nonThreadNotifs.push(notif);
+      }
+    });
+
+    const existingIds = new Set(items.map(i => i.id));
+    const deduplicatedNotifs = [...threadLatest.values(), ...nonThreadNotifs];
+
+    deduplicatedNotifs.forEach((notif) => {
       const itemId = `app-notif-${notif.id}`;
       if (existingIds.has(itemId)) return;
 

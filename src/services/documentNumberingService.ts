@@ -41,22 +41,24 @@ export class DocumentNumberingService {
   }
 
   /**
-   * Generate a document number based on company settings
+   * Generate a document number based on company settings.
+   * Format: TYPE-SUBPREFIX-NUMBER (e.g., SOP-QA-001) or TYPE-NUMBER if no sub-prefix.
    */
   static async generateDocumentNumber(
-    companyId: string, 
+    companyId: string,
     type: 'SOP' | 'FORM' | 'LIST' | 'TEMP' = 'SOP',
-    sequence?: number
+    sequence?: number,
+    subPrefix?: string
   ): Promise<string> {
     const system = await this.getCompanyNumberingSystem(companyId);
-    
+
     // Get or initialize counter for this company and type
     if (!this.documentCounters.has(companyId)) {
       this.documentCounters.set(companyId, new Map());
     }
-    
+
     const companyCounters = this.documentCounters.get(companyId)!;
-    
+
     if (!companyCounters.has(type)) {
       const startingNum = parseInt(system.startingNumber) || 1;
       companyCounters.set(type, startingNum);
@@ -64,7 +66,7 @@ export class DocumentNumberingService {
 
     // Use provided sequence or get next number
     const number = sequence || companyCounters.get(type)!;
-    
+
     // Increment counter for next use
     if (!sequence) {
       companyCounters.set(type, number + 1);
@@ -72,7 +74,11 @@ export class DocumentNumberingService {
 
     // Format the number according to system settings
     const formattedNumber = this.formatNumber(number, system.numberFormat);
-    
+
+    // Build: TYPE-SUBPREFIX-NUMBER (e.g., SOP-QA-001) or TYPE-NUMBER
+    if (subPrefix) {
+      return `${type}-${subPrefix}-${formattedNumber}`;
+    }
     return `${type}-${formattedNumber}`;
   }
 
@@ -96,10 +102,11 @@ export class DocumentNumberingService {
    * Update internal references in template content
    */
   static async updateInternalReferences(
-    content: string, 
+    content: string,
     companyId: string,
     templateType: 'SOP' | 'FORM' | 'LIST' | 'TEMP' = 'SOP',
-    templateNumber?: number
+    templateNumber?: number,
+    subPrefix?: string
   ): Promise<string> {
     let updatedContent = content;
     
@@ -179,18 +186,18 @@ export class DocumentNumberingService {
     // Update each reference in the content
     for (const ref of documentReferences) {
       const oldReference = `${ref.type}-${ref.number}${ref.suffix ? `-${ref.suffix}` : ''}`;
-      const newNumber = await this.generateDocumentNumber(companyId, ref.type, parseInt(ref.number));
+      const newNumber = await this.generateDocumentNumber(companyId, ref.type, parseInt(ref.number), subPrefix);
       const newReference = `${newNumber}${ref.suffix ? `-${ref.suffix}` : ''}`;
-      
+
       // Replace all occurrences
       updatedContent = updatedContent.replace(new RegExp(oldReference, 'g'), newReference);
     }
 
     // Update the main document number if this is the current template
     if (templateNumber) {
-      const currentDocNumber = await this.generateDocumentNumber(companyId, templateType, templateNumber);
+      const currentDocNumber = await this.generateDocumentNumber(companyId, templateType, templateNumber, subPrefix);
       updatedContent = updatedContent.replace(
-        new RegExp(`${templateType}-\\d+`, 'g'), 
+        new RegExp(`${templateType}-\\d+`, 'g'),
         currentDocNumber
       );
     }

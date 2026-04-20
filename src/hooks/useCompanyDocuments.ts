@@ -24,6 +24,7 @@ export interface CompanyDocument {
   document_reference?: string | null;
   version?: string | null;
   date?: string | null;
+  start_date?: string | null;
   due_date?: string | null;
   phase_id?: string | null;
   phase_name?: string | null;
@@ -114,6 +115,7 @@ export function useCompanyDocuments(companyId: string) {
           document_reference: doc.document_reference,
           version: doc.version,
           date: doc.date,
+          start_date: doc.start_date,
           due_date: doc.due_date,
           phase_id: doc.phase_id || null,
           phase_name: doc.phase_id ? (phaseNameMap.get(doc.phase_id) || null) : null,
@@ -176,6 +178,7 @@ export function useCompanyDocuments(companyId: string) {
               document_reference: `DS-${doc.id}`,
               version: (doc.document_control as any)?.version || '1.0',
               date: meta.date || null,
+              start_date: meta.start_date || null,
               due_date: meta.due_date || null,
               phase_id: meta.phase_id || null,
               is_current_effective_version: meta.is_current_effective_version || false,
@@ -194,7 +197,31 @@ export function useCompanyDocuments(companyId: string) {
             };
           });
 
-        return [...mappedDocuments, ...studioDocuments];
+        // One-time auto-correction: fix documents with hardcoded 'Report' type
+        const allDocs = [...mappedDocuments, ...studioDocuments];
+        const docsToFix = allDocs.filter(
+          d => d.document_type === 'Report' && d.source_table === 'phase_assigned_document_template'
+        );
+        if (docsToFix.length > 0) {
+          // Fire-and-forget update for affected records
+          for (const doc of docsToFix) {
+            const newType = doc.name?.toLowerCase().includes('manual') ? 'Manual' : 'Standard';
+            supabase
+              .from('phase_assigned_document_template')
+              .update({ document_type: newType, updated_at: new Date().toISOString() } as any)
+              .eq('id', doc.id)
+              .then(({ error: updateErr }) => {
+                if (updateErr) {
+                  console.warn('Auto-correction of document_type failed for', doc.id, updateErr);
+                } else {
+                  console.log(`Auto-corrected document_type from "Report" to "${newType}" for`, doc.id);
+                }
+              });
+            doc.document_type = newType;
+          }
+        }
+
+        return allDocs;
       } catch (error) {
         throw error;
       }
@@ -216,12 +243,35 @@ export function useCompanyDocuments(companyId: string) {
         .eq('id', documentId)
         .maybeSingle();
 
-      const { error } = await supabase
+      const { data: deleted, error } = await supabase
         .from(table)
         .delete()
-        .eq('id', documentId);
+        .eq('id', documentId)
+        .select('id');
 
       if (error) throw error;
+      
+      // If no rows deleted from primary table, try the other table
+      if (!deleted || deleted.length === 0) {
+        const altTable = table === 'phase_assigned_document_template' ? 'document_studio_templates' : 'phase_assigned_document_template';
+        const { data: altDeleted, error: altError } = await supabase
+          .from(altTable)
+          .delete()
+          .eq('id', documentId)
+          .select('id');
+        if (altError) throw altError;
+        if (!altDeleted || altDeleted.length === 0) {
+          throw new Error('Document not found in any table');
+        }
+      }
+
+      // Cleanup: remove any linked drafts in document_studio_templates
+      try {
+        await supabase.from('document_studio_templates').delete().eq('template_id', documentId);
+        await supabase.from('document_studio_templates').delete().eq('id', documentId);
+      } catch (cleanupErr) {
+        console.warn('Cleanup of linked studio drafts failed (non-blocking):', cleanupErr);
+      }
 
       // Log document deletion to audit trail
       const { data: { user } } = await supabase.auth.getUser();

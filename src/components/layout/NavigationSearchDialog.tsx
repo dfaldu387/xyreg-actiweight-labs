@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Building, Crosshair, Lock, Package } from 'lucide-react';
+import { BookOpen, Building, Crosshair, Lock, Package } from 'lucide-react';
+import { regulatoryGlossary } from '@/data/regulatoryGlossary';
 import {
   CommandDialog,
   CommandInput,
@@ -330,10 +331,35 @@ export function NavigationSearchDialog({ open, onOpenChange }: NavigationSearchD
 
   const modSymbol = getModifierSymbol();
 
+  const [searchValue, setSearchValue] = useState('');
+
+  // Reset search when dialog closes
+  useEffect(() => {
+    if (!open) setSearchValue('');
+  }, [open]);
+
+  // Filter glossary terms based on search
+  const glossaryResults = useMemo(() => {
+    const q = searchValue.toLowerCase().trim();
+    if (q.length < 2) return [];
+    return regulatoryGlossary
+      .filter(entry =>
+        entry.term.toLowerCase().includes(q) ||
+        entry.aliases?.some(a => a.toLowerCase().includes(q)) ||
+        entry.definition.toLowerCase().includes(q)
+      )
+      .slice(0, 8);
+  }, [searchValue]);
+
+  const handleGlossarySelect = (term: string) => {
+    onOpenChange(false);
+    window.dispatchEvent(new CustomEvent('xyreg:open-glossary', { detail: { searchTerm: term } }));
+  };
+
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange} modal={false}>
       <TooltipProvider>
-      <CommandInput placeholder={`Search pages...`} />
+      <CommandInput placeholder={`Search pages...`} value={searchValue} onValueChange={setSearchValue} />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
         {Object.entries(groupedItems).map(([groupLabel, items]) => (
@@ -398,6 +424,23 @@ export function NavigationSearchDialog({ open, onOpenChange }: NavigationSearchD
             ))}
           </CommandGroup>
         ))}
+
+        {/* Glossary results */}
+        {glossaryResults.length > 0 && (
+          <CommandGroup heading="Glossary">
+            {glossaryResults.map((entry) => (
+              <CommandItem
+                key={`glossary-${entry.term}`}
+                value={`glossary ${entry.term} ${entry.aliases?.join(' ') || ''}`}
+                onSelect={() => handleGlossarySelect(entry.term)}
+              >
+                <BookOpen className="mr-2 h-4 w-4 flex-shrink-0 text-primary" />
+                <span>{entry.term}</span>
+                <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{entry.source}</span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
 
         {/* Company list — always shown at the bottom */}
         {recentCompanies.length > 0 && (

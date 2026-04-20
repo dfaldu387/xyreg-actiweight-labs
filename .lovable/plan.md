@@ -1,21 +1,32 @@
 
 
-## Plan: Change "Edit Doc" Icon Color to Yellow When Draft Exists
+## Why the change isn't visible
 
-### Problem
-The `FileEdit` icon in the Quality Manual sidebar header (top-right) is always gray (`text-muted-foreground`). The user wants it to turn yellow once a draft document has been created, providing visual feedback that a draft is in progress.
+The user is on `/app/company/Nox Medical/documents?tab=templates`.
+That route renders `CompanyDocumentsPage` → `<TemplatesSettings />` (the "Template Library" UI in the screenshot).
 
-### Approach
-1. **Add a proactive draft-existence check** to `QualityManualSidebar.tsx` using a `useEffect` that calls `DocumentStudioPersistenceService.getDocumentCIsByReference` on mount with the `QM-FULL-{companyId}` key.
-2. **Store the result** in a `draftExists` boolean state.
-3. **Conditionally color the icon**: when `draftExists` is true, apply `text-amber-500` (yellow) instead of `text-muted-foreground`. Also update the tooltip text to "Open Document Draft".
+The `SopAutoSeedStatus` banner I added is mounted inside `DocumentControl` (`src/components/settings/DocumentControl.tsx`), which is only reached via:
+- `CompanySettings` page → `tab=documents` → `DocumentControlSettings` → `AdvancedDocumentManager`, or
+- `PhaseDocumentsTab` → `DocumentControlTabs`
 
-### File changed
-- `src/components/quality-manual/QualityManualSidebar.tsx`
-  - Add `useEffect` + `useState` to check if a CI record exists for `templateIdKey` on mount
-  - Change the icon button class from `text-muted-foreground` to `text-amber-500` when `draftExists` is true
-  - Update tooltip text conditionally
+Neither path is open on the current screen, so the banner is rendered but not visible. The feature works — it's just on the wrong page.
 
-### Scope
-- 1 file, ~10 lines added/changed
+## Fix
+
+Mount `SopAutoSeedStatus` directly inside `TemplatesSettings.tsx` so it shows up on the page the user is actually using to manage templates (the screenshotted "Template Library").
+
+### Single change
+**`src/components/settings/TemplatesSettings.tsx`**
+- Import `SopAutoSeedStatus` and `useCompany` (or read `companyName` from the existing context/props the file already uses).
+- Render `<SopAutoSeedStatus companyId={companyId} companyName={companyName} />` at the top of the returned JSX, above the existing "Template Library" card.
+- No props/API changes elsewhere.
+
+If `TemplatesSettings` doesn't already have `companyName` in scope, derive it from the URL via `useParams()` (the route is `/app/company/:companyName/...`) and `decodeURIComponent` it — same pattern used in `PhaseDocumentsTab.tsx`.
+
+## Out of scope
+- No removal from `DocumentControl` — it can stay there too; admins reaching that page still see it.
+- No DB / service changes — the seeding logic is untouched.
+
+## Expected outcome
+- On `/app/company/.../documents?tab=templates`, the user immediately sees the "Foundation SOPs auto-created — N / 27" strip with the **Seed missing Tier A SOPs** button and the expandable "View Tier A breakdown" list with reasons, exactly as designed.
 

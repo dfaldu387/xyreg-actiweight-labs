@@ -35,7 +35,7 @@ interface QualityManualSectionProps {
   section: QMSection;
   companyData: QualityManualData;
   onContentChange: (sectionKey: string, content: string) => void;
-  onGenerate: (sectionKey: string, options?: { outputLanguage?: string; additionalPrompt?: string }) => void;
+  onGenerate: (sectionKey: string, options?: { outputLanguage?: string; additionalPrompt?: string; detailLevel?: string; companySize?: string; regulatoryMaturity?: string }) => void;
   generating: string | null;
   saving: boolean;
   companyId?: string;

@@ -107,7 +107,7 @@ export function GenericGapLaunchView({
   const nextIncomplete = sections.find(s => !completionMap.get(s.section)?.isComplete);
 
   return (
-    <div className="mr-[280px] lg:mr-[300px] xl:mr-[320px]">
+    <div>
       {/* Info Banner */}
       <div className="mb-6 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 p-5">
         <div className="flex items-start gap-4">

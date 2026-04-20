@@ -231,6 +231,7 @@ export function SidebarContextualMenu({
                   )}
                 </div>
               </SidebarMenuItem>
+              )}
 
               {/* Quality & Governance Group (NC, CAPA, CC, DR) */}
               {hasDeviceModuleAccess('quality-governance') && (

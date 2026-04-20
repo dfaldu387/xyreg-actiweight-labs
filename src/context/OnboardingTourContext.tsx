@@ -117,6 +117,8 @@ interface OnboardingTourContextType {
   activeTourStageId: string | null;
   /** Register a callback fired when a platform tour ends. `completed` indicates Done vs Skip. */
   setOnPlatformTourComplete: (cb: ((sectionId: string, completed: boolean) => void) | null) => void;
+  /** Register a callback fired when a platform tour starts. Use to dismiss overlays. */
+  setOnPlatformTourStart: (cb: ((sectionId: string) => void) | null) => void;
 }
 
 const OnboardingTourContext = createContext<OnboardingTourContextType>({
@@ -125,6 +127,7 @@ const OnboardingTourContext = createContext<OnboardingTourContextType>({
   activeTourStepId: null,
   activeTourStageId: null,
   setOnPlatformTourComplete: () => {},
+  setOnPlatformTourStart: () => {},
 });
 
 export const useOnboardingTour = () => useContext(OnboardingTourContext);
@@ -260,6 +263,7 @@ function OnboardingTourController({ children }: { children: ReactNode }) {
 
   // Platform tour return-to-help callback
   const onPlatformTourCompleteRef = useRef<((sectionId: string, completed: boolean) => void) | null>(null);
+  const onPlatformTourStartRef = useRef<((sectionId: string) => void) | null>(null);
   const pendingPlatformSectionRef = useRef<string | null>(null);
 
   // Use refs to store pending completion data to avoid stale closures
@@ -494,6 +498,16 @@ function OnboardingTourController({ children }: { children: ReactNode }) {
     const config = PLATFORM_TOUR_CONFIGS[sectionId];
     if (!config) return;
 
+    // Notify listeners (e.g. Help panel) so they can dismiss overlays
+    if (onPlatformTourStartRef.current) {
+      onPlatformTourStartRef.current(sectionId);
+    }
+    // Also broadcast a window event so any open Help UI can dismiss itself
+    // (more reliable than ref registration which can be cleared on remount)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('xyreg:tour-start', { detail: { sectionId } }));
+    }
+
     const companyName = getCompanyName();
     if (!companyName) {
       toast.info("Please navigate to a company first to start this tour.");
@@ -501,7 +515,10 @@ function OnboardingTourController({ children }: { children: ReactNode }) {
     }
 
     const encodedCompany = encodeURIComponent(companyName);
-    const route = `/app/company/${encodedCompany}${config.route}`;
+    // Support absolute routes (e.g. '/app/clients') and company-relative routes
+    const route = config.route.startsWith('/app/')
+      ? config.route
+      : `/app/company/${encodedCompany}${config.route}`;
     navigate(route);
 
     // Reuse the same element-wait + tour-launch logic
@@ -552,11 +569,15 @@ function OnboardingTourController({ children }: { children: ReactNode }) {
       setSteps(steps);
       setCurrentStep(0);
       setIsOpen(true);
-    }, 400);
+    }, 800);
   }, [navigate, getCompanyName, setSteps, setCurrentStep, setIsOpen, handleTourComplete, handleSkipTour]);
 
   const setOnPlatformTourComplete = useCallback((cb: ((sectionId: string, completed: boolean) => void) | null) => {
     onPlatformTourCompleteRef.current = cb;
+  }, []);
+
+  const setOnPlatformTourStart = useCallback((cb: ((sectionId: string) => void) | null) => {
+    onPlatformTourStartRef.current = cb;
   }, []);
 
   return (
@@ -566,6 +587,7 @@ function OnboardingTourController({ children }: { children: ReactNode }) {
       activeTourStepId,
       activeTourStageId,
       setOnPlatformTourComplete,
+      setOnPlatformTourStart,
     }}>
       {children}
     </OnboardingTourContext.Provider>
@@ -638,6 +660,21 @@ export function OnboardingTourProvider({ children }: OnboardingTourProviderProps
       scrollSmooth
       padding={{ mask: 10, popover: [20, 16] }}
       inViewThreshold={64}
+      // Prefer right/bottom positions to avoid clipping when target is on left sidebar
+      position={(positionProps, prev) => {
+        const { width: w, height: h, windowWidth, windowHeight, top, left, right, bottom } = positionProps as any;
+        const popoverW = 420;
+        const popoverH = 260;
+        const gap = 16;
+        // Try right of target
+        if (right + gap + popoverW <= windowWidth) return [right + gap, Math.min(Math.max(top, 16), windowHeight - popoverH - 16)];
+        // Try below
+        if (bottom + gap + popoverH <= windowHeight) return [Math.min(Math.max(left, 16), windowWidth - popoverW - 16), bottom + gap];
+        // Try above
+        if (top - gap - popoverH >= 0) return [Math.min(Math.max(left, 16), windowWidth - popoverW - 16), top - gap - popoverH];
+        // Fallback: center
+        return [Math.max(16, (windowWidth - popoverW) / 2), Math.max(16, (windowHeight - popoverH) / 2)];
+      }}
       onClickMask={() => {
         // Don't close on mask click - let user use buttons
       }}

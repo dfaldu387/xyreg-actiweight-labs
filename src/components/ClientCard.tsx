@@ -90,10 +90,14 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
   };
 
   return (
-    <Card className={cn(
-      "overflow-hidden transition-all duration-200",
-      disabled ? "opacity-60 cursor-not-allowed" : "hover:shadow-md cursor-pointer"
-    )} onClick={handleViewDetails}>
+    <Card
+      data-tour="company-card"
+      className={cn(
+        "overflow-hidden transition-all duration-200",
+        disabled ? "opacity-60 cursor-not-allowed" : "hover:shadow-md cursor-pointer"
+      )}
+      onClick={handleViewDetails}
+    >
       <CardContent className="p-0">
         <div className={cn("h-1",
           client.status === "On Track" ? "bg-success" :

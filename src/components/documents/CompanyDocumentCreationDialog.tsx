@@ -66,11 +66,12 @@ export function CompanyDocumentCreationDialog({
     documentReference: '',
     version: '',
     date: '',
+    startDate: '',
     dueDate: '',
     isCurrentEffectiveVersion: false,
     authorsIds: [] as string[],
     needTemplateUpdate: false,
-    itemType: 'report' as 'document' | 'report',
+    itemType: 'document' as 'document' | 'record',
     phaseId: '__CORE__'
   });
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -252,12 +253,13 @@ export function CompanyDocumentCreationDialog({
         documentReference: formData.documentReference || undefined,
         version: formData.version || undefined,
         date: formData.date || undefined,
+        startDate: formData.startDate || undefined,
         dueDate: formData.dueDate || undefined,
         phaseId: formData.phaseId === '__CORE__' ? (noPhaseEntry?.id || undefined) : (formData.phaseId && formData.phaseId.trim() !== '' ? formData.phaseId : undefined),
         isCurrentEffectiveVersion: formData.isCurrentEffectiveVersion,
         authors_ids: finalAuthorIds.length > 0 ? finalAuthorIds : undefined,
         needTemplateUpdate: formData.needTemplateUpdate,
-        isRecord: formData.itemType === 'report',
+        isRecord: formData.itemType === 'record',
         reference_document_ids: referenceDocumentIds.length > 0 ? referenceDocumentIds : undefined,
         tags: tags.length > 0 ? tags : undefined,
         silent: true
@@ -281,11 +283,12 @@ export function CompanyDocumentCreationDialog({
           documentReference: '',
           version: '',
           date: '',
+          startDate: '',
           dueDate: '',
           isCurrentEffectiveVersion: false,
           authorsIds: [],
           needTemplateUpdate: false,
-          itemType: 'report',
+          itemType: 'document',
           phaseId: '__CORE__'
         });
         setUploadedFile(null);
@@ -380,7 +383,7 @@ export function CompanyDocumentCreationDialog({
             <RadioGroup
               row
               value={formData.itemType}
-              onChange={(e) => setFormData(prev => ({ ...prev, itemType: e.target.value as 'document' | 'report' }))}
+              onChange={(e) => setFormData(prev => ({ ...prev, itemType: e.target.value as 'document' | 'record' }))}
             >
               <ShadTooltipProvider>
                 <ShadTooltip>
@@ -395,7 +398,7 @@ export function CompanyDocumentCreationDialog({
               <ShadTooltipProvider>
                 <ShadTooltip>
                   <ShadTooltipTrigger asChild>
-                    <FormControlLabel value="report" control={<Radio size="small" />} label={lang('documentDialog.report')} />
+                    <FormControlLabel value="record" control={<Radio size="small" />} label={lang('documentDialog.record')} />
                   </ShadTooltipTrigger>
                   <ShadTooltipContent side="bottom" className="max-w-xs z-[9999]">
                     <p>Per EU MDR & ISO 13485: A record that provides evidence of activities performed and results achieved — test reports, clinical evaluation reports, audit reports, risk management reports.</p>
@@ -479,13 +482,13 @@ export function CompanyDocumentCreationDialog({
             variant="outlined"
           />
 
-          {/* Core / Phase */}
+          {/* Foundation / Phase */}
           <FormControl fullWidth disabled={isCreating || loadingPhases}>
-            <InputLabel id="company-add-phase-select-label" shrink={true}>Core / Phase</InputLabel>
+            <InputLabel id="company-add-phase-select-label" shrink={true}>Foundation / Phase</InputLabel>
             <Select
               labelId="company-add-phase-select-label"
               value={formData.phaseId || ""}
-              label="Core / Phase"
+              label="Foundation / Phase"
               onChange={(e) => setFormData(prev => ({ ...prev, phaseId: e.target.value, subSection: '', sectionId: '' }))}
               displayEmpty
               notched
@@ -494,10 +497,10 @@ export function CompanyDocumentCreationDialog({
                   return <span style={{ color: 'rgba(0, 0, 0, 0.6)' }}>Select a phase</span>;
                 }
                 if (selected === '__CORE__') {
-                  return 'Core';
+                  return 'Foundation';
                 }
                 const selectedPhase = activePhases.find(phase => phase.id === selected);
-                if (selectedPhase?.name.toLowerCase() === 'no phase') return 'Core';
+                if (selectedPhase?.name.toLowerCase() === 'no phase') return 'Foundation';
                 return selectedPhase ? selectedPhase.name : selected;
               }}
               MenuProps={{
@@ -511,7 +514,7 @@ export function CompanyDocumentCreationDialog({
               {!loadingPhases && (
                 <MenuItem value="__CORE__">
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                    <span>Core</span>
+                    <span>Foundation</span>
                   </Box>
                 </MenuItem>
               )}
@@ -728,6 +731,26 @@ export function CompanyDocumentCreationDialog({
             {formData.date && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
                 Display format: {formatDate(formData.date)}
+              </Typography>
+            )}
+          </FormControl>
+
+          <FormControl fullWidth disabled={isCreating}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Start Date
+            </Typography>
+            <Box sx={{ border: '1px solid #e0e0e0', padding: '10px', borderRadius: '4px' }}>
+              <input
+                type="date"
+                value={formData.startDate || ''}
+                onChange={(e) => setFormData(prev => ({ ...prev, startDate: e.target.value }))}
+                disabled={isCreating}
+                style={{ width: '100%', border: 'none', outline: 'none', background: 'transparent' }}
+              />
+            </Box>
+            {formData.startDate && (
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                Display format: {formatDate(formData.startDate)}
               </Typography>
             )}
           </FormControl>

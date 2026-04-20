@@ -2787,9 +2787,9 @@
       "dueSoon": "Bald fällig"
     },
     "badges": {
-      "report": "Bericht",
       "phaseTemplate": "Phasenvorlage",
-      "companyDocument": "Unternehmensdokument"
+      "companyDocument": "Unternehmensdokument",
+      "record": "Aufzeichnung"
     },
     "docTypes": {
       "ciInstance": "CI-Instanz",
@@ -3069,7 +3069,9 @@
     "device": "Gerat",
     "overallProgress": "Gesamtfortschritt",
     "viewDetails": "Details anzeigen",
-    "dashboard": "Armaturenbrett"
+    "dashboard": "Armaturenbrett",
+    "thisWeek": "Diese Woche",
+    "total": "Gesamt"
   },
   "missionControl": {
     "clientCompass": "Kundenkompass",
@@ -10741,7 +10743,6 @@
     "editDocumentDialog": {
       "title": "Dokument bearbeiten",
       "document": "Dokument",
-      "report": "Bericht",
       "editDocumentInfo": "Dokumentinformationen bearbeiten",
       "editDocumentDesc": "Dokumentdetails und Metadaten aktualisieren. Alle Felder sind optional, außer dem Dokumentnamen.",
       "documentNameLabel": "Dokumentname *",
@@ -10773,7 +10774,8 @@
       "saveChanges": "Änderungen speichern",
       "documentUpdatedSuccess": "Dokument erfolgreich aktualisiert",
       "failedToUpdate": "Dokument konnte nicht aktualisiert werden",
-      "failedToUpdateNoPermission": "Dokument konnte nicht aktualisiert werden - Dokument existiert möglicherweise nicht oder Sie haben keine Berechtigung"
+      "failedToUpdateNoPermission": "Dokument konnte nicht aktualisiert werden - Dokument existiert möglicherweise nicht oder Sie haben keine Berechtigung",
+      "record": "Aufzeichnung"
     },
     "documentLibrary": {
       "searchPlaceholder": "Dokumente suchen...",
@@ -11555,11 +11557,11 @@
       "deleteError": "Kategorie konnte nicht gelöscht werden"
     },
     "documentNumbering": {
-      "title": "Dokumentenkategorie & Nummerierungssystem",
-      "description": "Konfigurieren Sie Nummerierung und Versionierung für jede Dokumentenkategorie",
+      "title": "Präfixe & Dokumentennummerierung",
+      "description": "Konfigurieren Sie Dokumentenpräfixe, Unterpräfixe und Nummerierung für jede Kategorie",
       "loading": "Konfigurationen werden geladen...",
-      "sectionTitle": "Dokumentenkategorien",
-      "sectionDescription": "Verwalten Sie Kategorien und deren Nummerierungskonfigurationen",
+      "sectionTitle": "Präfix-Kategorien",
+      "sectionDescription": "Verwalten Sie Präfix-Kategorien und deren Nummerierungskonfigurationen",
       "addCategory": "Kategorie hinzufügen",
       "custom": "Benutzerdefiniert",
       "deleteTitle": "Kategorie löschen",
@@ -13998,7 +14000,6 @@
     "editDocument": "Dokument bearbeiten",
     "editGapAnalysisItem": "Gap-Analyse-Element bearbeiten",
     "document": "Dokument",
-    "report": "Bericht",
     "companyWideDocument": "Unternehmensweites Dokument",
     "companyWideDocumentDesc": "Dies erstellt ein unternehmensweites Dokument, das für alle Produkte gilt.",
     "companyWideDocumentUpdateDesc": "Aktualisieren Sie dieses unternehmensweites Dokument, das für alle Produkte gilt.",
@@ -14006,7 +14007,8 @@
     "saveChanges": "Änderungen speichern",
     "creating": "Wird erstellt...",
     "saving": "Wird gespeichert...",
-    "uploading": "Wird hochgeladen..."
+    "uploading": "Wird hochgeladen...",
+    "record": "Aufzeichnung"
   },
   "companyDocumentManager": {
     "title": "Unternehmensdokumente",

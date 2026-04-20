@@ -2816,9 +2816,9 @@
       "dueSoon": "Due Soon"
     },
     "badges": {
-      "report": "Report",
       "phaseTemplate": "Phase Template",
-      "companyDocument": "Company Document"
+      "companyDocument": "Company Document",
+      "record": "Record"
     },
     "docTypes": {
       "ciInstance": "CI Instance",
@@ -3098,7 +3098,9 @@
     "device": "Device",
     "overallProgress": "Overall Progress",
     "viewDetails": "View Details",
-    "dashboard": "Dashboard"
+    "dashboard": "Dashboard",
+    "thisWeek": "This week",
+    "total": "Total"
   },
   "missionControl": {
     "clientCompass": "Client Compass",
@@ -10768,7 +10770,6 @@
     "editDocumentDialog": {
       "title": "Edit Document",
       "document": "Document",
-      "report": "Report",
       "editDocumentInfo": "Edit Document Information",
       "editDocumentDesc": "Update document details and metadata. All fields are optional except document name.",
       "documentNameLabel": "Document Name *",
@@ -10800,7 +10801,8 @@
       "saveChanges": "Save Changes",
       "documentUpdatedSuccess": "Document updated successfully",
       "failedToUpdate": "Failed to update document",
-      "failedToUpdateNoPermission": "Failed to update document - document may not exist or you may not have permission"
+      "failedToUpdateNoPermission": "Failed to update document - document may not exist or you may not have permission",
+      "record": "Record"
     },
     "documentLibrary": {
       "searchPlaceholder": "Search documents...",
@@ -11582,11 +11584,11 @@
       "deleteError": "Failed to delete category"
     },
     "documentNumbering": {
-      "title": "Document Category & Numbering System",
-      "description": "Configure numbering and versioning for each document category",
+      "title": "Prefixes & Document Numbering",
+      "description": "Configure document prefixes, sub-prefixes, and numbering for each category",
       "loading": "Loading configurations...",
-      "sectionTitle": "Document Categories",
-      "sectionDescription": "Manage categories and their numbering configurations",
+      "sectionTitle": "Prefix Categories",
+      "sectionDescription": "Manage prefix categories and their numbering configurations",
       "addCategory": "Add Category",
       "custom": "Custom",
       "deleteTitle": "Delete Category",
@@ -14025,7 +14027,6 @@
     "editDocument": "Edit Document",
     "editGapAnalysisItem": "Edit Gap Analysis Item",
     "document": "Document",
-    "report": "Report",
     "companyWideDocument": "Company-Wide Document",
     "companyWideDocumentDesc": "This creates a company-wide document that applies across all products.",
     "companyWideDocumentUpdateDesc": "Update this company-wide document that applies across all products.",
@@ -14033,7 +14034,8 @@
     "saveChanges": "Save Changes",
     "creating": "Creating...",
     "saving": "Saving...",
-    "uploading": "Uploading..."
+    "uploading": "Uploading...",
+    "record": "Record"
   },
   "companyDocumentManager": {
     "title": "Company Documents",

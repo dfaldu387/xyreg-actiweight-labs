@@ -1,0 +1,257 @@
+/**
+ * Vertex Document Chat Edge Function
+ *
+ * Dedicated AI chat for Document Studio — uses Google Vertex AI (Gemini)
+ * with higher token limits for full-document context.
+ *
+ * Request body: { messages, systemPrompt, companyId?, documentName?, documentType? }
+ * Response:     { content: string }
+ */
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { create, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const MODEL = "gemini-2.5-flash";
+
+// --- Service Account Authentication ---
+
+interface ServiceAccount {
+  type: string;
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  client_x509_cert_url: string;
+}
+
+function normalizeToJson(input: string): string {
+  let s = input.trim();
+  if (s.startsWith('"') && s.endsWith('"')) {
+    try { s = JSON.parse(s); } catch { /* fall through */ }
+  }
+  if (typeof s !== "string") return s;
+  s = s.trim().replace(/;+\s*$/, "");
+  s = s.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":');
+  s = s.replace(/,(\s*[}\]])/g, "$1");
+  return s;
+}
+
+function tryParseServiceAccount(key: string): ServiceAccount | null {
+  try {
+    const normalized = normalizeToJson(key);
+    const parsed = typeof normalized === "string" ? JSON.parse(normalized) : normalized;
+    if (
+      parsed &&
+      parsed.type === "service_account" &&
+      parsed.private_key &&
+      parsed.client_email &&
+      parsed.project_id
+    ) {
+      return parsed as ServiceAccount;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function getAccessTokenFromServiceAccount(sa: ServiceAccount): Promise<string> {
+  const privateKeyPem = sa.private_key
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\n/g, "")
+    .trim();
+
+  const privateKeyBytes = Uint8Array.from(atob(privateKeyPem), (c) => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8",
+    privateKeyBytes,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+
+  const now = getNumericDate(new Date());
+  const jwt = await create(
+    { alg: "RS256", typ: "JWT" },
+    {
+      iss: sa.client_email,
+      sub: sa.client_email,
+      aud: sa.token_uri,
+      iat: now,
+      exp: now + 3600,
+      scope: "https://www.googleapis.com/auth/cloud-platform",
+    },
+    cryptoKey,
+  );
+
+  const tokenResponse = await fetch(sa.token_uri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }),
+  });
+
+  if (!tokenResponse.ok) {
+    const errorText = await tokenResponse.text();
+    throw new Error(`Token exchange failed: ${tokenResponse.status} - ${errorText}`);
+  }
+
+  const tokenData = await tokenResponse.json();
+  if (!tokenData.access_token) throw new Error("No access token in response");
+  return tokenData.access_token;
+}
+
+// --- Main handler ---
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { messages, systemPrompt, companyId, documentName, documentType } = await req.json();
+
+    if (!messages || !Array.isArray(messages) || !systemPrompt) {
+      return new Response(
+        JSON.stringify({ error: "Missing messages or systemPrompt" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // --- Resolve Google Vertex AI credential ---
+    let decryptedKey = "";
+    let keySource = "none";
+
+    if (companyId) {
+      const { data: keyRecord } = await supabase
+        .from("company_api_keys")
+        .select("encrypted_key")
+        .eq("company_id", companyId)
+        .eq("key_type", "google_vertex")
+        .maybeSingle();
+
+      if (keyRecord?.encrypted_key) {
+        decryptedKey = keyRecord.encrypted_key;
+        keySource = "company_api_keys";
+      }
+    }
+
+    if (!decryptedKey) {
+      const envKey = Deno.env.get("GOOGLE_VERTEX_API_KEY") || "";
+      if (envKey) {
+        decryptedKey = envKey;
+        keySource = "env:GOOGLE_VERTEX_API_KEY";
+      }
+    }
+
+    if (!decryptedKey) {
+      return new Response(
+        JSON.stringify({ error: "No Google Vertex AI credential configured. Add a google_vertex key in Settings > API Keys." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    console.log("[vertex-document-chat] Key source:", keySource, "| companyId:", companyId ?? "(none)", "| doc:", documentName ?? "(none)");
+
+    // --- Validate credential ---
+    decryptedKey = decryptedKey.trim();
+    const serviceAccount = tryParseServiceAccount(decryptedKey);
+    if (!serviceAccount) {
+      console.error("[vertex-document-chat] Stored credential is not a valid service account JSON.");
+      return new Response(
+        JSON.stringify({
+          error: "Google Vertex AI credential must be a Google Cloud service-account JSON.",
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const sa = serviceAccount;
+    const accessToken = await getAccessTokenFromServiceAccount(sa);
+    const location = "us-central1";
+    const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${location}/publishers/google/models/${MODEL}:generateContent`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${accessToken}`,
+    };
+    console.log("[vertex-document-chat] Using Vertex AI for project:", sa.project_id);
+
+    // Convert chat messages to Gemini format
+    const contents = messages.map((m: { role: string; content: string }) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
+
+    const payload: Record<string, unknown> = {
+      contents,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 4096,
+      },
+    };
+
+    if (systemPrompt) {
+      payload.systemInstruction = {
+        parts: [{ text: systemPrompt }],
+      };
+    }
+
+    console.log("[vertex-document-chat] Calling Vertex AI | messages:", contents.length, "| hasSystem:", !!systemPrompt);
+
+    // --- Call Vertex AI ---
+    const vertexResponse = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!vertexResponse.ok) {
+      const errorText = await vertexResponse.text();
+      console.error("[vertex-document-chat] Vertex API error:", vertexResponse.status, errorText);
+      return new Response(
+        JSON.stringify({ error: `AI service error (${vertexResponse.status}): ${errorText}` }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const vertexData = await vertexResponse.json();
+    const content = vertexData?.candidates?.[0]?.content?.parts
+      ?.map((part: { text?: string }) => part.text ?? "")
+      .join("")
+      .trim();
+
+    if (!content) {
+      return new Response(
+        JSON.stringify({ error: "AI returned no content" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ content }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (e) {
+    console.error("[vertex-document-chat] Error:", e);
+    return new Response(
+      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+});

@@ -58,6 +58,7 @@ export const PORTFOLIO_MENU_ACCESS = {
   CHANGE_CONTROL: 'portfolio.change-control',
   NONCONFORMITY: 'portfolio.nonconformity',
   AUDIT_LOG: 'portfolio.audit-log',
+  EHDS_DATA_VAULT: 'portfolio.ehds-data-vault',
 } as const;
 
 // Devices menu access keys

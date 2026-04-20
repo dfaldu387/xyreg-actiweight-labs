@@ -146,7 +146,7 @@ export function useDocumentCategoryConfigs(companyId: string | undefined) {
     return used;
   }, []);
 
-  const getNextDocumentNumber = useCallback(async (categoryKey: string): Promise<string> => {
+  const getNextDocumentNumber = useCallback(async (categoryKey: string, subPrefix?: string): Promise<string> => {
     const config = configs.find(c => c.categoryKey === categoryKey);
     if (!config) return '';
 
@@ -183,6 +183,10 @@ export function useDocumentCategoryConfigs(companyId: string | undefined) {
         break;
     }
 
+    // Build: TYPE-SUBPREFIX-NUMBER (e.g., SOP-QA-001) or TYPE-NUMBER
+    if (subPrefix) {
+      return `${prefix}-${subPrefix}-${formatted}`;
+    }
     return `${prefix}-${formatted}`;
   }, [configs]);
 

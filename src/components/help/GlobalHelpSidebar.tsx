@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -21,14 +21,17 @@ import { Compass, GraduationCap, BookOpen, History } from 'lucide-react';
 interface GlobalHelpSidebarProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  listenForGlobalEvents?: boolean;
+  onStartTour?: () => void;
 }
 
-export function GlobalHelpSidebar({ open, onOpenChange }: GlobalHelpSidebarProps) {
+export function GlobalHelpSidebar({ open, onOpenChange, listenForGlobalEvents = false, onStartTour }: GlobalHelpSidebarProps) {
   const { lang } = useTranslation();
   const contextualTopic = useContextualHelpTopic();
   const [overrideTopic, setOverrideTopic] = useState<string | null>(null);
   const [detailScreen, setDetailScreen] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('context');
+  const [glossarySearchTerm, setGlossarySearchTerm] = useState<string | null>(null);
   
   const currentTopicKey = overrideTopic || contextualTopic.key;
   const currentTopic = overrideTopic 
@@ -54,6 +57,11 @@ export function GlobalHelpSidebar({ open, onOpenChange }: GlobalHelpSidebarProps
     setDetailScreen(null);
   }, []);
 
+  const handleNavigateToGlossary = useCallback((searchTerm: string) => {
+    setGlossarySearchTerm(searchTerm);
+    setActiveTab('reference');
+  }, []);
+
   const handleOpenChange = useCallback((isOpen: boolean) => {
     if (!isOpen) {
       setOverrideTopic(null);
@@ -61,6 +69,31 @@ export function GlobalHelpSidebar({ open, onOpenChange }: GlobalHelpSidebarProps
     }
     onOpenChange(isOpen);
   }, [onOpenChange]);
+
+  // Defensive: if a guided tour starts from anywhere, force-close this sheet.
+  useEffect(() => {
+    const handler = () => {
+      if (open) onOpenChange(false);
+    };
+    window.addEventListener('xyreg:tour-start', handler);
+    return () => window.removeEventListener('xyreg:tour-start', handler);
+  }, [open, onOpenChange]);
+
+  // Listen for global glossary navigation events (from NavigationSearchDialog)
+  // Only the primary instance (AppLayout) should listen to avoid duplicate opens
+  useEffect(() => {
+    if (!listenForGlobalEvents) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.searchTerm) {
+        setGlossarySearchTerm(detail.searchTerm);
+        setActiveTab('reference');
+        onOpenChange(true);
+      }
+    };
+    window.addEventListener('xyreg:open-glossary', handler);
+    return () => window.removeEventListener('xyreg:open-glossary', handler);
+  }, [onOpenChange, listenForGlobalEvents]);
 
   const useSpecializedContent = currentTopicKey === 'udi-management' || currentTopicKey === 'eudamed';
 
@@ -127,6 +160,7 @@ export function GlobalHelpSidebar({ open, onOpenChange }: GlobalHelpSidebarProps
                   <HelpSearch 
                     onSelectTopic={handleNavigateToTopic} 
                     onClear={handleClearOverride}
+                    onNavigateToGlossary={handleNavigateToGlossary}
                   />
                 )}
               </div>
@@ -148,11 +182,11 @@ export function GlobalHelpSidebar({ open, onOpenChange }: GlobalHelpSidebarProps
             </TabsContent>
 
             <TabsContent value="guide" className="mt-0 p-6">
-              <PlatformGuideTab />
+              <PlatformGuideTab onStartTour={onStartTour ? () => { onOpenChange(false); onStartTour(); } : undefined} />
             </TabsContent>
 
             <TabsContent value="reference" className="mt-0 p-6">
-              <ReferenceTab />
+              <ReferenceTab initialGlossarySearch={glossarySearchTerm} onGlossaryOpened={() => setGlossarySearchTerm(null)} />
             </TabsContent>
 
             <TabsContent value="versions" className="mt-0 p-6">

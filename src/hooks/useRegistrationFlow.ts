@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { CompanyInitializationService } from '@/services/companyInitializationService';
+import { seedTierASopsForCompany } from '@/services/sopAutoSeedService';
 import { newPricingService } from '@/services/newPricingService';
 import { createLegacyProducts } from '@/services/legacyProductService';
 import { EudamedDevice } from '@/hooks/useEudamedRegistry';
@@ -854,6 +855,20 @@ export function useRegistrationFlow(options?: RegistrationFlowOptions) {
 
       if (!initResult.success) {
         console.error('[useRegistrationFlow] Phase initialization failed:', initResult.error);
+      }
+
+      // Auto-seed Tier A SOPs (universal QMS boilerplate, idempotent).
+      // Runs after company initialization so company_phases exist.
+      try {
+        const sopResult = await seedTierASopsForCompany(company.id, company.name);
+        console.log(
+          `[useRegistrationFlow] Tier A SOPs — inserted: ${sopResult.inserted}, skipped: ${sopResult.skipped}, failed: ${sopResult.failed}`,
+        );
+        if (sopResult.errors.length > 0) {
+          console.warn('[useRegistrationFlow] SOP seed errors:', sopResult.errors);
+        }
+      } catch (sopError) {
+        console.error('[useRegistrationFlow] Tier A SOP auto-seed failed:', sopError);
       }
 
       // Assign pricing plan (Genesis for free plan)

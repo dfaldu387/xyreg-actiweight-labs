@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, useSyncExternalStore } from 'react';
-import { cn } from '@/lib/utils';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import { useCompanyApiKeys } from '@/hooks/useCompanyApiKeys';
 import { AlertCircle } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -21,6 +21,7 @@ import { useAdvisoryContext } from '@/hooks/useAdvisoryContext';
 import { formatDistanceToNow } from 'date-fns';
 import { documentContextStore } from '@/stores/documentContextStore';
 import { useRightRail } from '@/context/RightRailContext';
+
 
 interface Message {
   role: 'user' | 'assistant';
@@ -56,13 +57,62 @@ function stripMarkdown(text: string): string {
 }
 
 /** Speak text using browser SpeechSynthesis (fallback). */
+let ttsCooldownTimer: ReturnType<typeof setTimeout> | null = null;
+
+function beginTTSPlayback() {
+  if (ttsCooldownTimer) {
+    clearTimeout(ttsCooldownTimer);
+    ttsCooldownTimer = null;
+  }
+  isTTSPlaying = true;
+  ttsCooldown = true;
+}
+
+function cancelTTSPlayback() {
+  if (ttsCooldownTimer) {
+    clearTimeout(ttsCooldownTimer);
+    ttsCooldownTimer = null;
+  }
+  isTTSPlaying = false;
+  ttsCooldown = false;
+}
+
+function finishTTSPlayback() {
+  isTTSPlaying = false;
+  if (ttsCooldownTimer) {
+    clearTimeout(ttsCooldownTimer);
+  }
+  ttsCooldownTimer = setTimeout(() => {
+    ttsCooldown = false;
+    ttsCooldownTimer = null;
+    window.dispatchEvent(new Event('tts-ended'));
+  }, 1000);
+}
+
 function speakBrowser(text: string) {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
   const stripped = stripMarkdown(text);
+  if (!stripped) {
+    cancelTTSPlayback();
+    return;
+  }
+  if (!('speechSynthesis' in window)) {
+    cancelTTSPlayback();
+    return;
+  }
+
+  beginTTSPlayback();
+  window.speechSynthesis.cancel();
+
+  if (ttsCancelled) {
+    cancelTTSPlayback();
+    return;
+  }
+
   const utterance = new SpeechSynthesisUtterance(stripped);
   utterance.rate = 0.95;
   utterance.pitch = 1;
+  utterance.onend = () => finishTTSPlayback();
+  utterance.onerror = () => cancelTTSPlayback();
   window.speechSynthesis.speak(utterance);
 }
 
@@ -80,6 +130,12 @@ let activeAudio: HTMLAudioElement | null = null;
 
 /** Flag to cancel TTS that is still being fetched when mute is clicked. */
 let ttsCancelled = false;
+
+/** Flag tracking whether TTS audio is currently playing (prevents mic self-prompting). */
+let isTTSPlaying = false;
+
+/** Cooldown flag — true for 1000ms after TTS ends, blocks recognition results. */
+let ttsCooldown = false;
 
 /** Pre-warmed audio element to satisfy autoplay policy (created on user gesture). */
 let prewarmedAudio: HTMLAudioElement | null = null;
@@ -101,9 +157,11 @@ async function speakElevenLabs(text: string, voiceId?: string) {
   }
   window.speechSynthesis?.cancel();
   ttsCancelled = false;
+  beginTTSPlayback();
 
   try {
-    const stripped = stripMarkdown(text).slice(0, 4000);
+    // Replace "Xyreg" with phonetic spelling so TTS pronounces it correctly
+    const stripped = stripMarkdown(text).replace(/\bXyreg\b/gi, 'Sireg').slice(0, 4000);
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/advisory-tts`,
       {
@@ -126,6 +184,7 @@ async function speakElevenLabs(text: string, voiceId?: string) {
       // Check if mute was clicked while we were fetching
       if (ttsCancelled) {
         console.log('[TTS] Cancelled — mute was clicked during fetch');
+        cancelTTSPlayback();
         return;
       }
 
@@ -141,11 +200,12 @@ async function speakElevenLabs(text: string, voiceId?: string) {
 
       audio.addEventListener('ended', () => {
         console.log('[TTS] Audio ended naturally');
+        finishTTSPlayback();
         activeAudio = null;
         audio.remove();
         URL.revokeObjectURL(url);
       });
-      audio.addEventListener('error', (e) => {
+      audio.addEventListener('error', () => {
         console.warn('[TTS] Audio playback error:', audio.error?.code, audio.error?.message);
         activeAudio = null;
         audio.remove();
@@ -179,7 +239,7 @@ async function speakElevenLabs(text: string, voiceId?: string) {
 }
 
 export function FloatingAdvisoryBot() {
-  const { isRightRailOpen } = useRightRail();
+  
   const documentContext = useSyncExternalStore(documentContextStore.subscribe, documentContextStore.get);
   const [open, setOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<AdvisoryAgent | null>(getAgentById('professor-xyreg') || ADVISORY_AGENTS[0]);
@@ -198,12 +258,14 @@ export function FloatingAdvisoryBot() {
   const recognitionRef = useRef<any>(null);
   const conversationModeRef = useRef(false);
   const isDragging = useRef(false);
+  const pttDelayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const location = useLocation();
-  const companyId = useCompanyId();
   const navigate = useNavigate();
+  const companyId = useCompanyId();
+  const { isRightRailOpen } = useRightRail();
   const { getApiKey, apiKeys: companyApiKeys } = useCompanyApiKeys(companyId);
   const { data: systemContext } = useAdvisoryContext(companyId, open);
 
@@ -248,6 +310,77 @@ export function FloatingAdvisoryBot() {
       }
     }
     ctx += `\n\nUse this context to provide relevant, specific guidance about what the user is currently working on. Reference the actual product and page when possible.`;
+    if (companyContext) {
+      const encodedName = encodeURIComponent(companyContext.companyName);
+      ctx += `\n\n--- NAVIGATION CAPABILITY ---`;
+      ctx += `\nIf the user asks you to navigate them to a page, include a navigation tag in your response like: [NAVIGATE:/app/company/${encodedName}/settings]`;
+      ctx += `\nYou can also navigate to specific sub-tabs using query parameters: [NAVIGATE:/app/company/${encodedName}/settings?tab=general]`;
+      ctx += `\n\nAvailable pages, their tabs, and common aliases:`;
+      ctx += `\n- settings — Top-level tabs: lifecycle-phases, compliance-instances, clinical-trials, users, stakeholders, reviewers, general`;
+      ctx += `\n  - general has sub-tabs (use &submenu=): profile, system, admin`;
+      ctx += `\n  - profile has sections (use &section=) to auto-open and scroll to a specific collapsible:`;
+      ctx += `\n    - section=prefixes → Prefixes & Document Numbering`;
+      ctx += `\n    - section=currency → Currency & Financial Settings`;
+      ctx += `\n    - section=portfolio-structure → Device Portfolio Structure`;
+      ctx += `\n    - section=document-due-date → Document Due Date`;
+      ctx += `\n    - section=date-format → Date Display Format`;
+      ctx += `\n    - section=edm-system → Electronic Document Management System`;
+      ctx += `\n    - section=retention-periods → Document Retention Periods`;
+      ctx += `\n    - section=document-types → Document Types`;
+      ctx += `\n    - section=manufacturer → Manufacturer Information`;
+      ctx += `\n    - section=production-site → Production Site`;
+      ctx += `\n  - compliance-instances has sub-tabs (use &submenu=): documents, gap-analysis, activities, audits`;
+      ctx += `\n  - Aliases: "prefixes" or "sub-prefixes" or "document numbering" or "document categories" → settings?tab=general&submenu=profile&section=prefixes`;
+      ctx += `\n  - Aliases: "currency" or "financial settings" → settings?tab=general&submenu=profile&section=currency`;
+      ctx += `\n  - Aliases: "portfolio structure" or "device portfolio" → settings?tab=general&submenu=profile&section=portfolio-structure`;
+      ctx += `\n  - Aliases: "document due date" → settings?tab=general&submenu=profile&section=document-due-date`;
+      ctx += `\n  - Aliases: "date format" → settings?tab=general&submenu=profile&section=date-format`;
+      ctx += `\n  - Aliases: "EDM" or "document management system" or "EDMS" → settings?tab=general&submenu=profile&section=edm-system`;
+      ctx += `\n  - Aliases: "retention periods" → settings?tab=general&submenu=profile&section=retention-periods`;
+      ctx += `\n  - Aliases: "document types" → settings?tab=general&submenu=profile&section=document-types`;
+      ctx += `\n  - Aliases: "manufacturer" or "manufacturer info" → settings?tab=general&submenu=profile&section=manufacturer`;
+      ctx += `\n  - Aliases: "production site" → settings?tab=general&submenu=profile&section=production-site`;
+      ctx += `\n  - Aliases: "system configuration" or "system config" → settings?tab=general&submenu=system`;
+      ctx += `\n  - Aliases: "administration" or "admin settings" → settings?tab=general&submenu=admin`;
+      ctx += `\n  - Aliases: "users" or "user management" or "departments" → settings?tab=users`;
+      ctx += `\n  - Aliases: "phases" or "lifecycle" → settings?tab=lifecycle-phases`;
+      ctx += `\n  - Aliases: "reviewers" or "review groups" → settings?tab=reviewers`;
+      ctx += `\n  - Aliases: "stakeholders" or "notified bodies" → settings?tab=stakeholders`;
+      ctx += `\n  - Aliases: "general settings" or "company info" → settings?tab=general`;
+      ctx += `\n  - Aliases: "clinical trials" → settings?tab=clinical-trials`;
+      ctx += `\n- quality-manual (aliases: manual, QMS manual)`;
+      ctx += `\n- products (aliases: devices, device, product list, my devices)`;
+      ctx += `\n- documents (aliases: docs, documentation, files)`;
+      ctx += `\n  - documents has tabs: documents, templates — e.g. documents?tab=templates`;
+      ctx += `\n- audits (aliases: audit)`;
+      ctx += `\n- complaints (aliases: complaint)`;
+      ctx += `\n- capa (aliases: corrective actions, CAPA)`;
+      ctx += `\n- risk (aliases: risk management, risks)`;
+      ctx += `\n- suppliers (aliases: supplier, vendor, vendors)`;
+      ctx += `\n- training (aliases: trainings)`;
+      ctx += `\n- dashboard (aliases: mission control, home, overview)`;
+      ctx += `\n- calibration (aliases: calibrations, instruments)`;
+      ctx += `\n- post-market (aliases: PMS, post market, surveillance, vigilance)`;
+      ctx += `\n- lifecycle (aliases: lifecycle, phases)`;
+      ctx += `\n- nonconformity (aliases: NC, non-conformance)`;
+      ctx += `\n- change-control (aliases: change request, CCR)`;
+      ctx += `\n- design-review (aliases: design reviews)`;
+      ctx += `\n- infrastructure (aliases: equipment, facilities)`;
+      ctx += `\n- calibration-schedule (aliases: calibration)`;
+      ctx += `\n- management-review (aliases: management reviews)`;
+      ctx += `\n- commercial-landing (aliases: commercial)`;
+      ctx += `\n- milestones (aliases: timeline, project milestones)`;
+      ctx += `\n- activities (aliases: activity)`;
+      ctx += `\n- compliance-instances (aliases: compliance)`;
+      ctx += `\n- budget-dashboard (aliases: budget)`;
+      ctx += `\nIf the user mentions a specific product by name, navigate to: /app/company/${encodedName}/products (the product list page).`;
+      ctx += `\nExample: "Sure, I'll take you to Settings now. [NAVIGATE:/app/company/${encodedName}/settings]"`;
+      ctx += `\nExample with deep-link: "I'll take you to the document prefixes configuration. [NAVIGATE:/app/company/${encodedName}/settings?tab=general&submenu=profile&section=prefixes]"`;
+      ctx += `\nAlways use the most specific deep-link available. For example, if the user asks about prefixes, use section=prefixes, not just tab=general.`;
+      ctx += `\nThe tag will be parsed and the user will be navigated automatically. Do NOT show the tag as visible text.`;
+      ctx += `\nIf unsure which page the user means, ask for clarification rather than guessing.`;
+      ctx += `\n--- END NAVIGATION ---`;
+    }
     if (systemContext) ctx += systemContext;
     return ctx;
   }, [currentSection, product, companyContext, systemContext]);
@@ -259,17 +392,25 @@ export function FloatingAdvisoryBot() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // Re-start mic after assistant finishes responding in conversation mode
+  // Restart mic when TTS finishes (via custom event from speakElevenLabs)
+  useEffect(() => {
+    const handleTTSEnded = () => {
+      if (conversationModeRef.current && !recognitionRef.current) {
+        startRecognition();
+      }
+    };
+    window.addEventListener('tts-ended', handleTTSEnded);
+    return () => window.removeEventListener('tts-ended', handleTTSEnded);
+  }, []);
+
+  // Re-start mic after assistant finishes responding in conversation mode (non-voice fallback)
   const wasLoadingRef = useRef(false);
   useEffect(() => {
     if (wasLoadingRef.current && !isLoading && conversationModeRef.current) {
-      // Assistant just finished — restart listening after a short delay
-      const timer = setTimeout(() => {
-        if (conversationModeRef.current && !recognitionRef.current) {
-          startRecognition();
-        }
-      }, 600);
-      return () => clearTimeout(timer);
+      if (!isTTSPlaying && !ttsCooldown && !recognitionRef.current) {
+        const timer = setTimeout(() => startRecognition(), 500);
+        return () => clearTimeout(timer);
+      }
     }
     wasLoadingRef.current = isLoading;
   }, [isLoading]);
@@ -360,7 +501,15 @@ export function FloatingAdvisoryBot() {
         toast({ title: 'Error', description: data.error, variant: 'destructive' });
         return;
       }
-      const content = data?.content || 'I apologize, I was unable to generate a response.';
+      let content = data?.content || 'I apologize, I was unable to generate a response.';
+
+      // Parse and execute navigation directives
+      const navMatch = content.match(/\[NAVIGATE:(\/[^\]]+)\]/);
+      if (navMatch) {
+        const navPath = navMatch[1];
+        content = content.replace(/\[NAVIGATE:\/[^\]]+\]/g, '').trim();
+        setTimeout(() => navigate(navPath), 500);
+      }
 
       if (voiceEnabled) {
         speakElevenLabs(content, selectedVoice);
@@ -386,36 +535,105 @@ export function FloatingAdvisoryBot() {
 
   const speechSupported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
+  // Post-process speech recognition to fix common misrecognitions
+  const fixTranscript = useCallback((text: string) => {
+    const replacements: [RegExp, string][] = [
+      [/\b(cyrus|sirus|syrus|xyrus|cyres|zyreg|cyric|cyrik|sirik|siri[ck]|syreg|sireg|sigh\s*reg|sy\s*reg)\b/gi, 'Xyreg'],
+      [/\bprof(?:essor)?\s+(cyrus|sirus|syrus|xyrus|cyres|zyreg|cyric|cyrik|sirik|siri[ck]|syreg|sireg|sigh\s*reg|sy\s*reg)\b/gi, 'Professor Xyreg'],
+    ];
+    let fixed = text;
+    for (const [pattern, replacement] of replacements) {
+      fixed = fixed.replace(pattern, replacement);
+    }
+    return fixed;
+  }, []);
+
   const startRecognition = useCallback(() => {
+    if (isTTSPlaying || ttsCooldown) {
+      console.log('[STT] Blocked — TTS playing or cooldown active');
+      return;
+    }
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = true;
+    recognition.interimResults = true;
     recognition.lang = 'en-US';
     let captured = '';
+    let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearSilenceTimer = () => {
+      if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
+    };
+
+    const autoSend = () => {
+      clearSilenceTimer();
+      if (captured.trim() && conversationModeRef.current) {
+        const fixed = fixTranscript(captured.trim());
+        setInput(fixed);
+        setIsListening(false);
+        recognition.stop();
+        recognitionRef.current = null;
+        setTimeout(() => {
+          const sendBtn = document.querySelector('[data-speech-auto-send]') as HTMLButtonElement;
+          if (sendBtn && !sendBtn.disabled) sendBtn.click();
+        }, 300);
+      }
+    };
+
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      captured = transcript;
-      setInput(prev => (prev ? prev + ' ' : '') + transcript);
+      if (isTTSPlaying || ttsCooldown) {
+        // Voice detected during TTS → interrupt the bot
+        if (activeAudio) {
+          activeAudio.pause();
+          activeAudio.remove();
+          activeAudio = null;
+        }
+        window.speechSynthesis?.cancel();
+        cancelTTSPlayback();
+        // Discard this result (it's mixed with TTS audio)
+        return;
+      }
+      let finalText = '';
+      let interimText = '';
+      for (let i = 0; i < event.results.length; i++) {
+        const result = event.results[i];
+        if (result.isFinal) {
+          finalText += result[0].transcript;
+        } else {
+          interimText += result[0].transcript;
+        }
+      }
+      captured = finalText;
+      setInput(fixTranscript(finalText + interimText));
+
+      // In conversation mode, auto-send after 1.5s of silence
+      if (conversationModeRef.current && (finalText || interimText)) {
+        clearSilenceTimer();
+        silenceTimer = setTimeout(autoSend, 1500);
+      }
     };
     recognition.onerror = () => {
+      clearSilenceTimer();
       setIsListening(false);
       recognitionRef.current = null;
     };
     recognition.onend = () => {
+      clearSilenceTimer();
       recognitionRef.current = null;
       if (captured.trim()) {
-        // Auto-send, then mic will restart via the isLoading useEffect
+        const fixed = fixTranscript(captured.trim());
+        setInput(fixed);
         setIsListening(false);
         setTimeout(() => {
           const sendBtn = document.querySelector('[data-speech-auto-send]') as HTMLButtonElement;
           if (sendBtn && !sendBtn.disabled) sendBtn.click();
         }, 300);
-      } else if (conversationModeRef.current) {
-        // No speech captured but conversation mode active — keep listening
+      } else if (conversationModeRef.current && !isTTSPlaying && !ttsCooldown) {
         setTimeout(() => {
-          if (conversationModeRef.current) startRecognition();
+          if (conversationModeRef.current && !recognitionRef.current && !isTTSPlaying && !ttsCooldown) {
+            startRecognition();
+          }
         }, 200);
       } else {
         setIsListening(false);
@@ -424,23 +642,85 @@ export function FloatingAdvisoryBot() {
     recognitionRef.current = recognition;
     recognition.start();
     setIsListening(true);
+  }, [fixTranscript]);
+
+  // Push-to-talk state
+  const pttPressTimeRef = useRef<number>(0);
+  const pttDoubleClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPTTActive = useRef(false);
+
+  const stopAllListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    cancelTTSPlayback();
+    setIsListening(false);
+    setConversationMode(false);
+    isPTTActive.current = false;
   }, []);
 
-  const toggleListening = useCallback(() => {
-    if (isListening || conversationMode) {
-      // Stop everything
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
-      }
-      setIsListening(false);
-      setConversationMode(false);
+  // Mouse/touch down → start push-to-talk (after 300ms to allow double-click detection)
+  const handleMicDown = useCallback(() => {
+    // Stop any playing TTS audio immediately (walkie-talkie interrupt)
+    if (activeAudio) {
+      activeAudio.pause();
+      activeAudio.remove();
+      activeAudio = null;
+    }
+    window.speechSynthesis?.cancel();
+    cancelTTSPlayback();
+    ttsCancelled = true;
+
+    if (conversationMode) {
+      // Already in conversation mode — just stop everything
+      stopAllListening();
       return;
     }
-    // Start conversation mode
-    setConversationMode(true);
-    startRecognition();
-  }, [isListening, conversationMode, startRecognition]);
+
+    // Delay PTT start to allow double-click detection
+    if (pttDelayTimer.current) clearTimeout(pttDelayTimer.current);
+    pttDelayTimer.current = setTimeout(() => {
+      pttPressTimeRef.current = Date.now();
+      isPTTActive.current = true;
+      if (!recognitionRef.current) {
+        startRecognition();
+      }
+    }, 250);
+  }, [conversationMode, stopAllListening, startRecognition]);
+
+  // Mouse/touch up → stop recognition (auto-sends via onend handler)
+  const handleMicUp = useCallback(() => {
+    if (!isPTTActive.current || conversationMode) return;
+    isPTTActive.current = false;
+
+    // Stop recognition — the onend handler will auto-send if there's text
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+  }, [conversationMode]);
+
+  // Double-click → toggle persistent conversation mode
+  const handleMicDoubleClick = useCallback(() => {
+    // Cancel any pending PTT start
+    if (pttDelayTimer.current) {
+      clearTimeout(pttDelayTimer.current);
+      pttDelayTimer.current = null;
+    }
+    isPTTActive.current = false;
+
+    if (conversationMode) {
+      stopAllListening();
+    } else {
+      // Stop any recognition started by first click's PTT
+      if (recognitionRef.current) {
+        try { recognitionRef.current.abort(); } catch {}
+        recognitionRef.current = null;
+      }
+      setConversationMode(true);
+      startRecognition();
+    }
+  }, [conversationMode, stopAllListening, startRecognition]);
 
   const handleDeleteThread = useCallback(async (e: React.MouseEvent, convId: string) => {
     e.stopPropagation();
@@ -480,21 +760,19 @@ export function FloatingAdvisoryBot() {
     document.addEventListener('mouseup', handleMouseUp);
   }, [currentWidth, currentHeight]);
 
-  const railOffset = isRightRailOpen ? 296 : 24;
-  const posStyle = position
+  const railRightCss = isRightRailOpen
+    ? 'calc(var(--xy-right-rail-width, 320px) + 16px)'
+    : ('24px' as const);
+  const posStyle: React.CSSProperties = position
     ? { left: position.x, top: position.y }
-    : { right: railOffset, bottom: 80 };
+    : { right: railRightCss, bottom: 80 };
 
   if (!open) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className={cn(
-          "fixed bottom-[5.5rem] z-50 h-14 w-14 rounded-full bg-[#D4AF37] text-white shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-200 flex items-center justify-center group",
-          isRightRailOpen
-            ? 'right-[296px] lg:right-[316px] xl:right-[336px]'
-            : 'right-6'
-        )}
+        style={{ right: railRightCss }}
+        className="fixed bottom-[5.5rem] z-50 h-14 w-14 rounded-full bg-[#D4AF37] text-white shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-200 flex items-center justify-center group"
         title="Technical Advisory Board"
       >
         <Users className="h-6 w-6 group-hover:scale-110 transition-transform" />
@@ -724,11 +1002,16 @@ export function FloatingAdvisoryBot() {
               />
               {speechSupported && (
                 <Button
-                  onClick={toggleListening}
+                  onMouseDown={handleMicDown}
+                  onMouseUp={handleMicUp}
+                  onMouseLeave={handleMicUp}
+                  onTouchStart={handleMicDown}
+                  onTouchEnd={handleMicUp}
+                  onDoubleClick={handleMicDoubleClick}
                   variant={isListening || conversationMode ? "destructive" : "outline"}
                   size="icon"
-                  className={`shrink-0 h-9 w-9 ${isListening ? 'animate-pulse' : conversationMode ? 'ring-2 ring-destructive/50' : ''}`}
-                  title={conversationMode ? 'Stop conversation mode' : 'Start conversation mode'}
+                  className={`shrink-0 h-9 w-9 select-none ${isListening && !conversationMode ? 'animate-pulse' : ''} ${conversationMode ? 'ring-2 ring-destructive ring-offset-1' : ''}`}
+                  title={conversationMode ? 'Conversation mode ON (click to stop)' : 'Hold to talk · Double-click for hands-free'}
                 >
                   {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
                 </Button>

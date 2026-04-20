@@ -8,9 +8,8 @@ import type { QualityManualSection, QualityManualData } from '@/hooks/useQuality
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 import { getClassBasedExclusions, getHighestDeviceClass, getExclusionSummaryLabel } from '@/config/classBasedExclusions';
-import { QualityManualGenerationConfig, getDefaultConfig, type GenerationConfig } from './QualityManualGenerationConfig';
-import { useLanguage } from '@/context/LanguageContext';
 import { useDraftDocumentNavigation } from '@/hooks/useDraftDocumentNavigation';
+import { stripLeadingChapterHeading } from '@/utils/qualityManualContent';
 
 interface QualityManualLaunchViewProps {
   sections: QualityManualSection[];
@@ -21,8 +20,6 @@ interface QualityManualLaunchViewProps {
   companyName?: string;
   companyData?: QualityManualData;
   applyClassBasedExclusions?: (deviceClass: string) => void;
-  onGenerateAll?: (config: GenerationConfig) => void;
-  generatingAll?: boolean;
 }
 
 export function QualityManualLaunchView({
@@ -34,13 +31,9 @@ export function QualityManualLaunchView({
   companyName,
   companyData,
   applyClassBasedExclusions,
-  onGenerateAll,
-  generatingAll,
 }: QualityManualLaunchViewProps) {
-  const { language } = useLanguage();
   const { handleDraftClick, checking } = useDraftDocumentNavigation(companyId, companyName || '');
   const [showDocCIDialog, setShowDocCIDialog] = useState(false);
-  const [genConfig, setGenConfig] = useState<GenerationConfig>(() => getDefaultConfig(companyData, language));
   const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
   const [exclusionBannerDismissed, setExclusionBannerDismissed] = useState(false);
 
@@ -49,10 +42,8 @@ export function QualityManualLaunchView({
   const progress = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
   const nextIncomplete = sections.find(s => !s.content || s.content.length <= 20);
 
-  // Exclusions are at sub-clause level; count unique excluded sub-clauses
   const excludedCount = exclusions.size;
 
-  // Determine highest device class from company products
   const highestClass = useMemo(() => {
     if (!companyData?.products || companyData.products.length === 0) return null;
     const riskClasses = companyData.products
@@ -174,28 +165,6 @@ export function QualityManualLaunchView({
         </div>
       )}
 
-      {/* AI Generation Settings */}
-      <QualityManualGenerationConfig
-        config={genConfig}
-        onChange={setGenConfig}
-        companyData={companyData}
-      />
-
-      {/* Generate All Button */}
-      {onGenerateAll && totalSteps > completedCount && (
-        <div className="mb-6">
-          <Button
-            onClick={() => onGenerateAll(genConfig)}
-            disabled={generatingAll}
-            className="w-full gap-2"
-            size="lg"
-          >
-            <Sparkles className="h-4 w-4" />
-            {generatingAll ? 'Generating…' : `Generate All Remaining Chapters (${totalSteps - completedCount})`}
-          </Button>
-        </div>
-      )}
-
       {/* Progress Header */}
       <div className="mb-6 p-4 rounded-lg border bg-card">
         <div className="flex items-center justify-between mb-2">
@@ -209,18 +178,6 @@ export function QualityManualLaunchView({
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {companyId && companyName && completedCount > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleDraftClick(`QM-FULL-${companyId}`, () => setShowDocCIDialog(true))}
-                disabled={checking}
-                className="gap-1.5"
-              >
-                {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileEdit className="h-4 w-4" />}
-                Create Document
-              </Button>
-            )}
             <div className={cn(
               "text-2xl font-bold tabular-nums",
               progress >= 100 ? "text-emerald-600 dark:text-emerald-400"
@@ -234,11 +191,10 @@ export function QualityManualLaunchView({
         <Progress value={progress} className="h-2" />
       </div>
 
-      {/* Section List — flat 8 chapters */}
+      {/* Section List */}
       <div className="space-y-2">
         {sections.map(section => {
           const isComplete = !!(section.content && section.content.length > 20);
-          // Check if any covered sub-clauses are excluded
           const excludedSubClauses = section.coveredClauses.filter(c => exclusions.has(c));
           return (
             <div key={section.sectionKey}>
@@ -274,7 +230,7 @@ export function QualityManualLaunchView({
             title="Complete Quality Manual — ISO 13485"
             htmlContent={sections
               .filter(s => s.content && s.content.length > 20)
-              .map(s => `<h2>Ch.${s.chapterNumber} ${s.title}</h2>${s.content}`)
+              .map(s => `<h2>Chapter ${s.chapterNumber}: ${s.title}</h2>${stripLeadingChapterHeading(s.content || '')}`)
               .join('\n')}
             templateIdKey={`QM-FULL-${companyId}`}
             companyId={companyId}

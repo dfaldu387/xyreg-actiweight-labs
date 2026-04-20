@@ -8,6 +8,8 @@ import type { DocxComment } from "@/services/docxCommentService";
 interface DocxCommentHighlighterProps {
   containerRef: React.RefObject<HTMLElement | null>;
   comments: DocxComment[];
+  /** When false, skip inserting inline 💬 badges after each highlighted passage. */
+  showBadges?: boolean;
 }
 
 function normalizeText(text: string): string {
@@ -156,7 +158,7 @@ function highlightRange(range: Range, commentId: string): HTMLElement[] {
     mark.className = "docx-comment-mark";
     mark.dataset.commentId = commentId;
     mark.style.cssText =
-      "background-color: rgba(251, 191, 36, 0.30); border-bottom: 2px solid #f59e0b; border-radius: 2px; cursor: pointer; padding: 0 1px;";
+      "background-color: #FEF08A !important; color: #1F2937 !important; border-bottom: 2px solid #F59E0B !important; border-radius: 2px; cursor: pointer; padding: 0 2px; display: inline;";
     mark.textContent = matched;
 
     const frag = document.createDocumentFragment();
@@ -265,6 +267,7 @@ function CommentPopover({
 export function DocxCommentHighlighter({
   containerRef,
   comments,
+  showBadges = true,
 }: DocxCommentHighlighterProps) {
   const allMarks = useRef<HTMLElement[]>([]);
   const badgeEls = useRef<HTMLElement[]>([]);
@@ -307,29 +310,55 @@ export function DocxCommentHighlighter({
         });
       }
 
-      // Add a small inline badge after the last mark
-      const lastMark = marks[marks.length - 1];
-      const badge = document.createElement("span");
-      badge.className = "docx-comment-badge";
-      badge.style.cssText =
-        "display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #f59e0b; color: white; border-radius: 50%; font-size: 10px; margin-left: 2px; cursor: pointer; vertical-align: text-top; line-height: 1; user-select: none;";
-      badge.textContent = "💬";
-      badge.addEventListener("click", (e) => {
-        e.stopPropagation();
-        setActiveComment({ comment, anchorEl: badge });
-      });
+      if (showBadges) {
+        // Add a small inline badge after the last mark
+        const lastMark = marks[marks.length - 1];
+        const badge = document.createElement("span");
+        badge.className = "docx-comment-badge";
+        badge.style.cssText =
+          "display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #f59e0b; color: white; border-radius: 50%; font-size: 10px; margin-left: 2px; cursor: pointer; vertical-align: text-top; line-height: 1; user-select: none;";
+        badge.textContent = "💬";
+        badge.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setActiveComment({ comment, anchorEl: badge });
+        });
 
-      // Insert badge after the last mark
-      if (lastMark.nextSibling) {
-        lastMark.parentNode?.insertBefore(badge, lastMark.nextSibling);
-      } else {
-        lastMark.parentNode?.appendChild(badge);
+        // Insert badge after the last mark
+        if (lastMark.nextSibling) {
+          lastMark.parentNode?.insertBefore(badge, lastMark.nextSibling);
+        } else {
+          lastMark.parentNode?.appendChild(badge);
+        }
+        badgeEls.current.push(badge);
       }
-      badgeEls.current.push(badge);
     }
-  }, [containerRef, comments]);
+  }, [containerRef, comments, showBadges]);
 
   useEffect(() => {
+    // Inject a global stylesheet once so prose/typography defaults don't strip
+    // our background color from <mark class="docx-comment-mark">.
+    const styleId = "docx-comment-mark-style";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        mark.docx-comment-mark,
+        .prose mark.docx-comment-mark,
+        .prose-sm mark.docx-comment-mark {
+          background-color: #FEF08A !important;
+          color: #1F2937 !important;
+          border-bottom: 2px solid #F59E0B !important;
+          border-radius: 2px;
+          padding: 0 2px;
+        }
+        mark.docx-comment-mark.docx-comment-mark--active {
+          background-color: #FACC15 !important;
+          box-shadow: 0 0 0 3px #F97316, 0 0 12px 2px rgba(249, 115, 22, 0.7);
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     const timer = setTimeout(applyHighlights, 400);
     return () => {
       clearTimeout(timer);

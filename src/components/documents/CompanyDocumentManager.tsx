@@ -102,11 +102,10 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
   const COMPANY_DOC_COLUMNS: ColumnDefinition[] = [
     { key: 'name', label: 'Name', required: true },
     
-    { key: 'sub_section', label: 'Section' },
+    { key: 'document_type', label: 'Type' },
     { key: 'authors_ids', label: 'Author' },
-    { key: 'document_type', label: 'Document Type' },
-    { key: 'is_record', label: 'Category' },
     { key: 'status', label: 'Status' },
+    { key: 'start_date', label: 'Start Date' },
     { key: 'due_date', label: 'Due Date' },
     { key: 'date', label: 'Date' },
     { key: 'approval_date', label: 'Approved' },
@@ -590,10 +589,22 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
 
       updateBulkProgress({ completed: i, currentItem: docId });
 
-      const { error } = await supabase.from(table).delete().eq("id", docId);
+      // Use .select() to verify rows were actually deleted (RLS can silently block)
+      const { data: deleted, error } = await supabase.from(table).delete().eq("id", docId).select('id');
       if (error) {
         console.error('Bulk delete error for', docId, error);
         failCount++;
+      } else if (!deleted || deleted.length === 0) {
+        console.warn('Bulk delete: no rows deleted for', docId, 'in table', table);
+        // Try the other table as fallback
+        const altTable = table === 'phase_assigned_document_template' ? 'document_studio_templates' : 'phase_assigned_document_template';
+        const { data: altDeleted, error: altError } = await supabase.from(altTable).delete().eq("id", docId).select('id');
+        if (altError || !altDeleted || altDeleted.length === 0) {
+          console.error('Bulk delete failed in both tables for', docId);
+          failCount++;
+        } else {
+          successCount++;
+        }
       } else {
         successCount++;
       }
@@ -682,13 +693,13 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
           case 'status_desc':
             return (b.status || '').localeCompare(a.status || '', undefined, { sensitivity: 'base' });
           case 'category_asc': {
-            const aCat = a.is_record ? 'Report' : 'Document';
-            const bCat = b.is_record ? 'Report' : 'Document';
+            const aCat = a.is_record ? 'Record' : 'Document';
+            const bCat = b.is_record ? 'Record' : 'Document';
             return aCat.localeCompare(bCat);
           }
           case 'category_desc': {
-            const aCat = a.is_record ? 'Report' : 'Document';
-            const bCat = b.is_record ? 'Report' : 'Document';
+            const aCat = a.is_record ? 'Record' : 'Document';
+            const bCat = b.is_record ? 'Record' : 'Document';
             return bCat.localeCompare(aCat);
           }
           default:
@@ -1217,6 +1228,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
           setDraftDrawerDocument(null);
           refetch();
         }}
+        disableSopMentions
       />
 
       <AlertDialog open={showRefreshConfirm} onOpenChange={setShowRefreshConfirm}>

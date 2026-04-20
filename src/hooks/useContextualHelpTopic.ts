@@ -513,6 +513,44 @@ const helpTopics: Record<string, HelpTopic> = {
     icon: Layers,
   },
 
+  // EHDS Data Vault topics
+  'ehds-data-vault': {
+    key: 'ehds-data-vault',
+    title: 'EHDS Data Vault (EU 2025/327)',
+    icon: Shield,
+    section: 'Company',
+  },
+  'ehds-datasets': {
+    key: 'ehds-datasets',
+    title: 'Dataset Library (HealthDCAT-AP)',
+    icon: Shield,
+    section: 'Company',
+  },
+  'ehds-translation': {
+    key: 'ehds-translation',
+    title: 'Translation Layer (EEHRxF)',
+    icon: Shield,
+    section: 'Company',
+  },
+  'ehds-secondary-use': {
+    key: 'ehds-secondary-use',
+    title: 'Secondary Use (HDAB Permits)',
+    icon: Shield,
+    section: 'Company',
+  },
+  'ehds-anonymization': {
+    key: 'ehds-anonymization',
+    title: 'Anonymization Lab',
+    icon: Shield,
+    section: 'Company',
+  },
+  'ehds-self-declaration': {
+    key: 'ehds-self-declaration',
+    title: 'Self-Declaration (Annex II)',
+    icon: Shield,
+    section: 'Company',
+  },
+
   // Gap Analysis contextual help
   'gap-analysis-detail': {
     key: 'gap-analysis-detail',
@@ -525,6 +563,110 @@ const helpTopics: Record<string, HelpTopic> = {
     key: 'technical-file',
     title: 'Technical File (MDR Dossier)',
     icon: FileText,
+  },
+
+  // Product-level pages
+  'bom': {
+    key: 'bom',
+    title: 'Bill of Materials',
+    icon: Package,
+  },
+  'gantt-chart': {
+    key: 'gantt-chart',
+    title: 'Gantt Chart & Timeline',
+    icon: Calendar,
+  },
+  'essential-gates': {
+    key: 'essential-gates',
+    title: 'Essential Gates',
+    icon: Flag,
+  },
+  'investor-share': {
+    key: 'investor-share',
+    title: 'Investor Share (Genesis)',
+    icon: DollarSign,
+  },
+  'npv-analysis': {
+    key: 'npv-analysis',
+    title: 'NPV / rNPV Analysis',
+    icon: DollarSign,
+  },
+  'compliance-instances': {
+    key: 'compliance-instances',
+    title: 'Compliance Instances',
+    icon: FileText,
+  },
+  'product-definition-page': {
+    key: 'product-definition-page',
+    title: 'Product Definition',
+    icon: Package,
+  },
+  'product-audit-log': {
+    key: 'product-audit-log',
+    title: 'Device Audit Trail',
+    icon: ClipboardList,
+  },
+
+  // Company-level additional pages
+  'company-permissions': {
+    key: 'company-permissions',
+    title: 'Permissions & Access',
+    icon: Shield,
+    section: 'Company',
+  },
+  'company-products': {
+    key: 'company-products',
+    title: 'Products List',
+    icon: Package,
+    section: 'Company',
+  },
+  'company-portfolio-landing': {
+    key: 'company-portfolio-landing',
+    title: 'Portfolio Landing',
+    icon: BarChart3,
+    section: 'Company',
+  },
+  'company-budget': {
+    key: 'company-budget',
+    title: 'Budget Dashboard',
+    icon: DollarSign,
+    section: 'Company',
+  },
+  'company-user-product-matrix': {
+    key: 'company-user-product-matrix',
+    title: 'User-Product Matrix',
+    icon: Users,
+    section: 'Company',
+  },
+  'company-basic-udi': {
+    key: 'company-basic-udi',
+    title: 'Basic UDI-DI Registry',
+    icon: Barcode,
+    section: 'Company',
+  },
+  'company-role-access': {
+    key: 'company-role-access',
+    title: 'Role Access Control',
+    icon: Shield,
+    section: 'Company',
+  },
+  'company-reviewer-analytics': {
+    key: 'company-reviewer-analytics',
+    title: 'Reviewer Analytics',
+    icon: BarChart3,
+    section: 'Company',
+  },
+  'company-platforms': {
+    key: 'company-platforms',
+    title: 'Platform Management',
+    icon: Layers,
+    section: 'Company',
+  },
+  'company-marketplace': {
+    key: 'company-marketplace',
+    title: 'Marketplace Preview',
+    icon: Package,
+    section: 'Company',
   },
 
   // Default/General
@@ -589,6 +731,34 @@ const routeMappings: RouteHelpMapping[] = [
   {
     pattern: /\/product\/[^/]+\/documents/,
     topic: helpTopics['documents'],
+  },
+  {
+    pattern: /\/product\/[^/]+\/bom/,
+    topic: helpTopics['bom'],
+  },
+  {
+    pattern: /\/product\/[^/]+\/gantt-chart/,
+    topic: helpTopics['gantt-chart'],
+  },
+  {
+    pattern: /\/product\/[^/]+\/essential-gates/,
+    topic: helpTopics['essential-gates'],
+  },
+  {
+    pattern: /\/product\/[^/]+\/investor-share/,
+    topic: helpTopics['investor-share'],
+  },
+  {
+    pattern: /\/product\/[^/]+\/npv-analysis/,
+    topic: helpTopics['npv-analysis'],
+  },
+  {
+    pattern: /\/product\/[^/]+\/compliance-instances/,
+    topic: helpTopics['compliance-instances'],
+  },
+  {
+    pattern: /\/product\/[^/]+\/audit-log/,
+    topic: helpTopics['product-audit-log'],
   },
   {
     pattern: /\/product\/[^/]+\/technical-file/,
@@ -695,6 +865,47 @@ const routeMappings: RouteHelpMapping[] = [
     pattern: /\/company\/[^/]+\/settings/,
     topic: helpTopics['company-settings'],
   },
+  // Additional company pages
+  {
+    pattern: /\/company\/[^/]+\/permissions/,
+    topic: helpTopics['company-permissions'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/products/,
+    topic: helpTopics['company-products'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/portfolio-landing/,
+    topic: helpTopics['company-portfolio-landing'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/budget/,
+    topic: helpTopics['company-budget'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/user-product-matrix/,
+    topic: helpTopics['company-user-product-matrix'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/basic-udi/,
+    topic: helpTopics['company-basic-udi'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/role-access/,
+    topic: helpTopics['company-role-access'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/reviewer-analytics/,
+    topic: helpTopics['company-reviewer-analytics'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/platforms/,
+    topic: helpTopics['company-platforms'],
+  },
+  {
+    pattern: /\/company\/[^/]+\/marketplace/,
+    topic: helpTopics['company-marketplace'],
+  },
   // Enterprise Quality Governance
   {
     pattern: /\/company\/[^/]+\/nonconformity/,
@@ -728,6 +939,18 @@ const routeMappings: RouteHelpMapping[] = [
   {
     pattern: /\/company\/[^/]+\/competency-matrix/,
     topic: helpTopics['company-competency-matrix'],
+  },
+  // EHDS Data Vault
+  {
+    pattern: /\/company\/[^/]+\/ehds-data-vault/,
+    topic: helpTopics['ehds-data-vault'],
+    tabMappings: {
+      'datasets': helpTopics['ehds-datasets'],
+      'translation': helpTopics['ehds-translation'],
+      'secondary-use': helpTopics['ehds-secondary-use'],
+      'anonymization': helpTopics['ehds-anonymization'],
+      'self-declaration': helpTopics['ehds-self-declaration'],
+    },
   },
   // Enterprise Compliance
   {

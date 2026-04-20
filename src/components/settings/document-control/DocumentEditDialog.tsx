@@ -807,11 +807,11 @@ export function DocumentEditDialog({
           <FormControl component="fieldset" disabled={isLoading} sx={{ ml: 2 }}>
             <RadioGroup
               row
-              value={formData.isRecord ? 'report' : 'document'}
-              onChange={(e) => setFormData(prev => ({ ...prev, isRecord: e.target.value === 'report' }))}
+              value={formData.isRecord ? 'record' : 'document'}
+              onChange={(e) => setFormData(prev => ({ ...prev, isRecord: e.target.value === 'record' }))}
             >
               <FormControlLabel value="document" control={<Radio size="small" />} label={lang('companySettings.editDocumentDialog.document')} />
-              <FormControlLabel value="report" control={<Radio size="small" />} label={lang('companySettings.editDocumentDialog.report')} />
+              <FormControlLabel value="record" control={<Radio size="small" />} label={lang('companySettings.editDocumentDialog.record')} />
             </RadioGroup>
           </FormControl>
         </Box>

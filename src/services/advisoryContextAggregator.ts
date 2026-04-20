@@ -69,14 +69,18 @@ export async function aggregateAdvisoryContext(companyId: string): Promise<strin
     // Document numbering prefixes from settings
     const settings = settingsRes.data || [];
     const numberingEntries = settings.filter(s => s.setting_key.startsWith('document_numbering_'));
+    const prefixes: string[] = [];
+    const numberingDetails: string[] = [];
     if (numberingEntries.length > 0) {
-      const prefixes = numberingEntries.map(e => {
+      for (const e of numberingEntries) {
         try {
           const val = e.setting_value as any;
-          return val?.prefix;
-        } catch { return null; }
-      }).filter(Boolean);
-      if (prefixes.length) ctx += `\n\nConfigured Document Prefixes: ${prefixes.join(', ')}`;
+          if (val?.prefix) {
+            prefixes.push(val.prefix);
+            numberingDetails.push(`${val.prefix}: format=${val.numberFormat || 'XXX'}, starting=${val.startingNumber || '001'}, version=${val.versionFormat || 'V1.0'}`);
+          }
+        } catch {}
+      }
     }
 
     // Sub-prefixes
@@ -88,7 +92,20 @@ export async function aggregateAdvisoryContext(companyId: string): Promise<strin
         if (Array.isArray(parsed)) subPrefixes = parsed;
       } catch {}
     }
-    ctx += `\nFunctional Sub-prefixes: ${subPrefixes.map(sp => `${sp.code} (${sp.label})`).join(', ')}`;
+
+    // Document numbering system explanation
+    ctx += `\n\nDocument Numbering System:`;
+    ctx += `\nFormat: TYPE-SUBPREFIX-NUMBER (e.g., SOP-QA-001 V1.0)`;
+    ctx += `\n- TYPE comes first (document category prefix), then the functional SUB-PREFIX (department), then the sequential number.`;
+    ctx += `\n- Example: SOP-QA-001 = SOP (Standard Operating Procedure) + QA (Quality Assurance) + 001 (first document)`;
+    if (prefixes.length) {
+      ctx += `\nConfigured Document Type Prefixes: ${prefixes.join(', ')}`;
+      for (const detail of numberingDetails) {
+        ctx += `\n  - ${detail}`;
+      }
+    }
+    ctx += `\nFunctional Sub-prefixes (departments): ${subPrefixes.map(sp => `${sp.code} (${sp.label})`).join(', ')}`;
+    ctx += `\nIMPORTANT: Always use the format TYPE-SUBPREFIX-NUMBER. Never put sub-prefix before the type.`;
 
     ctx += `\n--- END COMPANY SYSTEM CONTEXT ---`;
 

@@ -9,7 +9,9 @@ const DEFAULT_DOCUMENT_TYPES = [
   'Clinical',
   'Quality',
   'Design',
-  'SOP'
+  'SOP',
+  'Report',
+  'Manual'
 ];
 
 interface UseDocumentTypesResult {

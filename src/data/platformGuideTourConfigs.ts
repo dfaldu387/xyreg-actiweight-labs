@@ -75,13 +75,14 @@ export const PLATFORM_TOUR_CONFIGS: Record<string, PlatformTourConfig> = {
   },
 
   'client-compass': {
-    route: '/portfolio-landing',
+    // Absolute route — Client Compass lives at /app/clients (Level 1 lobby)
+    route: '/app/clients',
     steps: [
-      { selector: '[data-tour="breadcrumb-client-compass"]', title: 'What is Client Compass?', description: 'Click this "Client Compass" breadcrumb to navigate to Level 1. This is the multi-company lobby — essential for consultants and multi-site organisations managing several companies.' },
-      { selector: '[data-tour="sidebar"]', title: 'Switching Between Companies', description: 'From Client Compass, click any company in the sidebar to enter that company\'s context. All modules, data, and devices will switch to reflect the selected company.' },
-      { selector: '[data-tour="products"]', title: 'You Are Inside a Company Now', description: 'These are your device cards — you are inside one company right now. Click "Client Compass" in the breadcrumb above to go back and see all your companies.' },
-      { selector: '[data-tour="dashboard-content"]', title: 'Company Cards in Client Compass', description: 'When you visit Client Compass, each company card shows: number of devices, compliance score, open actions, and recent activity. Use it to prioritise which company needs attention.' },
-      { selector: '[data-tour="sidebar"]', title: 'Data Isolation', description: 'Notice the modules in this sidebar — Suppliers, Documents, CAPA records, and devices all belong to the current company only. Each company\'s data is completely isolated and never mixed.' },
+      { selector: '[data-tour="client-compass-grid"]', title: 'Welcome to Client Compass (Level 1)', description: 'You are now at Level 1 — the multi-company lobby. This is the top altitude in XyReg, where consultants and multi-site organisations see every company they manage in one place.' },
+      { selector: '[data-tour="company-card"]', title: 'Company Cards', description: 'Each card represents one company. It shows the company name, status (On Track / At Risk / Off Track), device count, recent activity, and time you have spent on this client. Click a card to enter that company\'s Level 2 dashboard.' },
+      { selector: '[data-tour="client-compass-grid"]', title: 'Recent vs Alphabetical', description: 'The grid is split into two sections: "Most Recent" (companies you visited recently) at the top, and the full alphabetical list below. This helps you jump back into active work fast.' },
+      { selector: '[data-tour="sidebar"]', title: 'Data Isolation Between Companies', description: 'Each company is a fully isolated tenant — its devices, documents, CAPAs, and suppliers never mix with other companies. When you click into a company, the entire sidebar updates to that company\'s context.' },
+      { selector: '[data-tour="company-card"]', title: 'Returning to Client Compass', description: 'Once inside a company, you can always return here by clicking "Client Compass" in the breadcrumb at the top of any page, or by clicking the Mission Control / Companies icon in the sidebar.' },
     ],
   },
 

@@ -34,6 +34,10 @@
     "plans": "Piani",
     "logOut": "Disconnetti"
   },
+  "clients": {
+    "thisWeek": "Questa settimana",
+    "total": "Totale"
+  },
   "genesis": {
     "sidebar": {
       "backToGenesisHome": "Torna alla home di Genesis",

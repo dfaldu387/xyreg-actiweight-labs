@@ -13,7 +13,7 @@ export function AdvisoryBoardToggle() {
       <div className="flex items-center gap-2 min-w-0">
         <Users className="h-4 w-4 text-primary shrink-0" />
         <div className="min-w-0">
-          <p className="text-xs font-medium text-foreground">Advisory Board</p>
+          <p className="text-xs font-medium text-foreground">Professor XyReg</p>
           <p className="text-[10px] text-muted-foreground truncate">
             {isAdvisoryBoardVisible ? 'Floating AI advisor visible' : 'Floating AI advisor hidden'}
           </p>

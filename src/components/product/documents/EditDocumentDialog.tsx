@@ -45,6 +45,7 @@ import { SectionSelector } from "@/components/common/SectionSelector";
 import { useDocumentTypes } from "@/hooks/useDocumentTypes";
 import { AddDocumentTypeSheet } from "@/components/common/AddDocumentTypeSheet";
 import { useDocumentCategoryConfigs } from "@/hooks/useDocumentCategoryConfigs";
+import { useSubPrefixes } from "@/hooks/useSubPrefixes";
 import { useCompanyDateFormat } from "@/hooks/useCompanyDateFormat";
 import { ReferenceDocumentPicker } from "@/components/common/ReferenceDocumentPicker";
 import { useReferenceDocuments } from "@/hooks/useReferenceDocuments";
@@ -166,9 +167,21 @@ export function EditDocumentDialog({
   
   // Document category numbering
   const { configs: categoryConfigs, isLoading: isLoadingCategories, getNextDocumentNumber, getUsedNumbers } = useDocumentCategoryConfigs(companyId);
+  const { subPrefixes } = useSubPrefixes(companyId);
   const [documentNumber, setDocumentNumber] = useState(document?.document_number || '');
+  const [selectedSubPrefix, setSelectedSubPrefix] = useState<string>('');
   const [usedNumbersSet, setUsedNumbersSet] = useState<Set<string>>(new Set());
   const [isLoadingUsedNumbers, setIsLoadingUsedNumbers] = useState(false);
+
+  // Parse sub-prefix from an existing document number on mount/change
+  useEffect(() => {
+    if (!documentNumber || !selectedDocumentType || subPrefixes.length === 0) return;
+    const withoutPrefix = documentNumber.replace(`${selectedDocumentType}-`, '');
+    const subMatch = subPrefixes.find(sp => withoutPrefix.startsWith(`${sp.code}-`));
+    if (subMatch && selectedSubPrefix !== subMatch.code) {
+      setSelectedSubPrefix(subMatch.code);
+    }
+  }, [documentNumber, selectedDocumentType, subPrefixes]);
   const { data: existingTags = [] } = useExistingTags(companyId);
 
   // Auto-detect document category and number from document name for existing docs
@@ -1334,11 +1347,12 @@ export function EditDocumentDialog({
                 const prefix = e.target.value;
                 const config = categoryConfigs.find(c => c.prefix === prefix);
                 setSelectedDocumentType(prefix);
-                // Clear number when category changes
+                // Clear number and sub-prefix when category changes
                 if (documentNumber) {
                   const currentPrefix = documentNumber.split('-')[0];
                   if (currentPrefix !== prefix) {
                     setDocumentNumber('');
+                    setSelectedSubPrefix('');
                   }
                 }
                 if (config && !version) {
@@ -1370,17 +1384,63 @@ export function EditDocumentDialog({
             )}
           </FormControl>
 
+          {/* Sub-prefix selector (optional functional department) */}
+          {selectedDocumentType && subPrefixes.length > 0 && (
+            <FormControl fullWidth disabled={isSubmitting}>
+              <InputLabel id="edit-document-subprefix-select-label">Sub-prefix (optional)</InputLabel>
+              <Select
+                labelId="edit-document-subprefix-select-label"
+                value={selectedSubPrefix || ''}
+                label="Sub-prefix (optional)"
+                onChange={(e) => {
+                  const newSub = e.target.value as string;
+                  setSelectedSubPrefix(newSub);
+                  // Rebuild document number if one exists
+                  if (documentNumber) {
+                    const parts = documentNumber.split('-');
+                    const numPart = parts[parts.length - 1];
+                    const fullId = newSub
+                      ? `${selectedDocumentType}-${newSub}-${numPart}`
+                      : `${selectedDocumentType}-${numPart}`;
+                    setDocumentNumber(fullId);
+                  }
+                }}
+                MenuProps={{
+                  disablePortal: false,
+                  PaperProps: { style: { zIndex: 1400, maxHeight: 300 } },
+                }}
+              >
+                <MenuItem value="">
+                  <span className="text-muted-foreground italic">— none —</span>
+                </MenuItem>
+                {subPrefixes.map(sp => (
+                  <MenuItem key={sp.key} value={sp.code}>
+                    <span className="font-mono font-medium">{sp.code}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">{sp.label}</span>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+
           {/* Document Number selector */}
           {selectedDocumentType && (
             <FormControl fullWidth disabled={isSubmitting || isLoadingUsedNumbers}>
               <InputLabel id="edit-document-number-select-label">Document Number</InputLabel>
               <Select
                 labelId="edit-document-number-select-label"
-                value={documentNumber ? documentNumber.replace(`${selectedDocumentType}-`, '') : ''}
+                value={(() => {
+                  if (!documentNumber) return '';
+                  let stripped = documentNumber.replace(`${selectedDocumentType}-`, '');
+                  if (selectedSubPrefix) stripped = stripped.replace(`${selectedSubPrefix}-`, '');
+                  return stripped;
+                })()}
                 label="Document Number"
                 onChange={(e) => {
                   const num = e.target.value;
-                  const fullId = `${selectedDocumentType}-${num}`;
+                  const fullId = selectedSubPrefix
+                    ? `${selectedDocumentType}-${selectedSubPrefix}-${num}`
+                    : `${selectedDocumentType}-${num}`;
                   setDocumentNumber(fullId);
                 }}
                 MenuProps={{

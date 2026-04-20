@@ -53,6 +53,36 @@ import {
 } from '@/components/help/PortfolioHealthHelpContent';
 import { Badge } from '@/components/ui/badge';
 import { GapAnalysisContextualHelp } from './GapAnalysisHelpContent';
+import {
+  EHDSDataVaultHelp,
+  EHDSDatasetsHelp,
+  EHDSTranslationHelp,
+  EHDSSecondaryUseHelp,
+  EHDSAnonymizationHelp,
+  EHDSSelfDeclarationHelp,
+} from './EHDSDataVaultHelpContent';
+import {
+  BOMHelp,
+  GanttChartHelp,
+  EssentialGatesHelp,
+  InvestorShareHelp,
+  NPVAnalysisHelp,
+  ComplianceInstancesHelp,
+  ProductDefinitionPageHelp,
+  ProductAuditLogHelp,
+} from './ProductPagesHelpContent';
+import {
+  CompanyPermissionsHelp,
+  CompanyProductsHelp,
+  CompanyPortfolioLandingHelp,
+  CompanyBudgetHelp,
+  CompanyUserProductMatrixHelp,
+  CompanyBasicUDIHelp,
+  CompanyRoleAccessHelp,
+  CompanyReviewerAnalyticsHelp,
+  CompanyPlatformsHelp,
+  CompanyMarketplaceHelp,
+} from './CompanyPagesHelpContent';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   CheckCircle2, 
@@ -3035,6 +3065,33 @@ export const helpContentRegistry: Record<string, React.FC<HelpContentProps>> = {
   'gap-analysis-detail': GapAnalysisContextualHelp,
   // Technical File help
   'technical-file': TechnicalFileHelp,
+  // EHDS Data Vault help
+  'ehds-data-vault': EHDSDataVaultHelp,
+  'ehds-datasets': EHDSDatasetsHelp,
+  'ehds-translation': EHDSTranslationHelp,
+  'ehds-secondary-use': EHDSSecondaryUseHelp,
+  'ehds-anonymization': EHDSAnonymizationHelp,
+  'ehds-self-declaration': EHDSSelfDeclarationHelp,
+  // Product page help
+  'bom': BOMHelp,
+  'gantt-chart': GanttChartHelp,
+  'essential-gates': EssentialGatesHelp,
+  'investor-share': InvestorShareHelp,
+  'npv-analysis': NPVAnalysisHelp,
+  'compliance-instances': ComplianceInstancesHelp,
+  'product-definition-page': ProductDefinitionPageHelp,
+  'product-audit-log': ProductAuditLogHelp,
+  // Company page help
+  'company-permissions': CompanyPermissionsHelp,
+  'company-products': CompanyProductsHelp,
+  'company-portfolio-landing': CompanyPortfolioLandingHelp,
+  'company-budget': CompanyBudgetHelp,
+  'company-user-product-matrix': CompanyUserProductMatrixHelp,
+  'company-basic-udi': CompanyBasicUDIHelp,
+  'company-role-access': CompanyRoleAccessHelp,
+  'company-reviewer-analytics': CompanyReviewerAnalyticsHelp,
+  'company-platforms': CompanyPlatformsHelp,
+  'company-marketplace': CompanyMarketplaceHelp,
 };
 
 export function getHelpContent(topicKey: string): React.FC<HelpContentProps> {

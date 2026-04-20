@@ -182,11 +182,11 @@ export class DocumentStudioPersistenceService {
     companyId: string,
     documentReference: string,
     productId?: string
-  ): Promise<{ success: boolean; data?: Array<{ id: string; updated_at?: string | null }>; error?: string }> {
+  ): Promise<{ success: boolean; data?: Array<{ id: string; name?: string; document_type?: string; updated_at?: string | null }>; error?: string }> {
     try {
       let query = supabase
         .from('phase_assigned_document_template')
-        .select('id, updated_at')
+        .select('id, name, document_type, updated_at')
         .eq('company_id', companyId)
         .eq('document_reference', documentReference);
 
@@ -224,7 +224,7 @@ export class DocumentStudioPersistenceService {
           if (ciIds.length > 0) {
             const { data: ciRows } = await supabase
               .from('phase_assigned_document_template')
-              .select('id, updated_at')
+              .select('id, name, document_type, updated_at')
               .in('id', ciIds)
               .eq('company_id', companyId)
               .order('updated_at', { ascending: false });
@@ -664,6 +664,7 @@ export class DocumentStudioPersistenceService {
     name: string;
     documentReference: string;
     documentScope: 'company_document' | 'product_document';
+    documentType?: string;
     htmlContent?: string;
   }): Promise<{ success: boolean; id?: string; error?: string }> {
     try {
@@ -697,7 +698,7 @@ export class DocumentStudioPersistenceService {
         name: params.name,
         document_reference: params.documentReference,
         document_scope: params.documentScope,
-        document_type: 'Report',
+        document_type: params.documentType || 'Manual',
         status: 'Draft',
         updated_at: new Date().toISOString(),
         phase_id: resolvedPhaseId,

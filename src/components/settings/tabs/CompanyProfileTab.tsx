@@ -53,6 +53,33 @@ export function CompanyProfileTab({
   const [manufacturerOpen, setManufacturerOpen] = useState(false);
   const [productionOpen, setProductionOpen] = useState(false);
   const [portfolioStructureOpen, setPortfolioStructureOpen] = useState(() => searchParams.get('section') === 'portfolio-structure');
+  const [documentDueDateOpen, setDocumentDueDateOpen] = useState(false);
+  const [dateFormatOpen, setDateFormatOpen] = useState(false);
+
+  // Deep-link: auto-open and scroll to section from URL param
+  const sectionParam = searchParams.get('section');
+  useEffect(() => {
+    if (!sectionParam) return;
+    const openMap: Record<string, (v: boolean) => void> = {
+      'currency': setCurrencyOpen,
+      'portfolio-structure': setPortfolioStructureOpen,
+      'document-due-date': setDocumentDueDateOpen,
+      'date-format': setDateFormatOpen,
+      'edm-system': setEdmSystemOpen,
+      'retention-periods': setRetentionPeriodsOpen,
+      'manufacturer': setManufacturerOpen,
+      'production-site': setProductionOpen,
+    };
+    const opener = openMap[sectionParam];
+    if (opener) opener(true);
+
+    // Scroll to section after a short delay for DOM to render
+    const timer = setTimeout(() => {
+      const el = document.querySelector(`[data-section="${sectionParam}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [sectionParam]);
 
   // Auto-scroll to variation dimensions when arriving from Company Dimensions button
   useEffect(() => {
@@ -66,10 +93,6 @@ export function CompanyProfileTab({
       return () => clearTimeout(timer);
     }
   }, [searchParams]);
-  
-  
-  const [documentDueDateOpen, setDocumentDueDateOpen] = useState(false);
-  const [dateFormatOpen, setDateFormatOpen] = useState(false);
   
 
   // Date format hook
@@ -251,6 +274,7 @@ export function CompanyProfileTab({
 
 
       {/* Currency & Financial Settings */}
+      <div data-section="currency">
       <Collapsible open={currencyOpen} onOpenChange={setCurrencyOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -319,8 +343,10 @@ export function CompanyProfileTab({
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
       {/* Device Portfolio Structure */}
+      <div data-section="portfolio-structure">
       <Collapsible open={portfolioStructureOpen} onOpenChange={setPortfolioStructureOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -347,6 +373,7 @@ export function CompanyProfileTab({
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
       {/* DOCUMENT MANAGEMENT */}
       <div className="space-y-2 mt-12">
@@ -358,9 +385,12 @@ export function CompanyProfileTab({
       </div>
 
       {/* Document Category & Numbering System */}
-      <DocumentCategoryNumberingSystem companyId={companyId} />
+      <div data-section="prefixes">
+        <DocumentCategoryNumberingSystem companyId={companyId} autoOpen={sectionParam === 'prefixes'} />
+      </div>
 
       {/* Document Due Date Configuration */}
+      <div data-section="document-due-date">
       <Collapsible open={documentDueDateOpen} onOpenChange={setDocumentDueDateOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -488,8 +518,10 @@ export function CompanyProfileTab({
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
       {/* Date Display Format - Admin Only */}
+      <div data-section="date-format">
       <Collapsible open={dateFormatOpen} onOpenChange={setDateFormatOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -570,8 +602,10 @@ export function CompanyProfileTab({
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
       {/* Electronic Document Management System */}
+      <div data-section="edm-system">
       <Collapsible open={edmSystemOpen} onOpenChange={setEdmSystemOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -744,8 +778,10 @@ export function CompanyProfileTab({
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
       {/* Document Retention Periods */}
+      <div data-section="retention-periods">
       <Collapsible open={retentionPeriodsOpen} onOpenChange={setRetentionPeriodsOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -820,9 +856,12 @@ export function CompanyProfileTab({
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
       {/* Document Types */}
-      <DocumentTypeSettings companyId={companyId} />
+      <div data-section="document-types">
+        <DocumentTypeSettings companyId={companyId} />
+      </div>
 
       {/* ORGANIZATIONAL STRUCTURE */}
       <div className="space-y-2 mt-12">
@@ -834,6 +873,7 @@ export function CompanyProfileTab({
       </div>
 
       {/* Manufacturer Information */}
+      <div data-section="manufacturer">
       <Collapsible open={manufacturerOpen} onOpenChange={setManufacturerOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -978,8 +1018,10 @@ export function CompanyProfileTab({
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
       {/* Production Site */}
+      <div data-section="production-site">
       <Collapsible open={productionOpen} onOpenChange={setProductionOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -1080,6 +1122,7 @@ export function CompanyProfileTab({
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
 
     </div>
   );

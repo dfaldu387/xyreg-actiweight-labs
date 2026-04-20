@@ -51,7 +51,7 @@ export function GapISO13485LaunchView({ items, disabled = false, companyId, comp
   const nextIncomplete = ISO_13485_SECTIONS.find(s => !completionMap.get(s.section)?.isComplete);
 
   return (
-    <div className="mr-[280px] lg:mr-[300px] xl:mr-[320px]">
+    <div>
       {/* Info Banner */}
       <div className="mb-6 rounded-xl border border-green-200 dark:border-green-800/50 bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/30 dark:to-green-900/20 p-5">
         <div className="flex items-start gap-4">

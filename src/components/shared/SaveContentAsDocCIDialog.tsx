@@ -12,7 +12,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { DocumentStudioPersistenceService, DocumentStudioData } from '@/services/documentStudioPersistenceService';
 import { toast } from 'sonner';
 import { Building2, Box, Layers, FileEdit, Loader2, Check, Download } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 
 type DocScope = 'enterprise' | 'device' | 'phase';
@@ -42,7 +41,6 @@ export function SaveContentAsDocCIDialog({
   defaultScope = 'enterprise',
   onDocumentCreated,
 }: SaveContentAsDocCIDialogProps) {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [scope, setScope] = useState<DocScope>(defaultScope);
   const [selectedPhaseId, setSelectedPhaseId] = useState('');
@@ -85,6 +83,7 @@ export function SaveContentAsDocCIDialog({
         name: title,
         documentReference: templateIdKey,
         documentScope: docScope === 'company' ? 'company_document' : 'product_document',
+        documentType: scope === 'enterprise' ? 'Manual' : 'Technical',
       });
       if (!syncResult.success || !syncResult.id) {
         throw new Error(syncResult.error || 'Failed to create Document CI record');
@@ -131,7 +130,7 @@ export function SaveContentAsDocCIDialog({
 
       if (onDocumentCreated) {
         handleClose();
-        onDocumentCreated(ciUUID, title, 'Report');
+        onDocumentCreated(ciUUID, title, scope === 'enterprise' ? 'Manual' : 'Technical');
       }
     } catch (err: any) {
       console.error('Save as Doc CI failed:', err);
@@ -301,11 +300,9 @@ ${formattedContent}</body></html>`;
   };
 
   const handleOpenInStudio = () => {
-    if (savedTemplateId) {
-      const params = new URLSearchParams();
-      params.set('templateId', savedTemplateId);
-      if (scope !== 'enterprise' && productId) params.set('productId', productId);
-      navigate(`/app/company/${encodeURIComponent(companyName)}/document-studio?${params.toString()}`);
+    if (savedTemplateId && onDocumentCreated) {
+      // Trigger the drawer via the callback (already called during save, but also works here)
+      onDocumentCreated(savedTemplateId, title, 'quality-manual');
       onOpenChange(false);
     }
   };

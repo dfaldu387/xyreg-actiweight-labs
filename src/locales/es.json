@@ -34,6 +34,10 @@
     "plans": "Planes",
     "logOut": "Cerrar sesión"
   },
+  "clients": {
+    "thisWeek": "Esta semana",
+    "total": "Total"
+  },
   "rnpv": {
     "estimatedFirstLaunch": "Primer Lanzamiento Estimado"
   }

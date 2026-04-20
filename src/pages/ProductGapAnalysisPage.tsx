@@ -38,8 +38,9 @@ import { IEC_62366_SECTIONS, IEC_62366_GROUPS } from "@/config/gapIEC62366Sectio
 import { ISO_15223_SECTIONS, ISO_15223_GROUPS } from "@/config/gapISO15223Sections";
 import { ISO_20417_SECTIONS, ISO_20417_GROUPS } from "@/config/gapISO20417Sections";
 import { ISO_10993_SECTIONS, ISO_10993_GROUPS } from "@/config/gapISO10993Sections";
+import { PPWR_SECTIONS, PPWR_GROUPS } from "@/config/gapPPWRSections";
 
-import { Cpu, Zap, Radio, Monitor, Dumbbell, Shield, ClipboardList, Upload, Users, Tag, FileText, FlaskConical } from "lucide-react";
+import { Cpu, Zap, Radio, Monitor, Dumbbell, Shield, ClipboardList, Upload, Users, Tag, FileText, FlaskConical, Package } from "lucide-react";
 import { ImportChecklistDialog } from "@/components/product/gap-analysis/ImportChecklistDialog";
 import { Button } from "@/components/ui/button";
 import { queryClient as qc } from "@/lib/query-client";
@@ -98,6 +99,7 @@ export default function ProductGapAnalysisPage() {
     ISO_15223_1: 'ISO 15223-1',
     ISO_20417: 'ISO 20417',
     ISO_10993: 'ISO 10993-1:2025',
+    PPWR: 'PPWR',
   };
 
   // Helper to build sharing toggle for a framework
@@ -141,6 +143,7 @@ export default function ProductGapAnalysisPage() {
   const hasISO15223 = enabledFrameworks?.has("ISO_15223_1") ?? false;
   const hasISO20417 = enabledFrameworks?.has("ISO_20417") ?? false;
   const hasISO10993 = enabledFrameworks?.has("ISO_10993") ?? false;
+  const hasPPWR = enabledFrameworks?.has("PPWR") ?? false;
 
   // MDR sub-tab visibility
   const hasAnnexI = enabledFrameworks?.has("MDR_ANNEX_I") ?? false;
@@ -204,7 +207,8 @@ export default function ProductGapAnalysisPage() {
     else if (hasISO15223) setActiveTab("iso-15223");
     else if (hasISO20417) setActiveTab("iso-20417");
     else if (hasISO10993) setActiveTab("iso-10993");
-  }, [enabledFrameworks, hasMDR, hasISO14971Device, hasIEC62304, hasIEC60601, hasIEC20957, hasIEC62366, hasISO15223, hasISO20417, hasISO10993]);
+    else if (hasPPWR) setActiveTab("ppwr");
+  }, [enabledFrameworks, hasMDR, hasISO14971Device, hasIEC62304, hasIEC60601, hasIEC20957, hasIEC62366, hasISO15223, hasISO20417, hasISO10993, hasPPWR]);
 
   // Set default MDR sub-tab
   useEffect(() => {
@@ -295,8 +299,9 @@ export default function ProductGapAnalysisPage() {
   const iso15223Items = filterByFramework(gapItems, 'ISO 15223-1', 'ISO_15223_1');
   const iso20417Items = filterByFramework(gapItems, 'ISO 20417', 'ISO_20417');
   const iso10993Items = filterByFramework(gapItems, 'ISO 10993-1:2025', 'ISO_10993');
+  const ppwrItems = filterByFramework(gapItems, 'PPWR');
 
-  const noFrameworksEnabled = !hasMDR && !hasISO14971Device && !hasIEC62304 && !hasIEC60601 && !hasIEC20957 && !hasIEC62366 && !hasISO15223 && !hasISO20417 && !hasISO10993;
+  const noFrameworksEnabled = !hasMDR && !hasISO14971Device && !hasIEC62304 && !hasIEC60601 && !hasIEC20957 && !hasIEC62366 && !hasISO15223 && !hasISO20417 && !hasISO10993 && !hasPPWR;
 
   if (noFrameworksEnabled) {
     return (
@@ -349,6 +354,7 @@ export default function ProductGapAnalysisPage() {
                 {hasISO15223 && <TabsTrigger value="iso-15223">ISO 15223-1</TabsTrigger>}
                 {hasISO20417 && <TabsTrigger value="iso-20417">ISO 20417</TabsTrigger>}
                 {hasISO10993 && <TabsTrigger value="iso-10993">ISO 10993-1:2025</TabsTrigger>}
+                {hasPPWR && <TabsTrigger value="ppwr">PPWR</TabsTrigger>}
               </TabsList>
 
               {/* EU MDR — with sub-tabs */}
@@ -764,6 +770,36 @@ export default function ProductGapAnalysisPage() {
                       standardIcon={FlaskConical}
                       disabled={isRestricted}
                       framework="ISO 10993-1:2025"
+                      productId={productId}
+                    />
+                  </div>
+                </TabsContent>
+              )}
+
+              {/* PPWR — Packaging and Packaging Waste Regulation */}
+              {hasPPWR && (
+                <TabsContent value="ppwr">
+                  <div className="relative">
+                    <GenericGapLaunchView
+                      sections={PPWR_SECTIONS}
+                      groups={PPWR_GROUPS}
+                      items={ppwrItems}
+                      standardName="PPWR — Packaging and Packaging Waste Regulation"
+                      standardTag="PPWR"
+                      standardIcon={Package}
+                      bannerDescription="EU Packaging and Packaging Waste Regulation (PPWR) compliance requirements. Covers substance restrictions, packaging minimisation, labelling, recyclability, recycled content targets, EPR obligations, and digital product passport readiness."
+                      disabled={isRestricted}
+                      headerActions={buildSharingToggle('PPWR')}
+                      {...buildScopeProps('PPWR')}
+                    />
+                    <GenericGapSidebar
+                      sections={PPWR_SECTIONS}
+                      groups={PPWR_GROUPS}
+                      items={ppwrItems}
+                      standardLabel="PPWR Packaging"
+                      standardIcon={Package}
+                      disabled={isRestricted}
+                      framework="PPWR"
                       productId={productId}
                     />
                   </div>

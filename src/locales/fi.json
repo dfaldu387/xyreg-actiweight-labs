@@ -2787,9 +2787,9 @@
       "dueSoon": "Erääntyy pian"
     },
     "badges": {
-      "report": "Raportti",
       "phaseTemplate": "Vaihe Malli",
-      "companyDocument": "Yritys Asiakirja"
+      "companyDocument": "Yritys Asiakirja",
+      "record": "Tallenne"
     },
     "docTypes": {
       "ciInstance": "CI-instanssi",
@@ -3069,7 +3069,9 @@
     "device": "Laite",
     "overallProgress": "Overall Edistyminen",
     "viewDetails": "Näytä tiedot",
-    "dashboard": "Hallintapaneeli"
+    "dashboard": "Hallintapaneeli",
+    "thisWeek": "Tällä viikolla",
+    "total": "Yhteensä"
   },
   "missionControl": {
     "clientCompass": "Asiakaskompassi",
@@ -10739,7 +10741,6 @@
     "editDocumentDialog": {
       "title": "Muokkaa Asiakirja",
       "document": "Asiakirja",
-      "report": "Raportti",
       "editDocumentInfo": "Muokkaa Asiakirja Information",
       "editDocumentDesc": "Päivitä Asiakirja Tiedot and metadata. All fields are Valinnainen except Asiakirja Nimi.",
       "documentNameLabel": "Asiakirja Nimi *",
@@ -10771,7 +10772,8 @@
       "saveChanges": "Tallenna muutokset",
       "documentUpdatedSuccess": "Asiakirja päivitetty onnistuneesti",
       "failedToUpdate": "Asiakirjan päivitys epäonnistui",
-      "failedToUpdateNoPermission": "Epäonnistui: päivitä asiakirja - asiakirja voi ei exist tai you voi ei on permission"
+      "failedToUpdateNoPermission": "Epäonnistui: päivitä asiakirja - asiakirja voi ei exist tai you voi ei on permission",
+      "record": "Tallenne"
     },
     "documentLibrary": {
       "searchPlaceholder": "Haku Asiakirjat...",
@@ -11553,11 +11555,11 @@
       "deleteError": "Failed to delete category"
     },
     "documentNumbering": {
-      "title": "Document Category & Numbering System",
-      "description": "Configure numbering and versioning for each document category",
+      "title": "Etuliitteet & Asiakirjanumerointi",
+      "description": "Määritä asiakirjojen etuliitteet, alaetuliitteet ja numerointi jokaiselle kategorialle",
       "loading": "Ladataan configurations...",
-      "sectionTitle": "Asiakirja Categories",
-      "sectionDescription": "Hallitse categories and their numbering configurations",
+      "sectionTitle": "Etuliitekategoriat",
+      "sectionDescription": "Hallitse etuliitekategorioita ja niiden numerointiasetuksia",
       "addCategory": "Add Luokka",
       "custom": "Mukautettu",
       "deleteTitle": "Poista Luokka",
@@ -13996,7 +13998,6 @@
     "editDocument": "Muokkaa Asiakirja",
     "editGapAnalysisItem": "Edit Gap Analysis Item",
     "document": "Asiakirja",
-    "report": "Raportti",
     "companyWideDocument": "Yritys-Wide Asiakirja",
     "companyWideDocumentDesc": "This creates a Yritys-wide Asiakirja that applies across all Tuotteet.",
     "companyWideDocumentUpdateDesc": "Päivitä this Yritys-wide Asiakirja that applies across all Tuotteet.",
@@ -14004,7 +14005,8 @@
     "saveChanges": "Tallenna muutokset",
     "creating": "Luodaan...",
     "saving": "Tallennetaan...",
-    "uploading": "Ladataan..."
+    "uploading": "Ladataan...",
+    "record": "Tallenne"
   },
   "companyDocumentManager": {
     "title": "Yritys Asiakirjat",

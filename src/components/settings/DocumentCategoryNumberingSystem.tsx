@@ -19,14 +19,15 @@ import { useSubPrefixes } from '@/hooks/useSubPrefixes';
 
 interface DocumentCategoryNumberingSystemProps {
   companyId: string;
+  autoOpen?: boolean;
 }
 
-export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryNumberingSystemProps) {
+export const DocumentCategoryNumberingSystem = React.forwardRef<HTMLDivElement, DocumentCategoryNumberingSystemProps>(({ companyId, autoOpen }, ref) => {
   const { lang } = useTranslation();
   const [configs, setConfigs] = useState<CategoryNumberingConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(autoOpen || false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<CategoryNumberingConfig | undefined>();
   const [deleteCategory, setDeleteCategory] = useState<CategoryNumberingConfig | undefined>();
@@ -274,6 +275,7 @@ export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryN
 
   if (isLoading) {
     return (
+      <div ref={ref}>
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <Card>
           <CollapsibleTrigger asChild>
@@ -301,10 +303,12 @@ export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryN
           </CollapsibleContent>
         </Card>
       </Collapsible>
+      </div>
     );
   }
 
   return (
+    <div ref={ref}>
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <Card>
         <CollapsibleTrigger asChild>
@@ -588,5 +592,8 @@ export function DocumentCategoryNumberingSystem({ companyId }: DocumentCategoryN
         </CollapsibleContent>
       </Card>
     </Collapsible>
+    </div>
   );
-}
+});
+
+DocumentCategoryNumberingSystem.displayName = 'DocumentCategoryNumberingSystem';

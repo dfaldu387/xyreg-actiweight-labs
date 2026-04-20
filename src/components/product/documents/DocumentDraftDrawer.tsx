@@ -84,6 +84,8 @@ interface DocumentDraftDrawerProps {
   documentReference?: string;
   isNewUnsavedDocument?: boolean;
   onDocumentCreated?: (docId: string, docName: string, docType: string) => void;
+  /** When true, disables SOP @-mention suggestions in the AI chat (e.g. for QMS Document Control > Documents tab). */
+  disableSopMentions?: boolean;
 }
 
 export function DocumentDraftDrawer({
@@ -102,6 +104,7 @@ export function DocumentDraftDrawer({
   documentReference,
   isNewUnsavedDocument,
   onDocumentCreated,
+  disableSopMentions = false,
 }: DocumentDraftDrawerProps) {
   const [template, setTemplate] = useState<DocumentTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -824,7 +827,12 @@ export function DocumentDraftDrawer({
           }
 
           // Load existing draft
-          const sections = Array.isArray(existingDraft.sections) ? existingDraft.sections : [];
+          let sections: any[] = Array.isArray(existingDraft.sections) ? existingDraft.sections : [];
+          // Clean legacy Quality Manual drafts that have redundant "Chapter N" headings
+          if (existingDraft.template_id?.startsWith('QM-FULL-')) {
+            const { cleanQualityManualSections } = await import('@/utils/qualityManualContent');
+            sections = cleanQualityManualSections(sections);
+          }
           const docControl = existingDraft.document_control as any;
 
           const loadedTemplate: DocumentTemplate = {
@@ -970,6 +978,19 @@ export function DocumentDraftDrawer({
       // Handle document title update
       if (contentId === 'document-title') {
         updated = { ...prev, name: newContent };
+      } else if (contentId === 'full-document-content') {
+        // Full-document sync from LiveEditor (e.g. after AI "Paste to section").
+        // newContent is JSON.stringify(sections[]).
+        try {
+          const parsed = JSON.parse(newContent);
+          if (Array.isArray(parsed)) {
+            updated = { ...prev, sections: parsed };
+          } else {
+            updated = prev;
+          }
+        } catch {
+          updated = prev;
+        }
       } else {
         // Update section content
         updated = {
@@ -1123,23 +1144,8 @@ export function DocumentDraftDrawer({
               </IconButton>
             </Tooltip>
           )}
-          <Tooltip title={showDocxComments ? "Hide Review Comments" : "Show Review Comments"} arrow>
-            <IconButton
-              onClick={() => setShowDocxComments(prev => !prev)}
-              size="small"
-              sx={{
-                color: showDocxComments ? '#fff' : '#0891b2',
-                backgroundColor: showDocxComments ? '#0891b2' : 'transparent',
-                border: '1px solid #0891b2',
-                borderRadius: '6px',
-                '&:hover': { backgroundColor: showDocxComments ? '#0e7490' : 'rgba(8, 145, 178, 0.08)' },
-              }}
-            >
-              <MessageSquare style={{ width: 16, height: 16 }} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={isStarred ? "Unstar document" : "Star document"} arrow>
-            <IconButton
+<Tooltip title={isStarred ? "Unstar document" : "Star document"} arrow>
+              <IconButton
               onClick={(e) => { e.stopPropagation(); toggleStar(); }}
               size="small"
               disabled={starLoading}
@@ -2219,7 +2225,8 @@ export function DocumentDraftDrawer({
                   companyId={companyId || activeCompanyRole?.companyId}
                   onDocumentSaved={handleDocumentSaved}
                   isEditingExistingDocument={!!existingDraftId}
-                  editingDocumentId={existingDraftId}
+                  editingDocumentId={existingDraftId || normalizedDocId}
+                  docxSourceDocumentId={normalizedDocId}
                   onAIGenerate={() => {}}
                   onAddAutoNote={() => {}}
                   currentNotes={[]}
@@ -2234,6 +2241,7 @@ export function DocumentDraftDrawer({
                   documentNumber={documentNumber || undefined}
                   companyLogoUrl={companyLogoUrl}
                   hideVersioning
+                  disableSopMentions={disableSopMentions}
                 />
               ) : null}
               {/* Inline comment highlights on document text */}

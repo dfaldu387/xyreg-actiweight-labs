@@ -312,12 +312,13 @@ export function useQualityManual(companyId: string | undefined) {
         ? `This section covers ISO 13485:2016 clauses: ${section.coveredClauses.map(c => `§${c}`).join(', ')}.`
         : '';
 
-      // Word count guidance
+      // Word count guidance with strict caps
       const wordGuidance: Record<string, string> = {
-        concise: 'Keep this section concise, approximately 150–250 words. Focus on essential process descriptions only.',
-        standard: 'Write approximately 300–500 words with balanced detail.',
-        comprehensive: 'Write approximately 500–800 words with full enterprise-level detail.',
+        concise: 'ABSOLUTE WORD LIMIT: 100 words MAXIMUM. Write as a POINTER DOCUMENT — state the strategy in 1-2 sentences, then reference the governing SOP by document number. Do NOT explain processes. Do NOT exceed 100 words.',
+        standard: 'STRICT WORD LIMIT: 200 words MAXIMUM. Summarize the approach briefly and reference governing SOPs. Do NOT exceed 200 words.',
+        comprehensive: 'STRICT WORD LIMIT: 400 words MAXIMUM. Provide detailed process descriptions with SOP references. Do NOT exceed 400 words.',
       };
+      const wordCaps: Record<string, number> = { concise: 100, standard: 200, comprehensive: 400 };
 
       const companySizeContext: Record<string, string> = {
         startup: 'This is a small startup/micro organization (1–20 people). Keep processes lean and practical.',
@@ -331,10 +332,13 @@ export function useQualityManual(companyId: string | undefined) {
         certified: 'This organization is already ISO-certified and maintaining compliance. Write content that demonstrates mature, optimized processes.',
       };
 
-      // Document prefix instructions
-      const prefixInstructions = documentPrefixes
-        ? `\nDocument Numbering Convention: When referencing company procedures, use the following XyReg document prefix system: ${documentPrefixes}. For example, reference SOPs as "SOP-QA-001", forms as "FORM-001", work instructions as "WI-MF-001", etc. Use the three-part format: PREFIX-DEPT-NUMBER.`
-        : '';
+      // Document prefix instructions — use actual configured prefixes
+      let prefixInstructions = '';
+      if (documentPrefixes) {
+        const prefixList = documentPrefixes.split(',').map((p: string) => p.trim()).filter(Boolean);
+        const examples = prefixList.slice(0, 4).map((p: string) => `${p}-QA-001`).join(', ');
+        prefixInstructions = `\nMANDATORY Document Numbering: When referencing internal procedures, forms, or work instructions, you MUST use ONLY the following configured document prefixes: ${prefixList.join(', ')}. Do NOT invent or use any prefix not in this list. Use the three-part format: PREFIX-DEPT-NUMBER. Examples: ${examples}.`;
+      }
 
       let prompt = `Write Chapter ${section.chapterNumber}: "${section.title}" of the Quality Manual for ISO 13485:2016.
 
@@ -352,19 +356,17 @@ ${options?.regulatoryMaturity ? maturityContext[options.regulatoryMaturity] || '
 ${prefixInstructions}
 
 CRITICAL INSTRUCTIONS:
-1. Write as a FUNCTIONAL PROCESS MAP — describe how the organization operates, not a verbatim repetition of the standard.
-2. Use a narrative style: explain what the company does, who is responsible, and how processes interact.
-3. Reference the company's documentation hierarchy:
-   - Level 1: Quality Manual (this document)
-   - Level 2: Standard Operating Procedures (SOPs) — the "Who/What/When"
-   - Level 3: Work Instructions (WIs) — the "How-to"
-   - Level 4: Records/Forms — the objective evidence
+1. Write as a POINTER DOCUMENT — state the organizational strategy in 1-2 sentences, then reference the governing SOP. Do NOT explain processes in detail; the SOPs do that.
+2. Do NOT echo, paraphrase, or restate ISO requirements. Never write "The organization shall..." or "We ensure that...". Assume compliance and point to evidence.
+3. Reference the company's 4-level documentation hierarchy (Manual → SOPs → WIs → Records) only where it adds value.
 4. Cross-reference specific procedures by document number where relevant.
-5. Keep it lean and auditor-friendly — avoid padding or clause parroting.
+5. Each chapter should fit in HALF A PAGE or less. Be ruthlessly concise.
 6. Do NOT break into sub-sections per sub-clause. Write one cohesive narrative for the entire chapter.
 
 Use HTML formatting with <h3>, <h4>, <p>, <ul>, <ol>, <li>, <strong>, <em> tags.
-Do NOT use markdown. Return only the HTML content.`;
+Do NOT use markdown. Return only the HTML content.
+
+FINAL REMINDER: This chapter MUST be under the word limit specified above. Count your words before responding. If you are over the limit, cut content until you are under.`;
 
       if (options?.additionalPrompt) {
         prompt += `\n\nAdditional instructions: ${options.additionalPrompt}`;
@@ -385,6 +387,13 @@ Do NOT use markdown. Return only the HTML content.`;
 
       let cleaned = data.content;
       cleaned = cleaned.replace(/^```html\s*/i, '').replace(/```\s*$/i, '').trim();
+
+      // Post-generation word count check
+      const wordCount = cleaned.replace(/<[^>]*>/g, ' ').split(/\s+/).filter(Boolean).length;
+      const cap = options?.detailLevel ? wordCaps[options.detailLevel] : undefined;
+      if (cap && wordCount > cap * 1.1) {
+        toast.warning(`Ch.${section.chapterNumber} generated ${wordCount} words (target max: ${cap}). Consider regenerating with stricter settings.`);
+      }
 
       await saveContent(sectionKey, cleaned);
       toast.success(`Generated Ch.${section.chapterNumber} ${section.title}`);

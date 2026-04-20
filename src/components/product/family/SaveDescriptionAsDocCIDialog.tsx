@@ -174,6 +174,7 @@ export function SaveDescriptionAsDocCIDialog({
         name: docName,
         documentReference: templateIdKey,
         documentScope: docScope === 'company' ? 'company_document' : 'product_document',
+        documentType: 'Technical',
       });
 
       setSavedStudioId(saveResult.id);
@@ -186,7 +187,7 @@ export function SaveDescriptionAsDocCIDialog({
 
       if (onDocumentCreated && syncResult.success && syncResult.id) {
         handleClose();
-        onDocumentCreated(syncResult.id, docName, 'Report');
+        onDocumentCreated(syncResult.id, docName, 'Technical');
       }
     } catch (err: any) {
       console.error('Save as Doc CI failed:', err);

@@ -11,7 +11,6 @@ import { DocumentSidebar } from './DocumentSidebar';
 import { DocumentEditorSidebar } from './DocumentEditorSidebar';
 import { DocumentPreview } from './DocumentPreview';
 import { LiveEditor } from './LiveEditor';
-import { SimpleDocumentEditor } from './SimpleDocumentEditor';
 import { NotesPanel } from './NotesPanel';
 import { ContentGenerationModal } from './ContentGenerationModal';
 import { useDocumentTemplate } from '@/hooks/useDocumentTemplate';
@@ -61,7 +60,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
   const [uploadedFileInfo, setUploadedFileInfo] = useState<{ filePath: string; fileName: string; fileSize?: number } | null>(null);
   const [smartData, setSmartData] = useState<any>(null);
   const [roleMappings, setRoleMappings] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'live' | 'simple' | 'notes'>('live');
+  // activeTab removed — single editor mode, no more tab switching
   const [notes, setNotes] = useState<any[]>([]);
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<DocumentStudioData | null>(null);
@@ -726,7 +725,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
     setShowDocumentList(false);
     setSelectedDocument(null);    // We don't need to show document preview when editing
     setCurrentStep(1);            // Start from the first step
-    setActiveTab('live');         // Show live preview by default
+    // Single editor mode — no tab switching needed
     setIsEditingExistingDocument(true); // Mark as editing existing document
   };
 
@@ -870,6 +869,23 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
     const currentTemplate = generatedTemplate || template;
     if (!currentTemplate) {
       console.warn('Template not available for content update');
+      return;
+    }
+
+    // Special case: Handle full document content update from unified editor
+    if (contentId === 'full-document-content') {
+      try {
+        const updatedSections = JSON.parse(newContent);
+        const updatedTemplate = {
+          ...currentTemplate,
+          sections: updatedSections,
+        };
+        setGeneratedTemplate(updatedTemplate);
+        const templateId = currentTemplate.id || 'temp-template';
+        DocumentTemplatePersistenceService.saveTemplateToLocalStorage(templateId, updatedTemplate);
+      } catch (e) {
+        console.error('Failed to parse full document content:', e);
+      }
       return;
     }
 
@@ -1093,8 +1109,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
 
       setNotes(prev => [newNote, ...prev]);
 
-      // Switch to notes tab to show the new note
-      setActiveTab('notes');
+      // Notes are shown in a modal now — no tab to switch to
 
       toast.success(`Generated content added to notes${matchingSection ? ` for ${matchingSection.title}` : ''}`);
 
@@ -1318,6 +1333,18 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
                         recordId={recordId || undefined}
                         nextReviewDate={nextReviewDate || undefined}
                         documentNumber={documentNumber || undefined}
+                        showSectionNumbers={(generatedTemplate || template)?.formatOptions?.showSectionNumbers}
+                        onShowSectionNumbersChange={(show) => {
+                          const currentTemplate = generatedTemplate || template;
+                          if (!currentTemplate) return;
+                          const updatedTemplate = {
+                            ...currentTemplate,
+                            formatOptions: { ...currentTemplate.formatOptions, showSectionNumbers: show }
+                          };
+                          setGeneratedTemplate(updatedTemplate);
+                          const tid = currentTemplate.id || 'temp-template';
+                          DocumentTemplatePersistenceService.saveTemplateToLocalStorage(tid, updatedTemplate);
+                        }}
                       />
                     ) : (
                       <div className="flex items-center justify-center h-full text-muted-foreground">

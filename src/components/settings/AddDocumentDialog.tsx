@@ -124,6 +124,9 @@ const AddDocumentDialog = ({
                 <SelectItem value="Clinical">Clinical</SelectItem>
                 <SelectItem value="Quality">Quality</SelectItem>
                 <SelectItem value="Design">Design</SelectItem>
+                <SelectItem value="SOP">SOP</SelectItem>
+                <SelectItem value="Report">Report</SelectItem>
+                <SelectItem value="Manual">Manual</SelectItem>
               </SelectContent>
             </Select>
           </div>

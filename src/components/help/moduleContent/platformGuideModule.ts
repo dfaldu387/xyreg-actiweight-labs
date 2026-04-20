@@ -347,6 +347,75 @@ Mission Control is always accessible from the <strong>top of the sidebar</strong
       ]
     },
     {
+      id: 'mission-control-widgets',
+      title: 'Section 4b: Mission Control Widgets — What Each One Does',
+      content: `<strong>What are Mission Control Widgets?</strong>
+
+The right rail of Mission Control is a <strong>modular widget canvas</strong>. Every panel you see — and several you can opt into — is an independent widget you can show, hide, or reorder via the "Customize widgets" button.
+
+<strong>Why widgets?</strong>
+
+Different roles need different signals. A Quality Lead lives in CAPA and Audit Logs; a Regulatory Affairs Manager watches Regulatory News and gap analyses; a Product Manager tracks Portfolio Health and Tasks. Widgets let each user assemble their own personalised briefing without changing the underlying data model.
+
+<strong>Where is it?</strong>
+
+Open Mission Control. The right rail (280–320px wide) hosts the widget stack. Click the gear / "Customize widgets" control at the top of the rail to open the management panel.
+
+<strong>The available widgets</strong>
+
+<strong>1. My Action Items</strong>
+Your personal task list, split into <em>Approvals</em> (formal sign-offs), <em>Reviews</em> (document reviews), and <em>Deadlines</em> (overdue documents and audits within 30 days). Click any item to jump straight to it.
+
+<strong>2. Activity Stream</strong>
+A chronological feed of the last 15 changes across the company — uploads, status changes, completions, approvals. Each entry links to its source.
+
+<strong>3. My Competency Radar</strong>
+Pulls from training records to show which SOPs and modules you have completed vs. pending. Overdue trainings appear first — keeping this green is essential for audit readiness.
+
+<strong>4. Communication Hub</strong>
+Internal messaging scoped to the active company. Unread and high-priority threads bubble to the top, and a quick composer lets you send a message without leaving the dashboard.
+
+<strong>5. My Documents</strong>
+Your active responsibilities and personal interests — recent drafts, documents awaiting your review, and items you have starred. Unified view per the My Documents widget v2 pattern.
+
+<strong>6. Portfolio Health (Project Health)</strong>
+Cross-product health indicators: lifecycle drift, overdue milestones, compliance score deltas. Red/amber items mean a product needs intervention.
+
+<strong>7. Regulatory News</strong>
+A real-time feed from global standards bodies (FDA, EMA, MHRA, BfArM, ANSM, NMPA, PMDA, ISO, IEC). Searchable, filterable, and auto-refreshed by a scheduled scraper.
+
+<strong>8. Knowledge Bot</strong>
+A RAG-style assistant that answers questions about your Slack conversations and indexed knowledge entries. Ask "what did we decide about supplier X last quarter?" and it returns sourced answers.
+
+<strong>9. Task List</strong>
+Personalised tasks assigned to you or your team, with the expandable-detail interaction pattern (click a row to inline-expand context).
+
+<strong>10. Audit Calendar / CAPA Tracker / Team Activity (Coming Soon)</strong>
+Roadmap widgets — visible in the customizer but disabled until release.
+
+<strong>11. Feedback Tracker (Admin only)</strong>
+Recent feedback and bug reports for your company — gated to admin roles.
+
+<strong>How customization works</strong>
+
+• Click <strong>Customize widgets</strong> at the top of the right rail
+• Toggle widgets on/off — your selection persists in <code>localStorage</code> per browser
+• Drag widgets to reorder them within the rail
+• Hidden widgets stay hidden until you re-enable them — they don't reappear after updates`,
+      tips: [
+        'Spend 5 minutes on first login curating your widget stack — the default set is generic',
+        'Pin Action Items, Activity Stream, and Competency Radar at the top — they drive your daily routine',
+        'Enable Regulatory News if your role touches submissions — it surfaces standard updates within hours',
+        'Knowledge Bot quality scales with how well-indexed your Slack workspace is'
+      ],
+      commonMistakes: [
+        'Leaving every widget enabled — the rail becomes noise instead of signal',
+        'Ignoring overdue items in Competency Radar — they flag compliance gaps in inspections',
+        'Treating the Activity Stream as a chat feed — it is the audit trail surface for the company',
+        'Forgetting that "Coming Soon" widgets do nothing yet — they are placeholders for roadmap items'
+      ]
+    },
+    {
       id: 'company-dashboard-portfolio',
       title: 'Section 5: Company Dashboard and Portfolio',
       content: `<strong>What is the Company Dashboard?</strong>

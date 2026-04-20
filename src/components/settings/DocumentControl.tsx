@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { PhaseTemplateManager } from "./document-control/PhaseTemplateManager";
 import { CompanyTemplatesList } from "./document-control/CompanyTemplatesList";
 import { BulkDocumentImportDialog } from "./BulkDocumentImportDialog";
+import { SopAutoSeedStatus } from "./document-control/SopAutoSeedStatus";
 import { usePhaseTemplateManagement } from "@/hooks/usePhaseTemplateManagement";
 import { initializeUserAccessForCurrentCompany } from "./document-control/utils/userAccessSetup";
 import { toast } from "sonner";
@@ -127,6 +128,13 @@ export function DocumentControl({ companyId, companyName }: DocumentControlProps
 
   return (
     <div className="space-y-6">
+      {/* Foundation SOP auto-seed status */}
+      <SopAutoSeedStatus
+        companyId={companyId}
+        companyName={companyName}
+        onSeeded={enhancedDocumentRefresh}
+      />
+
       {/* Company Document Templates */}
       <CompanyTemplatesList 
         companyId={companyId}

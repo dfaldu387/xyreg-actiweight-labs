@@ -32,6 +32,7 @@ import { CDSCO_FORM_FIELDS } from '@/config/gapCDSCOFormFields';
 import { UKCA_MDR_FORM_FIELDS } from '@/config/gapUKCAMDRFormFields';
 import { MEPSW_FORM_FIELDS } from '@/config/gapMEPSWFormFields';
 import { KFDA_FORM_FIELDS } from '@/config/gapKFDAFormFields';
+import { PPWR_FORM_FIELDS } from '@/config/gapPPWRFormFields';
 import { IEC_60601_SSOT_FIELD_MAP } from '@/config/gapIEC60601SsotMapping';
 import { MDR_ANNEX_II_DERIVED_SSOT_FIELDS } from '@/config/gapAnnexIISsotMapping';
 import type { DerivedSsotFields } from '@/components/product/gap-analysis/IEC60601ClauseForm';
@@ -59,6 +60,7 @@ import { CDSCO_SECTIONS, CDSCO_GROUPS } from '@/config/gapCDSCOSections';
 import { UKCA_MDR_SECTIONS, UKCA_MDR_GROUPS } from '@/config/gapUKCAMDRSections';
 import { MEPSW_SECTIONS, MEPSW_GROUPS } from '@/config/gapMEPSWSections';
 import { KFDA_SECTIONS, KFDA_GROUPS } from '@/config/gapKFDASections';
+import { PPWR_SECTIONS, PPWR_GROUPS } from '@/config/gapPPWRSections';
 import { GenericGapSidebar, type ActiveSubStep } from '@/components/company/gap-analysis/GenericGapSidebar';
 import type { GenericSectionItem, GenericSectionGroup } from '@/components/company/gap-analysis/GenericGapLaunchView';
 import type { LucideIcon } from 'lucide-react';
@@ -146,6 +148,9 @@ function getFrameworkConfig(fw: string): FrameworkConfig | null {
   if (fwLower.includes('kfda') || fw === 'KFDA') {
     return { sections: KFDA_SECTIONS, groups: KFDA_GROUPS, label: 'KFDA', icon: FileText, frameworkFilter: fw };
   }
+  if (fwLower.includes('ppwr') || fw === 'PPWR') {
+    return { sections: PPWR_SECTIONS, groups: PPWR_GROUPS, label: 'PPWR', icon: FileText, frameworkFilter: fw };
+  }
   return null;
 }
 
@@ -226,6 +231,7 @@ export default function ProductGapItemDetailPage() {
     if (fwLower.includes('ukca') && UKCA_MDR_FORM_FIELDS[sectionStr]) return UKCA_MDR_FORM_FIELDS;
     if ((fwLower.includes('mepsw') || fwLower.includes('mepv')) && MEPSW_FORM_FIELDS[sectionStr]) return MEPSW_FORM_FIELDS;
     if (fwLower.includes('kfda') && KFDA_FORM_FIELDS[sectionStr]) return KFDA_FORM_FIELDS;
+    if (fwLower.includes('ppwr') && PPWR_FORM_FIELDS[sectionStr]) return PPWR_FORM_FIELDS;
     return null;
   })();
   const hasFormConfig = !!resolvedFormFields;

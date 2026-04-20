@@ -24,6 +24,7 @@ import { CDSCO_HELP } from '@/data/gapCDSCOHelpData';
 import { UKCA_MDR_HELP } from '@/data/gapUKCAMDRHelpData';
 import { MEPSW_HELP } from '@/data/gapMEPSWHelpData';
 import { KFDA_HELP } from '@/data/gapKFDAHelpData';
+import { PPWR_HELP } from '@/data/gapPPWRHelpData';
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -205,6 +206,7 @@ function getHelpForFramework(framework: string, section: string): GapClauseHelp 
   if (fwLower.includes('ukca')) return UKCA_MDR_HELP[section] || null;
   if (fwLower.includes('mepsw') || fwLower.includes('mepv')) return MEPSW_HELP[section] || null;
   if (fwLower.includes('kfda')) return KFDA_HELP[section] || null;
+  if (fwLower.includes('ppwr')) return PPWR_HELP[section] || null;
   return null;
 }
 

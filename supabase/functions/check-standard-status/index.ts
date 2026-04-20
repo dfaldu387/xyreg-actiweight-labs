@@ -5,18 +5,35 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Standards to check with their catalogue URLs
-const STANDARDS_TO_CHECK = [
-  { framework_key: "ISO_13485", standard_name: "ISO 13485:2016", url: "https://www.iso.org/standard/59752.html" },
-  { framework_key: "ISO_14971", standard_name: "ISO 14971:2019", url: "https://www.iso.org/standard/72704.html" },
+interface StandardConfig {
+  framework_key: string;
+  standard_name: string;
+  url: string;
+  secondary_urls?: string[];
+}
+
+// Standards to check with their catalogue URLs.
+// `secondary_urls` (optional) = national/regional adoption pages (EVS, BSI, CEN, DIN, …).
+// National bodies often publish supersession notices months before the ISO master catalogue.
+const STANDARDS_TO_CHECK: StandardConfig[] = [
+  { framework_key: "ISO_13485", standard_name: "ISO 13485:2016", url: "https://www.iso.org/standard/59752.html",
+    secondary_urls: ["https://www.evs.ee/en/evs-en-iso-13485-2016"] },
+  { framework_key: "ISO_14971", standard_name: "ISO 14971:2019", url: "https://www.iso.org/standard/72704.html",
+    secondary_urls: ["https://www.evs.ee/en/evs-en-iso-14971-2019"] },
   { framework_key: "IEC_62304", standard_name: "IEC 62304:2006+AMD1:2015", url: "https://webstore.iec.ch/en/publication/22794" },
   { framework_key: "IEC_62366_1", standard_name: "IEC 62366-1:2015+AMD1:2020", url: "https://webstore.iec.ch/en/publication/67220" },
   { framework_key: "IEC_60601_1", standard_name: "IEC 60601-1:2005+AMD1:2012+AMD2:2020", url: "https://webstore.iec.ch/en/publication/67497" },
   { framework_key: "IEC_60601_1_2", standard_name: "IEC 60601-1-2:2014+AMD1:2020", url: "https://webstore.iec.ch/en/publication/67236" },
   { framework_key: "IEC_60601_1_6", standard_name: "IEC 60601-1-6:2010+AMD1:2013+AMD2:2020", url: "https://webstore.iec.ch/en/publication/67498" },
-  { framework_key: "ISO_15223_1", standard_name: "ISO 15223-1:2021/Amd 1:2025", url: "https://www.iso.org/standard/77326.html" },
-  { framework_key: "ISO_20417", standard_name: "ISO 20417:2021", url: "https://www.iso.org/standard/78122.html" },
-  { framework_key: "ISO_10993", standard_name: "ISO 10993-1:2018", url: "https://www.iso.org/standard/68936.html" },
+  { framework_key: "ISO_15223_1", standard_name: "ISO 15223-1:2021/Amd 1:2025", url: "https://www.iso.org/standard/77326.html",
+    secondary_urls: ["https://www.evs.ee/en/evs-en-iso-15223-1-2021"] },
+  { framework_key: "ISO_20417", standard_name: "ISO 20417:2021", url: "https://www.iso.org/standard/78122.html",
+    secondary_urls: [
+      "https://www.evs.ee/en/evs-en-iso-20417-2021",
+      "https://standards.iteh.ai/catalog/standards/cen/iso-20417",
+    ] },
+  { framework_key: "ISO_10993", standard_name: "ISO 10993-1:2018", url: "https://www.iso.org/standard/68936.html",
+    secondary_urls: ["https://www.evs.ee/en/evs-en-iso-10993-1-2020"] },
   { framework_key: "IEC_20957", standard_name: "IEC 20957-1:2013", url: "https://webstore.iec.ch/en/publication/6129" },
   // ASTM
   { framework_key: "ASTM_F1980", standard_name: "ASTM F1980-21", url: "https://www.astm.org/f1980-21.html" },
@@ -35,7 +52,7 @@ const STANDARDS_TO_CHECK = [
   { framework_key: "USP_87", standard_name: "USP <87> Biological Reactivity Tests, In Vitro", url: "https://www.usp.org/" },
 ];
 
-async function fetchPageContent(url: string): Promise<string> {
+async function fetchPageContent(url: string, charBudget = 5000): Promise<string> {
   try {
     const response = await fetch(url, {
       headers: {
@@ -44,15 +61,27 @@ async function fetchPageContent(url: string): Promise<string> {
       },
     });
     if (!response.ok) {
-      return `[Error fetching page: HTTP ${response.status}]`;
+      return `[Error fetching ${url}: HTTP ${response.status}]`;
     }
     const html = await response.text();
-    // Strip HTML tags, keep text content (first 5000 chars to stay within token limits)
     const textContent = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-    return textContent.substring(0, 5000);
+    return textContent.substring(0, charBudget);
   } catch (error) {
-    return `[Error fetching page: ${error instanceof Error ? error.message : "unknown"}]`;
+    return `[Error fetching ${url}: ${error instanceof Error ? error.message : "unknown"}]`;
   }
+}
+
+async function fetchAllSources(standard: StandardConfig): Promise<string> {
+  const urls = [standard.url, ...(standard.secondary_urls || [])];
+  // Smaller per-source budget when there are multiple sources, to stay within token limits.
+  const budget = Math.floor(8000 / urls.length);
+  const blocks = await Promise.all(
+    urls.map(async (u) => {
+      const content = await fetchPageContent(u, budget);
+      return `--- SOURCE: ${u} ---\n${content}`;
+    })
+  );
+  return blocks.join("\n\n");
 }
 
 async function checkStandardWithAI(
@@ -71,11 +100,11 @@ async function checkStandardWithAI(
       messages: [
         {
           role: "system",
-          content: `You are a regulatory standards expert. Analyze the provided page content to determine if the standard "${standardName}" is currently published and in force, or if it has been withdrawn, superseded, or replaced. You must respond using the provided tool.`,
+          content: `You are a regulatory standards expert. Analyze content from one or more official catalogue pages (ISO master catalogue and/or national adoption bodies such as EVS, CEN, BSI, DIN) to determine if the standard "${standardName}" is currently published and in force, or if any source indicates it has been withdrawn, superseded, or replaced. If ANY source indicates supersession, report "Superseded" and the successor name. Respond using the provided tool only.`,
         },
         {
           role: "user",
-          content: `Based on the following page content from the official catalogue, determine the status of "${standardName}":\n\n${pageContent}`,
+          content: `Determine the status of "${standardName}" based on the following sources:\n\n${pageContent}`,
         },
       ],
       tools: [
@@ -90,7 +119,7 @@ async function checkStandardWithAI(
                 status: {
                   type: "string",
                   enum: ["In Force", "Superseded"],
-                  description: "Whether the standard is currently in force or has been superseded/withdrawn",
+                  description: "Whether the standard is currently in force or has been superseded/withdrawn (in any source)",
                 },
                 successor_name: {
                   type: "string",
@@ -110,7 +139,6 @@ async function checkStandardWithAI(
   if (!response.ok) {
     const errText = await response.text();
     console.error(`AI Gateway error for ${standardName}: ${response.status} ${errText}`);
-    // Default to "In Force" on AI errors to avoid false positives
     return { status: "In Force", successor_name: null };
   }
 
@@ -146,23 +174,37 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const results: Array<{ framework_key: string; status: string; success: boolean }> = [];
-
-    for (const standard of STANDARDS_TO_CHECK) {
+    // Optional: limit to a single framework_key for manual "Re-check now" calls
+    let onlyKey: string | null = null;
+    if (req.method === "POST") {
       try {
-        console.log(`Checking: ${standard.standard_name}`);
+        const body = await req.json();
+        if (body?.framework_key && typeof body.framework_key === "string") {
+          onlyKey = body.framework_key;
+        }
+      } catch {
+        // no body — full run
+      }
+    }
 
-        // Fetch page content
-        const pageContent = await fetchPageContent(standard.url);
+    const targets = onlyKey
+      ? STANDARDS_TO_CHECK.filter((s) => s.framework_key === onlyKey)
+      : STANDARDS_TO_CHECK;
 
-        // Ask AI to determine status
+    const results: Array<{ framework_key: string; status: string; successor_name: string | null; success: boolean }> = [];
+
+    for (const standard of targets) {
+      try {
+        console.log(`Checking: ${standard.standard_name} (${(standard.secondary_urls?.length || 0) + 1} source(s))`);
+
+        const pageContent = await fetchAllSources(standard);
+
         const { status, successor_name } = await checkStandardWithAI(
           standard.standard_name,
           pageContent,
           LOVABLE_API_KEY
         );
 
-        // Update the database
         const { error } = await supabase
           .from("standard_version_status")
           .update({
@@ -175,23 +217,24 @@ Deno.serve(async (req) => {
 
         if (error) {
           console.error(`DB update error for ${standard.framework_key}:`, error);
-          results.push({ framework_key: standard.framework_key, status, success: false });
+          results.push({ framework_key: standard.framework_key, status, successor_name, success: false });
         } else {
-          console.log(`✓ ${standard.framework_key}: ${status}`);
-          results.push({ framework_key: standard.framework_key, status, success: true });
+          console.log(`✓ ${standard.framework_key}: ${status}${successor_name ? ` → ${successor_name}` : ""}`);
+          results.push({ framework_key: standard.framework_key, status, successor_name, success: true });
         }
 
-        // Small delay between requests to avoid rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // Small delay between requests to avoid rate limiting (skip on single-key calls)
+        if (!onlyKey) await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (err) {
         console.error(`Error checking ${standard.framework_key}:`, err);
-        results.push({ framework_key: standard.framework_key, status: "Error", success: false });
+        results.push({ framework_key: standard.framework_key, status: "Error", successor_name: null, success: false });
       }
     }
 
     return new Response(
       JSON.stringify({
         checked_at: new Date().toISOString(),
+        scope: onlyKey || "all",
         total: results.length,
         successful: results.filter((r) => r.success).length,
         results,

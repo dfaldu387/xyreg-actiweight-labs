@@ -53,7 +53,7 @@ export function GapAnnexIILaunchView({ items, disabled = false, headerActions, c
   const framework = 'MDR_ANNEX_II';
 
   return (
-    <div className="mr-[280px] lg:mr-[300px] xl:mr-[320px]">
+    <div>
       {/* Info Banner */}
       <div className="mb-6 rounded-xl border border-indigo-200 dark:border-indigo-800/50 bg-gradient-to-br from-indigo-50 to-indigo-100/50 dark:from-indigo-950/30 dark:to-indigo-900/20 p-5">
         <div className="flex items-start gap-4">

@@ -234,7 +234,7 @@ function ClientsContent() {
         </div>
 
       {/* Main content area with proper scrolling */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" data-tour="client-compass-grid">
         <div className="w-full py-6">
 
           {/* Emergency Fix for Nox Medical moved to notification bell */}

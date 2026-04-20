@@ -50,6 +50,7 @@ interface L2ContextualBarProps {
   currentProductId?: string | null;
   companyProducts?: Array<{ id: string; name: string; }>;
   onCollapseChange?: (isCollapsed: boolean) => void;
+  forceOpen?: boolean;
 }
 
 export function L2ContextualBar({
@@ -61,7 +62,8 @@ export function L2ContextualBar({
   currentCompany,
   currentProductId,
   companyProducts = [],
-  onCollapseChange
+  onCollapseChange,
+  forceOpen
 }: L2ContextualBarProps) {
   const location = useLocation();
   const { companyName: urlCompanyName } = useParams<{ companyName: string }>();
@@ -134,6 +136,14 @@ export function L2ContextualBar({
     }
   }, [activeModule]);
   const [isCollapsed, setIsCollapsed] = useState(true); // Default to collapsed, expand on hover
+
+  // Force open L2 when requested (e.g., during guided tour)
+  useEffect(() => {
+    if (forceOpen) {
+      setIsCollapsed(false);
+      onCollapseChange?.(false);
+    }
+  }, [forceOpen]);
   const [isPinned, setIsPinned] = useState(false);
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
   const [showSearchBar, setShowSearchBar] = useState(false);
@@ -200,6 +210,32 @@ export function L2ContextualBar({
       }, 50);
     }
   }, [location.search, location.pathname, onCollapseChange]);
+
+  // Auto-expand the matching parent group based on the current product route.
+  // Ensures the Device Definition / Design & Risk Controls sections are visibly
+  // opened (e.g. during the guided platform tour) when landing on a child tab.
+  useEffect(() => {
+    const path = location.pathname;
+    const parentToExpand = path.includes('/device-information')
+      ? 'device-definition'
+      : path.includes('/design-risk-controls')
+      ? 'design-risk-controls'
+      : path.includes('/portfolio-landing')
+      ? 'company-products'
+      : (path.endsWith('/suppliers') || path.includes('/suppliers/') || path.endsWith('/infrastructure') || path.endsWith('/calibration-schedule'))
+      ? 'operations'
+      : (path.endsWith('/documents') || path.endsWith('/gap-analysis'))
+      ? 'enterprise-compliance'
+      : null;
+    if (!parentToExpand) return;
+
+    setExpandedItems(prev => {
+      if (prev.has(parentToExpand)) return prev;
+      const next = new Set(prev);
+      next.add(parentToExpand);
+      return next;
+    });
+  }, [location.pathname]);
 
 
   // Fetch UDI aliases for the company
@@ -431,10 +467,12 @@ export function L2ContextualBar({
     }
   }, [isCollapsed]);
 
-  // Notify parent about initial collapsed state
+  // Notify parent about current collapsed state.
+  // During guided tours (`forceOpen`) we must not report a collapsed sidebar,
+  // otherwise the layout shifts as if L2 were closed even while it is forced open.
   useEffect(() => {
-    onCollapseChange?.(true);
-  }, []);
+    onCollapseChange?.(forceOpen ? false : isCollapsed);
+  }, [isCollapsed, forceOpen, onCollapseChange]);
 
   // Helper functions for recently viewed products
   const getRecentProducts = (): string[] => {
@@ -624,9 +662,12 @@ export function L2ContextualBar({
       return true;
     };
 
-    const isActive = item.route
-      ? isRouteActive(item.route)
-      : (item.children ? item.children.some(child => isRouteActive(child.route)) : false);
+    // Parent active when its own route matches OR any child route matches.
+    // This ensures e.g. "Portfolio Management" (default tab=budget) still
+    // highlights when the URL is on a sibling tab like ?tab=portfolio.
+    const ownRouteActive = item.route ? isRouteActive(item.route) : false;
+    const anyChildActive = item.children ? item.children.some(child => isRouteActive(child.route)) : false;
+    const isActive = ownRouteActive || anyChildActive;
 
     // Check if menu item is disabled by plan's menu_access
     const menuAccessKey = SIDEBAR_TO_MENU_ACCESS_MAP[item.id];
@@ -1061,6 +1102,21 @@ export function L2ContextualBar({
       ? (isActive && !isActiveChildItem ? domainColors.textSolid : isActiveChildItem ? domainColors.icon : domainColors.icon)
       : (isActive && !isActiveChildItem ? 'text-white' : (customStyles?.textColor || 'text-sidebar-foreground'));
 
+    // Tour-only emphasis: highlight the exact L2 item the guided tour is
+    // currently referring to, including single-link items like Dashboard and
+    // Mission Control plus expandable parent groups.
+    const isCompanyRootRoute = /^\/app\/company\/[^/]+$/.test(location.pathname);
+    const isTourTargetItem =
+      !!forceOpen &&
+      level === 0 &&
+      ((item.id === 'company-dashboard' && isCompanyRootRoute) ||
+        (item.id === 'mission-control-main' && location.pathname.includes('/mission-control')) ||
+        (item.id === 'device-definition' && location.pathname.includes('/device-information')) ||
+        (item.id === 'design-risk-controls' && location.pathname.includes('/design-risk-controls')) ||
+        (item.id === 'company-products' && location.pathname.includes('/portfolio-landing')) ||
+        (item.id === 'operations' && (location.pathname.endsWith('/suppliers') || location.pathname.includes('/suppliers/') || location.pathname.endsWith('/infrastructure') || location.pathname.endsWith('/calibration-schedule'))) ||
+        (item.id === 'enterprise-compliance' && (location.pathname.endsWith('/documents') || location.pathname.endsWith('/gap-analysis'))));
+
     const button = (
       <div className={`relative ${domainColors && level === 0 ? `border-l-[4px] ${domainColors.border} rounded-none` : ''}`}>
         <button
@@ -1072,6 +1128,7 @@ export function L2ContextualBar({
             ${indentClass}
             ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}
             ${isActiveChildItem && domainColors ? `ring-2 ring-inset ${domainColors.ring} ${domainColors.bg}` : isActive && domainColors ? domainColors.bgSolid + ' shadow-sm' : isActive ? 'bg-blue-500 shadow-sm' : ''}
+            ${isTourTargetItem ? 'ring-2 ring-amber-500/70 shadow-[0_0_0_4px_hsl(var(--background)),0_0_0_6px_rgba(245,158,11,0.35)] animate-pulse' : ''}
           `}
         >
           <div className="flex items-center space-x-3 flex-1 min-w-0">
@@ -1907,6 +1964,7 @@ export function L2ContextualBar({
             }
           }}
           onMouseLeave={(e) => {
+            if (forceOpen) return;
             if (!isCollapsed) {
               const mouseX = e.clientX;
               if (mouseX < 64) {
@@ -1975,6 +2033,7 @@ export function L2ContextualBar({
           }
         }}
         onMouseLeave={(e) => {
+          if (forceOpen) return;
           if (!isCollapsed && !isPinned) {
             // Check if mouse is moving to L1 sidebar (x < 64px) - likely switching modules
             const mouseX = e.clientX;

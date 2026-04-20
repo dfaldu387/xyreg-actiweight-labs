@@ -333,40 +333,6 @@ export function CompanyDocumentListView({
       },
     },
     {
-      accessorKey: "sub_section",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="p-0 hover:bg-transparent"
-          >
-            Section
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
-      cell: ({ row }) => {
-        const section = row.getValue("sub_section") as string;
-        return section ? (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 max-w-[120px] truncate w-fit">
-                  {section}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                <span className="text-sm">{section}</span>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <span className="text-muted-foreground">-</span>
-        );
-      },
-    },
-    {
       accessorKey: "authors_ids",
       header: ({ column }) => {
         return (
@@ -452,58 +418,30 @@ export function CompanyDocumentListView({
           <Button
             variant="ghost"
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="p-0 hover:bg-transparent min-w-[150px]"
+            className="p-0 hover:bg-transparent"
           >
-            Document Type
+            Type
             <ArrowUpDown className="ml-2 h-4 w-4" />
           </Button>
         );
       },
       cell: ({ row }) => {
         const docType = row.getValue("document_type") as string;
-        if (!docType) return <span className="text-muted-foreground">-</span>;
+        const subSection = row.original.sub_section as string | undefined;
+        if (!docType && !subSection) return <span className="text-muted-foreground">-</span>;
         return (
-          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
-            {docType}
-          </Badge>
-        );
-      },
-    },
-    {
-      accessorKey: "is_record",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="p-0 hover:bg-transparent"
-          >
-            Category
-            <ArrowUpDown className="ml-2 h-4 w-4" />
-          </Button>
-        );
-      },
-      sortingFn: (rowA, rowB) => {
-        const docA = rowA.original;
-        const docB = rowB.original;
-        
-        // Sort by is_record (Reports before Documents)
-        if (docA.is_record !== docB.is_record) {
-          return docA.is_record ? 1 : -1;
-        }
-        return 0;
-      },
-      cell: ({ row }) => {
-        const doc = row.original;
-        return (
-          <Badge
-            variant="outline"
-            className={`text-xs ${doc.is_record
-              ? 'bg-purple-50 text-purple-700 border-purple-300'
-              : 'bg-blue-50 text-blue-700 border-blue-300'}`}
-          >
-            {doc.is_record ? 'Report' : 'Document'}
-          </Badge>
+          <div className="flex flex-col gap-0.5">
+            {docType && (
+              <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300 w-fit">
+                {docType}
+              </Badge>
+            )}
+            {subSection && (
+              <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                {subSection}
+              </span>
+            )}
+          </div>
         );
       },
     },
@@ -530,6 +468,29 @@ export function CompanyDocumentListView({
           >
             {status || 'Not Started'}
           </Badge>
+        );
+      },
+    },
+    {
+      accessorKey: "start_date",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="p-0 hover:bg-transparent min-w-[100px]"
+          >
+            Start Date
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => {
+        const startDate = row.getValue("start_date") as string;
+        return startDate ? (
+          <span className="whitespace-nowrap">{formatDate(startDate)}</span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
         );
       },
     },

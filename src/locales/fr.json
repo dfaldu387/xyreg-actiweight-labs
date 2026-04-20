@@ -2822,9 +2822,9 @@
       "dueSoon": "Échéance proche"
     },
     "badges": {
-      "report": "Rapport",
       "phaseTemplate": "Modèle de phase",
-      "companyDocument": "Document d'entreprise"
+      "companyDocument": "Document d'entreprise",
+      "record": "Enregistrement"
     },
     "docTypes": {
       "ciInstance": "Instance IC",
@@ -3069,7 +3069,9 @@
     "device": "Dispositif",
     "overallProgress": "Progression globale",
     "viewDetails": "Voir les détails",
-    "dashboard": "Tableau de bord"
+    "dashboard": "Tableau de bord",
+    "thisWeek": "Cette semaine",
+    "total": "Total"
   },
   "missionControl": {
     "clientCompass": "Boussole Client",
@@ -10741,7 +10743,6 @@
     "editDocumentDialog": {
       "title": "Modifier le document",
       "document": "Document",
-      "report": "Rapport",
       "editDocumentInfo": "Modifier les informations du document",
       "editDocumentDesc": "Mettez à jour les détails et métadonnées du document. Tous les champs sont optionnels sauf le nom du document.",
       "documentNameLabel": "Nom du document *",
@@ -10773,7 +10774,8 @@
       "saveChanges": "Enregistrer les modifications",
       "documentUpdatedSuccess": "Document mis à jour avec succès",
       "failedToUpdate": "Échec de la mise à jour du document",
-      "failedToUpdateNoPermission": "Échec de la mise à jour du document - le document n'existe peut-être pas ou vous n'avez pas la permission"
+      "failedToUpdateNoPermission": "Échec de la mise à jour du document - le document n'existe peut-être pas ou vous n'avez pas la permission",
+      "record": "Enregistrement"
     },
     "documentLibrary": {
       "searchPlaceholder": "Rechercher des documents...",
@@ -11555,11 +11557,11 @@
       "deleteError": "Échec de la suppression de la catégorie"
     },
     "documentNumbering": {
-      "title": "Système de catégories et numérotation des documents",
-      "description": "Configurez la numérotation et le versionnage pour chaque catégorie de document",
+      "title": "Préfixes & Numérotation des documents",
+      "description": "Configurez les préfixes, sous-préfixes et la numérotation pour chaque catégorie de document",
       "loading": "Chargement des configurations...",
-      "sectionTitle": "Catégories de documents",
-      "sectionDescription": "Gérez les catégories et leurs configurations de numérotation",
+      "sectionTitle": "Catégories de préfixes",
+      "sectionDescription": "Gérez les catégories de préfixes et leurs configurations de numérotation",
       "addCategory": "Ajouter une catégorie",
       "custom": "Personnalisé",
       "deleteTitle": "Supprimer la catégorie",
@@ -13998,7 +14000,6 @@
     "editDocument": "Modifier le document",
     "editGapAnalysisItem": "Modifier l'élément d'analyse des écarts",
     "document": "Document",
-    "report": "Rapport",
     "companyWideDocument": "Document à l'échelle de l'entreprise",
     "companyWideDocumentDesc": "Cela crée un document à l'échelle de l'entreprise qui s'applique à tous les produits.",
     "companyWideDocumentUpdateDesc": "Mettre à jour ce document à l'échelle de l'entreprise qui s'applique à tous les produits.",
@@ -14006,7 +14007,8 @@
     "saveChanges": "Enregistrer les modifications",
     "creating": "Création en cours...",
     "saving": "Enregistrement...",
-    "uploading": "Téléchargement..."
+    "uploading": "Téléchargement...",
+    "record": "Enregistrement"
   },
   "companyDocumentManager": {
     "title": "Documents de l'entreprise",

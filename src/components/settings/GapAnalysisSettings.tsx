@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useStandardVersionStatus } from "@/hooks/useStandardVersionStatus";
 import { StandardStatusBadge } from "@/components/company/gap-analysis/StandardStatusBadge";
+import { RecheckStandardButton } from "@/components/company/gap-analysis/RecheckStandardButton";
 import {
   Dialog,
   DialogContent,
@@ -322,15 +323,20 @@ export function GapAnalysisSettings({
                       </span>
                     </TableCell>
                     <TableCell>
-                      <span className="flex items-center gap-1.5">
-                        <Badge variant="outline" className="text-xs">
-                          {template.framework}
-                        </Badge>
-                        <StandardStatusBadge
-                          status={standardStatuses?.find(s => s.standard_name?.includes(template.framework) || s.framework_key === template.framework?.replace(/[\s\-:]/g, '_'))}
-                          compact
-                        />
-                      </span>
+                      {(() => {
+                        const matchedStatus = standardStatuses?.find(s => s.standard_name?.includes(template.framework) || s.framework_key === template.framework?.replace(/[\s\-:]/g, '_'));
+                        return (
+                          <span className="flex items-center gap-1.5">
+                            <Badge variant="outline" className="text-xs">
+                              {template.framework}
+                            </Badge>
+                            <StandardStatusBadge status={matchedStatus} compact />
+                            {matchedStatus?.framework_key && (
+                              <RecheckStandardButton frameworkKey={matchedStatus.framework_key} />
+                            )}
+                          </span>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[280px]">
                       <TooltipProvider>

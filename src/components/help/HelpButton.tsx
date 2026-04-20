@@ -22,7 +22,7 @@ export function HelpButton() {
     return saved ? JSON.parse(saved) : false;
   });
   const isMobile = useIsMobile();
-  const { setOnPlatformTourComplete } = useOnboardingTour();
+  const { setOnPlatformTourComplete, setOnPlatformTourStart } = useOnboardingTour();
 
   // Register callback: when a platform tour finishes, reopen help at the next section
   const handleTourComplete = useCallback((completedSectionId: string, completed: boolean) => {
@@ -40,10 +40,31 @@ export function HelpButton() {
     setIsHelpOpen(true);
   }, []);
 
+  // When a platform tour starts, dismiss the Help panel so it doesn't cover the page
+  const handleTourStart = useCallback(() => {
+    setIsHelpOpen(false);
+    setAutoOpenSectionIndex(null);
+  }, []);
+
   useEffect(() => {
     setOnPlatformTourComplete(handleTourComplete);
-    return () => setOnPlatformTourComplete(null);
-  }, [handleTourComplete, setOnPlatformTourComplete]);
+    setOnPlatformTourStart(handleTourStart);
+    return () => {
+      setOnPlatformTourComplete(null);
+      setOnPlatformTourStart(null);
+    };
+  }, [handleTourComplete, handleTourStart, setOnPlatformTourComplete, setOnPlatformTourStart]);
+
+  // Belt-and-braces: also listen for the global tour-start event in case the
+  // ref-based callback is not yet registered when the tour fires.
+  useEffect(() => {
+    const close = () => {
+      setIsHelpOpen(false);
+      setAutoOpenSectionIndex(null);
+    };
+    window.addEventListener('xyreg:tour-start', close);
+    return () => window.removeEventListener('xyreg:tour-start', close);
+  }, []);
 
   // Save collapsed state to localStorage
   useEffect(() => {

@@ -249,7 +249,7 @@ export function CompanyDocumentCard({
               ? 'bg-purple-50 text-purple-700 border-purple-300'
               : 'bg-blue-50 text-blue-700 border-blue-300'}`}
           >
-            {document.is_record ? 'Report' : 'Document'}
+            {document.is_record ? 'Record' : 'Document'}
           </Badge>
         </div>
         

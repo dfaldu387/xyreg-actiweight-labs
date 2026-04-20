@@ -333,6 +333,7 @@ export function SaveDeviceDefinitionAsDocCIDialog({
         name: docName,
         documentReference: templateIdKey,
         documentScope: docScope === 'company' ? 'company_document' : 'product_document',
+        documentType: 'Technical',
       });
       if (!syncResult.success) {
         throw new Error(syncResult.error || 'Failed to create Document CI record');
@@ -345,7 +346,7 @@ export function SaveDeviceDefinitionAsDocCIDialog({
 
       if (onDocumentCreated && syncResult.id) {
         handleClose();
-        onDocumentCreated(syncResult.id, docName, 'Report');
+        onDocumentCreated(syncResult.id, docName, 'Technical');
       }
     } catch (err: any) {
       console.error('Save as Doc CI failed:', err);

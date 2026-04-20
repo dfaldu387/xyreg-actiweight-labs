@@ -1,22 +1,21 @@
 import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
 
 /**
  * Hook that checks if a draft document already exists for a given templateIdKey.
- * If it does, navigates directly to Document Studio. If not, calls onFirstCreate().
+ * If it does, calls onOpenDraft with the document info. If not, calls onFirstCreate().
  */
 export function useDraftDocumentNavigation(
   companyId: string | undefined,
   companyName: string,
   productId?: string
 ) {
-  const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
 
   const handleDraftClick = useCallback(async (
     templateIdKey: string,
-    onFirstCreate: () => void
+    onFirstCreate: () => void,
+    onOpenDraft?: (doc: { id: string; name: string; type: string }) => void
   ) => {
     if (!companyId) return;
     setChecking(true);
@@ -27,10 +26,15 @@ export function useDraftDocumentNavigation(
         productId
       );
       const existing = result.data?.[0];
-      if (existing?.id) {
-        // Document already exists — navigate to Document Studio
-        const encodedName = encodeURIComponent(companyName);
-        navigate(`/app/company/${encodedName}/document-studio?templateId=${existing.id}`);
+      if (existing?.id && onOpenDraft) {
+        onOpenDraft({
+          id: existing.id,
+          name: existing.name || templateIdKey,
+          type: existing.document_type || 'document',
+        });
+      } else if (existing?.id) {
+        // Fallback: no onOpenDraft provided, just call onFirstCreate
+        onFirstCreate();
       } else {
         // First time — open the create dialog
         onFirstCreate();
@@ -41,7 +45,7 @@ export function useDraftDocumentNavigation(
     } finally {
       setChecking(false);
     }
-  }, [companyId, companyName, productId, navigate]);
+  }, [companyId, companyName, productId]);
 
   return { handleDraftClick, checking };
 }

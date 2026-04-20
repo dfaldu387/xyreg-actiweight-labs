@@ -31,7 +31,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { ApiKeyType } from '@/hooks/useCompanyApiKeys';
-import { encryptApiKey, decryptApiKey } from '@/utils/apiKeyUtils';
+
 
 interface CompanyApiKeyInfo {
   id: string;
@@ -103,19 +103,18 @@ function SuperAdminApiKeyManagement() {
 
     setVerifyingKey(keyType);
     try {
-      const decrypted = decryptApiKey(apiKey.encrypted_key);
+      const keyValue = apiKey.encrypted_key;
 
       const isGeminiKey = keyType === 'gemini';
       const expectedPrefix = isGeminiKey ? 'AIza' : '';
-      const hasValidPrefix = !expectedPrefix || decrypted.startsWith(expectedPrefix);
-      const hasValidLength = decrypted.length >= 30;
+      const hasValidPrefix = !expectedPrefix || keyValue.startsWith(expectedPrefix);
+      const hasValidLength = keyValue.length >= 30;
 
       console.log('[SuperAdmin] Key verification:', {
         keyType,
-        encryptedLength: apiKey.encrypted_key.length,
-        decryptedLength: decrypted.length,
-        prefix: decrypted.substring(0, 4),
-        suffix: decrypted.substring(decrypted.length - 4),
+        keyLength: keyValue.length,
+        prefix: keyValue.substring(0, 4),
+        suffix: keyValue.substring(keyValue.length - 4),
         hasValidPrefix,
         hasValidLength
       });
@@ -124,7 +123,7 @@ function SuperAdminApiKeyManagement() {
       if (keyType === 'elevenlabs' && hasValidLength) {
         try {
           const response = await fetch('https://api.elevenlabs.io/v1/voices', {
-            headers: { 'xi-api-key': decrypted },
+            headers: { 'xi-api-key': keyValue },
           });
           if (response.ok) {
             toast.success(
@@ -151,13 +150,35 @@ function SuperAdminApiKeyManagement() {
         return;
       }
 
+      // For Google Vertex AI, check if it's a valid service account JSON
+      if (keyType === 'google_vertex' as ApiKeyType) {
+        try {
+          const parsed = JSON.parse(keyValue);
+          if (parsed.type === 'service_account' && parsed.private_key && parsed.client_email) {
+            toast.success(
+              <div>
+                <strong>Valid service account JSON!</strong>
+                <br />
+                <span className="text-xs">
+                  Project: {parsed.project_id} | Email: {parsed.client_email}
+                </span>
+              </div>,
+              { duration: 5000 }
+            );
+            return;
+          }
+        } catch {
+          // Not JSON, fall through to standard validation
+        }
+      }
+
       if (hasValidLength && hasValidPrefix) {
         toast.success(
           <div>
             <strong>Key looks valid!</strong>
             <br />
             <span className="text-xs">
-              Length: {decrypted.length} chars | Prefix: {decrypted.substring(0, 4)}...
+              Length: {keyValue.length} chars | Prefix: {keyValue.substring(0, 4)}...
             </span>
           </div>,
           { duration: 5000 }
@@ -168,8 +189,8 @@ function SuperAdminApiKeyManagement() {
             <strong>Key appears invalid!</strong>
             <br />
             <span className="text-xs">
-              Length: {decrypted.length} chars (expected 30+)
-              {isGeminiKey && !hasValidPrefix && <><br />Prefix: "{decrypted.substring(0, 4)}" (expected "AIza")</>}
+              Length: {keyValue.length} chars (expected 30+)
+              {isGeminiKey && !hasValidPrefix && <><br />Prefix: "{keyValue.substring(0, 4)}" (expected "AIza")</>}
             </span>
             <br />
             <span className="text-xs text-amber-200">Please re-enter the key.</span>
@@ -327,7 +348,6 @@ function SuperAdminApiKeyManagement() {
 
     setIsSaving(true);
     try {
-      const encryptedKey = encryptApiKey(newKeyValue.trim());
       const existingKey = selectedCompanyForModal.api_keys.find(key => key.key_type === editingKeyType);
 
       const { error } = await supabase
@@ -337,7 +357,7 @@ function SuperAdminApiKeyManagement() {
             id: existingKey?.id,
             company_id: selectedCompanyForModal.id,
             key_type: editingKeyType,
-            encrypted_key: encryptedKey,
+            encrypted_key: newKeyValue.trim(),
             updated_at: new Date().toISOString()
           },
           { onConflict: 'company_id,key_type' }
@@ -557,7 +577,7 @@ function SuperAdminApiKeyManagement() {
     let errorCount = 0;
 
     try {
-      const encryptedKey = encryptApiKey(bulkKeyValue.trim());
+      const plainKey = bulkKeyValue.trim();
       const selectedIds = Array.from(bulkSelectedCompanies);
 
       for (const companyId of selectedIds) {
@@ -573,13 +593,13 @@ function SuperAdminApiKeyManagement() {
           if (existingKey) {
             const { error } = await supabase
               .from('company_api_keys')
-              .update({ encrypted_key: encryptedKey, updated_at: new Date().toISOString() })
+              .update({ encrypted_key: plainKey, updated_at: new Date().toISOString() })
               .eq('id', existingKey.id);
             if (error) throw error;
           } else {
             const { error } = await supabase
               .from('company_api_keys')
-              .insert({ company_id: companyId, key_type: bulkKeyType, encrypted_key: encryptedKey });
+              .insert({ company_id: companyId, key_type: bulkKeyType, encrypted_key: plainKey });
             if (error) throw error;
           }
           successCount++;

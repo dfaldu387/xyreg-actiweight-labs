@@ -7835,57 +7835,6 @@ export type Database = {
           },
         ]
       }
-      docx_comments: {
-        Row: {
-          id: string
-          document_id: string
-          version: number
-          docx_comment_id: string
-          author: string | null
-          author_initials: string | null
-          comment_date: string | null
-          content: string
-          quoted_text: string | null
-          parent_comment_docx_id: string | null
-          is_resolved: boolean
-          metadata: Json
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          document_id: string
-          version: number
-          docx_comment_id: string
-          author?: string | null
-          author_initials?: string | null
-          comment_date?: string | null
-          content: string
-          quoted_text?: string | null
-          parent_comment_docx_id?: string | null
-          is_resolved?: boolean
-          metadata?: Json
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          document_id?: string
-          version?: number
-          docx_comment_id?: string
-          author?: string | null
-          author_initials?: string | null
-          comment_date?: string | null
-          content?: string
-          quoted_text?: string | null
-          parent_comment_docx_id?: string | null
-          is_resolved?: boolean
-          metadata?: Json
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       document_editor_sessions: {
         Row: {
           document_id: string
@@ -8363,6 +8312,42 @@ export type Database = {
           },
         ]
       }
+      document_user_chat_messages: {
+        Row: {
+          company_id: string
+          content: string
+          created_at: string
+          document_id: string
+          id: string
+          member_ids: string[] | null
+          member_roles: Json | null
+          sender_name: string | null
+          sender_user_id: string
+        }
+        Insert: {
+          company_id: string
+          content: string
+          created_at?: string
+          document_id: string
+          id?: string
+          member_ids?: string[] | null
+          member_roles?: Json | null
+          sender_name?: string | null
+          sender_user_id: string
+        }
+        Update: {
+          company_id?: string
+          content?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          member_ids?: string[] | null
+          member_roles?: Json | null
+          sender_name?: string | null
+          sender_user_id?: string
+        }
+        Relationships: []
+      }
       document_versions: {
         Row: {
           change_summary: string | null
@@ -8656,6 +8641,423 @@ export type Database = {
           version?: number
         }
         Relationships: []
+      }
+      ehds_anonymization_profiles: {
+        Row: {
+          applied_by: string | null
+          company_id: string
+          created_at: string
+          dataset_id: string
+          id: string
+          last_applied_at: string | null
+          method: string
+          pii_fields_stripped: Json | null
+          privacy_score: number | null
+          profile_name: string
+          template_used: string
+          updated_at: string
+        }
+        Insert: {
+          applied_by?: string | null
+          company_id: string
+          created_at?: string
+          dataset_id: string
+          id?: string
+          last_applied_at?: string | null
+          method?: string
+          pii_fields_stripped?: Json | null
+          privacy_score?: number | null
+          profile_name: string
+          template_used?: string
+          updated_at?: string
+        }
+        Update: {
+          applied_by?: string | null
+          company_id?: string
+          created_at?: string
+          dataset_id?: string
+          id?: string
+          last_applied_at?: string | null
+          method?: string
+          pii_fields_stripped?: Json | null
+          privacy_score?: number | null
+          profile_name?: string
+          template_used?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ehds_anonymization_profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ehds_anonymization_profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "ehds_anonymization_profiles_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "ehds_datasets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ehds_data_permits: {
+        Row: {
+          approved_at: string | null
+          company_id: string
+          created_at: string
+          datasets_requested: Json | null
+          expires_at: string | null
+          hdab_country: string | null
+          hdab_name: string
+          id: string
+          permit_reference: string
+          permit_status: string
+          prrc_reviewer_id: string | null
+          purpose: string | null
+          researcher_organization: string | null
+          spe_details: Json | null
+          trade_secret_review: Json | null
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          company_id: string
+          created_at?: string
+          datasets_requested?: Json | null
+          expires_at?: string | null
+          hdab_country?: string | null
+          hdab_name: string
+          id?: string
+          permit_reference: string
+          permit_status?: string
+          prrc_reviewer_id?: string | null
+          purpose?: string | null
+          researcher_organization?: string | null
+          spe_details?: Json | null
+          trade_secret_review?: Json | null
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          company_id?: string
+          created_at?: string
+          datasets_requested?: Json | null
+          expires_at?: string | null
+          hdab_country?: string | null
+          hdab_name?: string
+          id?: string
+          permit_reference?: string
+          permit_status?: string
+          prrc_reviewer_id?: string | null
+          purpose?: string | null
+          researcher_organization?: string | null
+          spe_details?: Json | null
+          trade_secret_review?: Json | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ehds_data_permits_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ehds_data_permits_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+        ]
+      }
+      ehds_datasets: {
+        Row: {
+          accuracy_check_due_at: string | null
+          accuracy_last_checked_at: string | null
+          collection_method: string | null
+          company_id: string
+          created_at: string
+          created_by: string | null
+          data_categories: Json | null
+          data_format: string | null
+          description: string | null
+          healthdcat_ap_metadata: Json | null
+          id: string
+          name: string
+          product_id: string | null
+          status: string
+          updated_at: string
+          volume_estimate: string | null
+        }
+        Insert: {
+          accuracy_check_due_at?: string | null
+          accuracy_last_checked_at?: string | null
+          collection_method?: string | null
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          data_categories?: Json | null
+          data_format?: string | null
+          description?: string | null
+          healthdcat_ap_metadata?: Json | null
+          id?: string
+          name: string
+          product_id?: string | null
+          status?: string
+          updated_at?: string
+          volume_estimate?: string | null
+        }
+        Update: {
+          accuracy_check_due_at?: string | null
+          accuracy_last_checked_at?: string | null
+          collection_method?: string | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          data_categories?: Json | null
+          data_format?: string | null
+          description?: string | null
+          healthdcat_ap_metadata?: Json | null
+          id?: string
+          name?: string
+          product_id?: string | null
+          status?: string
+          updated_at?: string
+          volume_estimate?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ehds_datasets_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ehds_datasets_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "ehds_datasets_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "portfolio_revenue_analytics"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "ehds_datasets_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ehds_field_mappings: {
+        Row: {
+          company_id: string
+          created_at: string
+          dataset_id: string
+          eehrxf_standard_field: string | null
+          fhir_field_path: string | null
+          fhir_resource_type: string | null
+          id: string
+          internal_field_name: string
+          internal_field_path: string | null
+          mapping_status: string
+          transformation_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          dataset_id: string
+          eehrxf_standard_field?: string | null
+          fhir_field_path?: string | null
+          fhir_resource_type?: string | null
+          id?: string
+          internal_field_name: string
+          internal_field_path?: string | null
+          mapping_status?: string
+          transformation_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          dataset_id?: string
+          eehrxf_standard_field?: string | null
+          fhir_field_path?: string | null
+          fhir_resource_type?: string | null
+          id?: string
+          internal_field_name?: string
+          internal_field_path?: string | null
+          mapping_status?: string
+          transformation_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ehds_field_mappings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ehds_field_mappings_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "ehds_field_mappings_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "ehds_datasets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ehds_self_declarations: {
+        Row: {
+          checklist_responses: Json | null
+          company_id: string
+          created_at: string
+          declaration_generated_at: string | null
+          declaration_version: string
+          id: string
+          overall_status: string
+          product_id: string | null
+          signed_at: string | null
+          signed_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          checklist_responses?: Json | null
+          company_id: string
+          created_at?: string
+          declaration_generated_at?: string | null
+          declaration_version?: string
+          id?: string
+          overall_status?: string
+          product_id?: string | null
+          signed_at?: string | null
+          signed_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          checklist_responses?: Json | null
+          company_id?: string
+          created_at?: string
+          declaration_generated_at?: string | null
+          declaration_version?: string
+          id?: string
+          overall_status?: string
+          product_id?: string | null
+          signed_at?: string | null
+          signed_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ehds_self_declarations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ehds_self_declarations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+          {
+            foreignKeyName: "ehds_self_declarations_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "portfolio_revenue_analytics"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "ehds_self_declarations_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enterprise_task_dependencies: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          lag_days: number
+          source_task_id: string
+          target_task_id: string
+          task_type: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lag_days?: number
+          source_task_id: string
+          target_task_id: string
+          task_type: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lag_days?: number
+          source_task_id?: string
+          target_task_id?: string
+          task_type?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enterprise_task_dependencies_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enterprise_task_dependencies_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+        ]
       }
       esign_audit_log: {
         Row: {
@@ -18775,6 +19177,63 @@ export type Database = {
           },
         ]
       }
+      product_packaging: {
+        Row: {
+          created_at: string
+          id: string
+          labelling_compliant: boolean | null
+          material_composition: Json
+          packaging_type: string
+          ppwr_role: string | null
+          product_id: string
+          recyclability_class: string | null
+          substances_of_concern: Json | null
+          updated_at: string
+          volume_ratio: number | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          labelling_compliant?: boolean | null
+          material_composition?: Json
+          packaging_type: string
+          ppwr_role?: string | null
+          product_id: string
+          recyclability_class?: string | null
+          substances_of_concern?: Json | null
+          updated_at?: string
+          volume_ratio?: number | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          labelling_compliant?: boolean | null
+          material_composition?: Json
+          packaging_type?: string
+          ppwr_role?: string | null
+          product_id?: string
+          recyclability_class?: string | null
+          substances_of_concern?: Json | null
+          updated_at?: string
+          volume_ratio?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_packaging_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "portfolio_revenue_analytics"
+            referencedColumns: ["product_id"]
+          },
+          {
+            foreignKeyName: "product_packaging_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_phase_dependencies: {
         Row: {
           created_at: string
@@ -25363,6 +25822,38 @@ export type Database = {
           },
         ]
       }
+      thread_document_links: {
+        Row: {
+          document_id: string
+          id: string
+          linked_at: string
+          linked_by: string | null
+          thread_id: string
+        }
+        Insert: {
+          document_id: string
+          id?: string
+          linked_at?: string
+          linked_by?: string | null
+          thread_id: string
+        }
+        Update: {
+          document_id?: string
+          id?: string
+          linked_at?: string
+          linked_by?: string | null
+          thread_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "thread_document_links_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "communication_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       thread_participants: {
         Row: {
           external_email: string | null
@@ -27992,6 +28483,14 @@ export type Database = {
       get_next_version_number: {
         Args: { document_uuid: string }
         Returns: number
+      }
+      get_or_create_document_thread: {
+        Args: {
+          p_company_id: string
+          p_document_id: string
+          p_document_name?: string
+        }
+        Returns: string
       }
       get_portfolio_revenue_sunburst: {
         Args: {
