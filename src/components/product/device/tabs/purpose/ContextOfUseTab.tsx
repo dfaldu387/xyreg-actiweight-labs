@@ -10,6 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FieldSuggestion, productDefinitionAIService, DeviceContext, hasMinimumContext } from '@/services/productDefinitionAIService';
+import { AIExplainerDialog } from '@/components/product/ai-assistant/AIExplainerDialog';
+import { AISuggestionReviewDialog } from '@/components/product/ai-assistant/AISuggestionReviewDialog';
 import { toast } from 'sonner';
 import { useTranslation } from '@/hooks/useTranslation';
 import { ContextWarningToast, getMissingFieldsWithNavigation, getContextSources } from '../../ai-assistant/ContextWarningToast';
@@ -215,6 +217,124 @@ export function ContextOfUseTab({
   const [otherUserText, setOtherUserText] = useState('');
   const [showOtherEnvironmentInput, setShowOtherEnvironmentInput] = useState(false);
   const [otherEnvironmentText, setOtherEnvironmentText] = useState('');
+
+  // AI Explainer Dialog state
+  type ContextAIField = 'target_population' | 'intended_user' | 'duration_of_use' | 'use_environment' | 'use_trigger';
+  const [explainerField, setExplainerField] = useState<ContextAIField | null>(null);
+  const [pendingSuggestion, setPendingSuggestion] = useState<{
+    fieldKey: ContextAIField;
+    fieldLabel: string;
+    original: string;
+    suggested: string;
+  } | null>(null);
+
+  const CONTEXT_AI_FIELDS: Record<ContextAIField, { name: string; description: string }> = {
+    target_population: { name: 'Intended Patient Population', description: 'AI will suggest the most appropriate patient population based on your device information.' },
+    intended_user: { name: 'Intended User', description: 'AI will suggest who should use this device based on your device information.' },
+    duration_of_use: { name: 'Duration of Use', description: 'AI will suggest the appropriate duration of use classification per EU MDR Annex VIII.' },
+    use_environment: { name: 'Environment of Use', description: 'AI will suggest the most appropriate use environment for your device.' },
+    use_trigger: { name: 'Trigger for Use', description: 'AI will suggest the most appropriate trigger for use based on your device information.' },
+  };
+
+  const handleOpenExplainer = useCallback((fieldKey: ContextAIField) => {
+    if (!companyId) return;
+    const validation = hasMinimumContext(deviceContext);
+    if (!validation.valid) {
+      const missingFieldsWithNav = getMissingFieldsWithNavigation(validation.missingFields);
+      toast.error(<ContextWarningToast missingFields={missingFieldsWithNav} />, { duration: 8000 });
+      return;
+    }
+    setExplainerField(fieldKey);
+  }, [companyId, deviceContext]);
+
+  const handleExplainerConfirm = useCallback(async (additionalInstructions: string = '', outputLanguage: string = 'en') => {
+    if (!explainerField || !companyId || !onAcceptAISuggestion) return;
+    const fieldKey = explainerField;
+    setExplainerField(null);
+    setAiLoading?.(fieldKey, true);
+
+    const langSuffix = outputLanguage !== 'en'
+      ? `\nGenerate the response in ${outputLanguage === 'de' ? 'German' : outputLanguage === 'fr' ? 'French' : outputLanguage === 'fi' ? 'Finnish' : 'English'}.`
+      : '';
+
+    try {
+      const currentPopulation = localData.targetPopulation || [];
+      const currentUsers = intendedUsers;
+      const currentEnvironments = localData.useEnvironment || [];
+      const currentTriggers = localData.useTrigger || [];
+
+      let fieldLabel = '';
+      let fieldDesc = '';
+      let currentValue = '';
+      let requirements = '';
+
+      if (fieldKey === 'target_population') {
+        const availableOptions = predefinedPatients.filter(o => o !== 'Other' && !currentPopulation.includes(o));
+        fieldLabel = 'Intended Patient Population';
+        fieldDesc = `Select from: ${availableOptions.join(', ')}`;
+        currentValue = currentPopulation.join(', ');
+        requirements = `Select exactly one option from this list: ${availableOptions.join(', ')}. Return only the exact text.${langSuffix}`;
+        if (additionalInstructions) requirements += `\n${additionalInstructions}`;
+      } else if (fieldKey === 'intended_user') {
+        const availableOptions = predefinedUsers.filter(o => o !== 'Other' && !currentUsers.includes(o));
+        fieldLabel = 'Intended User';
+        fieldDesc = `Select from: ${availableOptions.join(', ')}`;
+        currentValue = currentUsers.join(', ');
+        requirements = `Select exactly one option from this list: ${availableOptions.join(', ')}. Return only the exact text.${langSuffix}`;
+        if (additionalInstructions) requirements += `\n${additionalInstructions}`;
+      } else if (fieldKey === 'duration_of_use') {
+        const options = durationOptions.map(o => o.label);
+        fieldLabel = 'Duration of Use';
+        fieldDesc = `Select from: ${options.join(', ')}`;
+        currentValue = localData.durationOfUse || '';
+        requirements = `Select exactly one from: ${options.join(', ')}. Return only the exact label.${langSuffix}`;
+        if (additionalInstructions) requirements += `\n${additionalInstructions}`;
+      } else if (fieldKey === 'use_environment') {
+        const availableOptions = predefinedEnvironments.filter(o => o !== 'Other' && !currentEnvironments.includes(o));
+        fieldLabel = 'Environment of Use';
+        fieldDesc = `Select from: ${availableOptions.join(', ')}`;
+        currentValue = currentEnvironments.join(', ');
+        requirements = `Select exactly one option from this list: ${availableOptions.join(', ')}. Return only the exact text.${langSuffix}`;
+        if (additionalInstructions) requirements += `\n${additionalInstructions}`;
+      } else if (fieldKey === 'use_trigger') {
+        const availableOptions = predefinedTriggers.filter(o => o !== 'Other' && !currentTriggers.includes(o));
+        fieldLabel = 'Trigger for Use';
+        fieldDesc = `Select from: ${availableOptions.join(', ')}`;
+        currentValue = currentTriggers.join(', ');
+        requirements = `Select exactly one option from this list: ${availableOptions.join(', ')}. Return only the exact text.${langSuffix}`;
+        if (additionalInstructions) requirements += `\n${additionalInstructions}`;
+      }
+
+      const response = await productDefinitionAIService.generateConciseFieldSuggestion(
+        productName || 'Current Medical Device',
+        fieldLabel,
+        fieldDesc,
+        currentValue,
+        fieldKey,
+        companyId,
+        requirements,
+        deviceContext
+      );
+
+      if (response.success && response.suggestions?.[0]) {
+        const suggestion = response.suggestions[0].suggestion.trim();
+        setPendingSuggestion({
+          fieldKey,
+          fieldLabel: CONTEXT_AI_FIELDS[fieldKey].name,
+          original: currentValue,
+          suggested: suggestion,
+        });
+      }
+    } catch (error: any) {
+      console.error('AI suggestion error:', error);
+      if (error?.message !== 'NO_CREDITS') {
+        toast.error('Failed to generate AI suggestion');
+      }
+    } finally {
+      setAiLoading?.(fieldKey, false);
+    }
+  }, [explainerField, companyId, localData, intendedUsers, productName, deviceContext, setAiLoading, onAcceptAISuggestion, onIntendedUsersChange]);
+
   const [isTriggerDropdownOpen, setIsTriggerDropdownOpen] = useState(false);
   const [showOtherTriggerInput, setShowOtherTriggerInput] = useState(false);
   const [otherTriggerText, setOtherTriggerText] = useState('');
@@ -524,68 +644,7 @@ export function ContextOfUseTab({
                     size="sm"
                     className='hover:bg-transparent'
                     disabled={isAiLoading?.('target_population') || isAiButtonDisabled?.('target_population') || !setAiLoading || !companyId}
-                    onClick={async () => {
-                      if (!onAcceptAISuggestion || !companyId || isAiLoading?.('target_population')) return;
-
-                      // Check for minimum context - BLOCK if insufficient
-                      const validation = hasMinimumContext(deviceContext);
-                      if (!validation.valid) {
-                        const missingFieldsWithNav = getMissingFieldsWithNavigation(validation.missingFields);
-                        toast.error(
-                          <ContextWarningToast missingFields={missingFieldsWithNav} />,
-                          { duration: 8000 }
-                        );
-                        return; // BLOCK generation
-                      }
-
-                      // Show what context we're using
-                      const sources = getContextSources(deviceContext);
-                      if (sources.length > 0) {
-                        toast.info(`Getting context from: ${sources.join(', ')}...`, { duration: 2000 });
-                      }
-
-                      setAiLoading?.('target_population', true);
-                      try {
-                        const currentPopulation = localData.targetPopulation || [];
-                        const availableOptions = predefinedPatients.filter(option => 
-                          option !== 'Other' && !currentPopulation.includes(option)
-                        );
-
-                        if (availableOptions.length === 0) {
-                          setAiLoading?.('target_population', false);
-                          return;
-                        }
-
-                        const response = await productDefinitionAIService.generateConciseFieldSuggestion(
-                          productName || 'Current Medical Device',
-                          'Intended Patient Population (On Whom)',
-                          `Select the most appropriate patient population from these predefined options: ${availableOptions.join(', ')}. Choose the option that best matches the device's intended use.`,
-                          currentPopulation.join(', '),
-                          'target_population',
-                          companyId,
-                          `Select exactly one option from this list: ${availableOptions.join(', ')}. Return only the exact text from the list.`,
-                          deviceContext
-                        );
-
-                        if (response.success && response.suggestions?.[0]) {
-                          const suggestion = response.suggestions[0].suggestion.trim();
-                          
-                          // Find the best match from predefined options
-                          const matchedOption = availableOptions.find(option => 
-                            option.toLowerCase().includes(suggestion.toLowerCase()) ||
-                            suggestion.toLowerCase().includes(option.toLowerCase())
-                          );
-                          
-                          if (matchedOption) {
-                            handleImmediateFieldChange('targetPopulation', [...currentPopulation, matchedOption]);
-                          }
-                        }
-                      } catch (error) {
-                        console.error('AI suggestion error:', error);
-                      } finally {
-                        setAiLoading?.('target_population', false);
-                      }
-                    }}
+                    onClick={() => handleOpenExplainer('target_population')}
                   >
                     {isAiLoading?.('target_population') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
                   </Button>
@@ -723,49 +782,7 @@ export function ContextOfUseTab({
                     size="sm"
                     className='hover:bg-transparent'
                     disabled={isAiLoading?.('intended_user') || isAiButtonDisabled?.('intended_user') || !setAiLoading || !companyId}
-                    onClick={async () => {
-                      if (!onAcceptAISuggestion || !companyId || isAiLoading?.('intended_user')) return;
-
-                      setAiLoading?.('intended_user', true);
-                      try {
-                        const availableOptions = predefinedUsers.filter(option => 
-                          option !== 'Other' && !intendedUsers.includes(option)
-                        );
-
-                        if (availableOptions.length === 0) {
-                          setAiLoading?.('intended_user', false);
-                          return;
-                        }
-
-                        const response = await productDefinitionAIService.generateConciseFieldSuggestion(
-                          productName || 'Current Medical Device',
-                          'Intended User (By Whom)',
-                          `Select the most appropriate user type from these predefined options: ${availableOptions.join(', ')}. Choose who will operate the device.`,
-                          intendedUsers.join(', '),
-                          'intended_user',
-                          companyId,
-                          `Select exactly one option from this list: ${availableOptions.join(', ')}. Return only the exact text from the list.`
-                        );
-
-                        if (response.success && response.suggestions?.[0]) {
-                          const suggestion = response.suggestions[0].suggestion.trim();
-                          
-                          // Find the best match from predefined options
-                          const matchedOption = availableOptions.find(option => 
-                            option.toLowerCase().includes(suggestion.toLowerCase()) ||
-                            suggestion.toLowerCase().includes(option.toLowerCase())
-                          );
-                          
-                          if (matchedOption) {
-                            onIntendedUsersChange?.([...intendedUsers, matchedOption]);
-                          }
-                        }
-                      } catch (error) {
-                        console.error('AI suggestion error:', error);
-                      } finally {
-                        setAiLoading?.('intended_user', false);
-                      }
-                    }}
+                    onClick={() => handleOpenExplainer('intended_user')}
                   >
                     {isAiLoading?.('intended_user') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
                   </Button>
@@ -903,41 +920,7 @@ export function ContextOfUseTab({
                     size="sm"
                     className='hover:bg-transparent'
                     disabled={isAiLoading?.('duration_of_use') || isAiButtonDisabled?.('duration_of_use') || !setAiLoading || !companyId}
-                    onClick={async () => {
-                      if (!onAcceptAISuggestion || !companyId || isAiLoading?.('duration_of_use')) return;
-
-                      setAiLoading?.('duration_of_use', true);
-                      try {
-                        const response = await productDefinitionAIService.generateConciseFieldSuggestion(
-                          productName || 'Current Medical Device',
-                          'Duration of Use (How Long)',
-                          `Select the most appropriate MDR-compliant duration from: Transient (less than 60 minutes), Short-Term (60 minutes to 30 days), Long-Term (more than 30 days). These definitions are from EU MDR 2017/745 Annex VIII.`,
-                          localData.durationOfUse || '',
-                          'duration_of_use',
-                          companyId,
-                          `Select exactly one option from this list: transient, short_term, long_term. Return only the exact value from the list.`
-                        );
-
-                        if (response.success && response.suggestions?.[0]) {
-                          const suggestion = response.suggestions[0].suggestion.trim().toLowerCase();
-                          
-                          // Find the best match from predefined options
-                          const matchedOption = durationOptions.find(option => 
-                            option.value === suggestion ||
-                            option.value.includes(suggestion) ||
-                            suggestion.includes(option.value)
-                          );
-                          
-                          if (matchedOption) {
-                            handleImmediateFieldChange('durationOfUse', matchedOption.value);
-                          }
-                        }
-                      } catch (error) {
-                        console.error('AI suggestion error:', error);
-                      } finally {
-                        setAiLoading?.('duration_of_use', false);
-                      }
-                    }}
+                    onClick={() => handleOpenExplainer('duration_of_use')}
                   >
                     {isAiLoading?.('duration_of_use') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
                   </Button>
@@ -1011,50 +994,7 @@ export function ContextOfUseTab({
                     size="sm"
                     className='hover:bg-transparent'
                     disabled={isAiLoading?.('use_environment') || isAiButtonDisabled?.('use_environment') || !setAiLoading || !companyId}
-                    onClick={async () => {
-                      if (!onAcceptAISuggestion || !companyId || isAiLoading?.('use_environment')) return;
-
-                      setAiLoading?.('use_environment', true);
-                      try {
-                        const currentEnvironment = localData.useEnvironment || [];
-                        const availableOptions = predefinedEnvironments.filter(option => 
-                          option !== 'Other' && !currentEnvironment.includes(option)
-                        );
-
-                        if (availableOptions.length === 0) {
-                          setAiLoading?.('use_environment', false);
-                          return;
-                        }
-
-                        const response = await productDefinitionAIService.generateConciseFieldSuggestion(
-                          productName || 'Current Medical Device',
-                          'Environment of Use (The Where)',
-                          `Select the most appropriate environment from these predefined options: ${availableOptions.join(', ')}. Choose where the device will be used.`,
-                          currentEnvironment.join(', '),
-                          'use_environment',
-                          companyId,
-                          `Select exactly one option from this list: ${availableOptions.join(', ')}. Return only the exact text from the list.`
-                        );
-
-                        if (response.success && response.suggestions?.[0]) {
-                          const suggestion = response.suggestions[0].suggestion.trim();
-                          
-                          // Find the best match from predefined options
-                          const matchedOption = availableOptions.find(option => 
-                            option.toLowerCase().includes(suggestion.toLowerCase()) ||
-                            suggestion.toLowerCase().includes(option.toLowerCase())
-                          );
-                          
-                          if (matchedOption) {
-                            handleImmediateFieldChange('useEnvironment', [...currentEnvironment, matchedOption]);
-                          }
-                        }
-                      } catch (error) {
-                        console.error('AI suggestion error:', error);
-                      } finally {
-                        setAiLoading?.('use_environment', false);
-                      }
-                    }}
+                    onClick={() => handleOpenExplainer('use_environment')}
                   >
                     {isAiLoading?.('use_environment') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
                   </Button>
@@ -1194,50 +1134,7 @@ export function ContextOfUseTab({
                     size="sm"
                     className='hover:bg-transparent'
                     disabled={isAiLoading?.('use_trigger') || isAiButtonDisabled?.('use_trigger') || !setAiLoading || !companyId}
-                    onClick={async () => {
-                      if (!onAcceptAISuggestion || !companyId || isAiLoading?.('use_trigger')) return;
-
-                      setAiLoading?.('use_trigger', true);
-                      try {
-                        const currentTriggers = localData.useTrigger || [];
-                        const availableOptions = predefinedTriggers.filter(option => 
-                          option !== 'Other' && !currentTriggers.includes(option)
-                        );
-
-                        if (availableOptions.length === 0) {
-                          setAiLoading?.('use_trigger', false);
-                          return;
-                        }
-
-                        const response = await productDefinitionAIService.generateConciseFieldSuggestion(
-                          productName || 'Current Medical Device',
-                          'Trigger for Use (The When)',
-                          `Select the most appropriate trigger from these predefined options: ${availableOptions.join(', ')}. Choose what event or condition initiates the device use.`,
-                          currentTriggers.join(', '),
-                          'use_trigger',
-                          companyId,
-                          `Select exactly one option from this list: ${availableOptions.join(', ')}. Return only the exact text from the list.`
-                        );
-
-                        if (response.success && response.suggestions?.[0]) {
-                          const suggestion = response.suggestions[0].suggestion.trim();
-                          
-                          // Find the best match from predefined options
-                          const matchedOption = availableOptions.find(option => 
-                            option.toLowerCase().includes(suggestion.toLowerCase()) ||
-                            suggestion.toLowerCase().includes(option.toLowerCase())
-                          );
-                          
-                          if (matchedOption) {
-                            handleImmediateFieldChange('useTrigger', [...currentTriggers, matchedOption]);
-                          }
-                        }
-                      } catch (error) {
-                        console.error('AI suggestion error:', error);
-                      } finally {
-                        setAiLoading?.('use_trigger', false);
-                      }
-                    }}
+                    onClick={() => handleOpenExplainer('use_trigger')}
                   >
                     {isAiLoading?.('use_trigger') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
                   </Button>
@@ -1376,6 +1273,61 @@ export function ContextOfUseTab({
       onOpenChange={setGovDialog}
       onConfirm={govConfirm}
       sectionLabel={govFieldLabel}
+    />
+
+    {/* AI-Assisted Generation Dialog */}
+    <AIExplainerDialog
+      open={explainerField !== null}
+      onOpenChange={(open) => !open && setExplainerField(null)}
+      onConfirm={handleExplainerConfirm}
+      isLoading={explainerField ? (isAiLoading?.(explainerField) ?? false) : false}
+      fieldName={explainerField ? CONTEXT_AI_FIELDS[explainerField].name : ''}
+      fieldDescription={explainerField ? CONTEXT_AI_FIELDS[explainerField].description : undefined}
+      productId={productId || ''}
+      companyId={companyId}
+    />
+
+    {/* Review AI Suggestion Dialog */}
+    <AISuggestionReviewDialog
+      open={pendingSuggestion !== null}
+      onOpenChange={(open) => !open && setPendingSuggestion(null)}
+      fieldLabel={pendingSuggestion?.fieldLabel || ''}
+      originalContent={pendingSuggestion?.original || ''}
+      suggestedContent={pendingSuggestion?.suggested || ''}
+      onAccept={(content) => {
+        if (pendingSuggestion) {
+          const fk = pendingSuggestion.fieldKey;
+          const suggestion = content.trim();
+
+          if (fk === 'target_population') {
+            const currentPopulation = localData.targetPopulation || [];
+            const availableOptions = predefinedPatients.filter(o => o !== 'Other' && !currentPopulation.includes(o));
+            const match = availableOptions.find(o => o.toLowerCase().includes(suggestion.toLowerCase()) || suggestion.toLowerCase().includes(o.toLowerCase()));
+            if (match) handleImmediateFieldChange('targetPopulation', [...currentPopulation, match]);
+          } else if (fk === 'intended_user') {
+            const availableOptions = predefinedUsers.filter(o => o !== 'Other' && !intendedUsers.includes(o));
+            const match = availableOptions.find(o => o.toLowerCase().includes(suggestion.toLowerCase()) || suggestion.toLowerCase().includes(o.toLowerCase()));
+            if (match) onIntendedUsersChange?.([...intendedUsers, match]);
+          } else if (fk === 'duration_of_use') {
+            const match = durationOptions.find(o => suggestion.toLowerCase().includes(o.label.toLowerCase()) || o.label.toLowerCase().includes(suggestion.toLowerCase()) || o.value === suggestion.toLowerCase());
+            if (match) handleImmediateFieldChange('durationOfUse', match.value);
+          } else if (fk === 'use_environment') {
+            const currentEnv = localData.useEnvironment || [];
+            const availableOptions = predefinedEnvironments.filter(o => o !== 'Other' && !currentEnv.includes(o));
+            const match = availableOptions.find(o => o.toLowerCase().includes(suggestion.toLowerCase()) || suggestion.toLowerCase().includes(o.toLowerCase()));
+            if (match) handleImmediateFieldChange('useEnvironment', [...currentEnv, match]);
+          } else if (fk === 'use_trigger') {
+            const currentTriggers = localData.useTrigger || [];
+            const availableOptions = predefinedTriggers.filter(o => o !== 'Other' && !currentTriggers.includes(o));
+            const match = availableOptions.find(o => o.toLowerCase().includes(suggestion.toLowerCase()) || suggestion.toLowerCase().includes(o.toLowerCase()));
+            if (match) handleImmediateFieldChange('useTrigger', [...currentTriggers, match]);
+          }
+
+          onAcceptAISuggestion?.(fk, content);
+        }
+        setPendingSuggestion(null);
+      }}
+      onReject={() => setPendingSuggestion(null)}
     />
     </>
   );

@@ -35,7 +35,9 @@ export function useGenerateRationale() {
       return generateRationale(type, context, companyId);
     },
     onError: (error: Error) => {
-      toast.error(`Failed to generate rationale: ${error.message}`);
+      if (error.message !== 'NO_CREDITS') {
+        toast.error(`Failed to generate rationale: ${error.message}`);
+      }
     },
   });
 }

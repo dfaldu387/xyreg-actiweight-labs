@@ -14,6 +14,7 @@ import { DocumentEditor } from "@onlyoffice/document-editor-react";
 import { FileEdit, ArrowLeft, Loader2, AlertCircle, Send, Check, CheckCircle, FilePen, Eye, ShieldCheck, CircleCheckBig, Hourglass, ExternalLink, Star, Users, UserCheck, Calendar, PenTool, ChevronDown, ChevronUp, Link2, MessageSquare } from 'lucide-react';
 import { useDocumentStar } from '@/hooks/useDocumentStar';
 import { DocumentEditorSidebar } from '@/components/document-composer/DocumentEditorSidebar';
+import { useCIDocumentMetadata } from '@/hooks/useCIDocumentMetadata';
 import { ReviewDraftsList } from '@/components/document-composer/ReviewDraftsList';
 import { SendToReviewGroupDialog } from '@/components/documents/SendToReviewGroupDialog';
 import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
@@ -281,6 +282,23 @@ export function DocumentDraftDrawer({
 
   const { isStarred, isLoading: starLoading, toggleStar } = useDocumentStar(normalizedDocId);
   const { comments: docxComments } = useDocxComments(showDocxComments ? normalizedDocId : undefined);
+
+  // Keep parent state (isRecord/recordId/nextReviewDate/documentNumber) in sync with
+  // the CI metadata. Previously this was driven by DocumentEditorSidebar; now it's
+  // standalone since the sidebar UI has been removed from the draft view.
+  const { metadata: ciMetadata } = useCIDocumentMetadata(normalizedDocId || null, resolvedCompanyId);
+  useEffect(() => {
+    if (ciMetadata) setIsRecord(ciMetadata.is_record ?? false);
+  }, [ciMetadata?.is_record]);
+  useEffect(() => {
+    if (ciMetadata) setRecordId(ciMetadata.record_id ?? null);
+  }, [ciMetadata?.record_id]);
+  useEffect(() => {
+    if (ciMetadata) setNextReviewDate(ciMetadata.next_review_date ?? null);
+  }, [ciMetadata?.next_review_date]);
+  useEffect(() => {
+    if (ciMetadata) setDocumentNumber(ciMetadata.document_number ?? null);
+  }, [ciMetadata?.document_number]);
 
   // Fetch document status for stepper (skip for new unsaved documents)
   useEffect(() => {
@@ -2126,42 +2144,6 @@ export function DocumentDraftDrawer({
           </>
         ) : (
           <>
-            {/* Sidebar + toggle (hidden in advanced editor mode) */}
-            {!showAdvancedEditor && (
-              <DocumentEditorSidebar
-                collapsed={sidebarCollapsed}
-                onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
-                widthClassName="w-[440px] min-w-[400px] max-w-[460px]"
-                ciDocumentId={normalizedDocId || null}
-                ciCompanyId={resolvedCompanyId}
-                productId={productId}
-                onIsRecordChange={setIsRecord}
-                onRecordIdChange={setRecordId}
-                onNextReviewDateChange={setNextReviewDate}
-                onDocumentNumberChange={setDocumentNumber}
-                showSectionNumbers={showSectionNumbers}
-                onShowSectionNumbersChange={(show) => {
-                  setShowSectionNumbers(show);
-                  if (template) {
-                    setTemplate({
-                      ...template,
-                      formatOptions: { ...template.formatOptions, showSectionNumbers: show }
-                    });
-                  }
-                }}
-                controlPanelProps={{
-                  productContext: template?.productContext,
-                  documentType: template?.type,
-                  isLocked: true,
-                  initialScope: productId ? 'product' : 'company',
-                  initialProductId: productId || undefined,
-                  template: template || undefined,
-                  disabled: !canEdit,
-
-                }}
-              />
-            )}
-
             {/* Editor area + optional comments sidebar */}
             <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'row', minWidth: 0 }}>
 
@@ -2241,7 +2223,18 @@ export function DocumentDraftDrawer({
                   documentNumber={documentNumber || undefined}
                   companyLogoUrl={companyLogoUrl}
                   hideVersioning
+                  onIsRecordChange={setIsRecord}
                   disableSopMentions={disableSopMentions}
+                  showSectionNumbers={showSectionNumbers}
+                  onShowSectionNumbersChange={(show) => {
+                    setShowSectionNumbers(show);
+                    if (template) {
+                      setTemplate({
+                        ...template,
+                        formatOptions: { ...template.formatOptions, showSectionNumbers: show }
+                      });
+                    }
+                  }}
                 />
               ) : null}
               {/* Inline comment highlights on document text */}

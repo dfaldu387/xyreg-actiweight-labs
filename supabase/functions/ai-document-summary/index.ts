@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.4';
-import { trackTokenUsage, extractGeminiUsage } from "../_shared/token-tracking.ts";
+import { trackTokenUsage, extractGeminiUsage, checkAiCredits } from "../_shared/token-tracking.ts";
 import { create, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
@@ -134,6 +134,23 @@ serve(async (req) => {
 
     if (!documentId || !companyId || !userId) {
       throw new Error('Missing required parameters: documentId, companyId, userId');
+    }
+
+    // Check AI credits before processing
+    if (companyId) {
+      const creditCheck = await checkAiCredits(companyId);
+      if (!creditCheck.allowed) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "NO_CREDITS",
+            message: "No AI credits remaining. Purchase an AI Booster Pack to continue.",
+            used: creditCheck.used,
+            limit: creditCheck.limit,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     // Get available AI providers

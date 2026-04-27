@@ -5,11 +5,12 @@ import { cn } from "@/lib/utils"
 
 const ScrollArea = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, children, ...props }, ref) => (
+  React.HTMLAttributes<HTMLDivElement> & { type?: "auto" | "always" | "scroll" | "hover" }
+>(({ className, children, type, ...props }, ref) => (
   <ScrollAreaPrimitive.Root
     ref={ref}
     className={cn("relative overflow-hidden", className)}
+    type={type}
     {...props as any}
   >
     <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">

@@ -4,11 +4,13 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Search, ArrowLeft, Activity, FileText, Play, Book, BookOpen } from 'lucide-react';
+import { Search, ArrowLeft, Activity, FileText, Play, Book, BookOpen, Globe } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useTranslation } from '@/hooks/useTranslation';
 import { regulatoryGlossary, GLOSSARY_CATEGORIES, type GlossaryEntry } from '@/data/regulatoryGlossary';
+import { RegulatoryAtlasView } from './RegulatoryAtlasView';
+import { GLOBAL_MARKETS } from './moduleContent/regulatoryAtlasContent';
 
 interface HelpTopic {
   id: string;
@@ -280,6 +282,7 @@ export function ReferenceTab({ initialGlossarySearch, onGlossaryOpened }: Refere
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTopic, setSelectedTopic] = useState<HelpTopic | null>(null);
   const [showGlossary, setShowGlossary] = useState(false);
+  const [showAtlas, setShowAtlas] = useState(false);
   const [glossarySearchOverride, setGlossarySearchOverride] = useState<string | undefined>(undefined);
   const { userRole } = useAuth();
 
@@ -309,6 +312,10 @@ export function ReferenceTab({ initialGlossarySearch, onGlossaryOpened }: Refere
     return <GlossaryView onBack={() => { setShowGlossary(false); setGlossarySearchOverride(undefined); }} initialSearch={glossarySearchOverride} />;
   }
 
+  if (showAtlas) {
+    return <RegulatoryAtlasView onBack={() => setShowAtlas(false)} />;
+  }
+
   if (selectedTopic) {
     return (
       <div className="space-y-4">
@@ -332,7 +339,26 @@ export function ReferenceTab({ initialGlossarySearch, onGlossaryOpened }: Refere
         />
       </div>
 
-      {/* Glossary card — always at top */}
+      {/* Regulatory Atlas card — always at top */}
+      <div className="space-y-1.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 px-1">
+          <Globe className="h-4 w-4" /> Regulatory Atlas
+        </h3>
+        <Card
+          className="p-3 cursor-pointer hover:bg-accent/50 transition-colors border-primary/20 bg-primary/5"
+          onClick={() => setShowAtlas(true)}
+        >
+          <p className="text-sm font-medium flex items-center gap-2">
+            EU MDR/IVDR & Global Markets
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{GLOBAL_MARKETS.length} markets</Badge>
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            EU MDR/IVDR deep-dive, MDCG guidance, 14 global authorities, digital thread (IMDRF/MDSAP/UDI), and class-based launch checklists
+          </p>
+        </Card>
+      </div>
+
+      {/* Glossary card */}
       <div className="space-y-1.5">
         <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 px-1">
           <BookOpen className="h-4 w-4" /> Nomenclature

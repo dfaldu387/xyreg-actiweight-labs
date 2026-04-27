@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,8 @@ import {
   Tag
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { useSubscriptionContext } from "@/context/SubscriptionContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // ============= PRICING CONFIGURATION =============
@@ -594,6 +596,22 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
   const companyId = user?.user_metadata?.lastSelectedCompany || user?.user_metadata?.activeCompany;
   const navigate = useNavigate();
 
+  // Current company plan tier from subscription context
+  const { planName: subscriptionPlanName } = useSubscriptionContext();
+  const currentPlanTier = useMemo((): Tier | null => {
+    if (isRegistrationFlow || !subscriptionPlanName) return null;
+    const name = subscriptionPlanName.toLowerCase();
+    const tierMap: Record<string, Tier> = {
+      genesis: "genesis",
+      core: "core",
+      "helix os": "core",
+      helix: "core",
+      enterprise: "enterprise",
+      investor: "investor",
+    };
+    return tierMap[name] || null;
+  }, [subscriptionPlanName, isRegistrationFlow]);
+
   // State for investor counters
   const [kpiCompanyCount, setKpiCompanyCount] = useState(1);
   const [ddRoomCount, setDdRoomCount] = useState(1);
@@ -617,7 +635,7 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
         { name: "Invest-Ready Viability Score", isFree: true },
         { name: "Live Pitch Link (Shareable)", isFree: true },
         { name: "Competitor & Market Analysis", isFree: true },
-        { name: "AI Booster (500 credits for €49)", isFree: false },
+        { name: "AI Booster (500 credits for $20)", isFree: false },
         { name: "Earn credits by inviting founders", isFree: true }
       ]
     },
@@ -960,14 +978,16 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                     )}
                   </div>
 
-                  {/* Selection indicator */}
-                  {isSelected && (
-                    <div className={cn("absolute top-2 right-2 w-2 h-2 rounded-full",
-                      tierKey === "genesis" ? "bg-teal-400" :
-                        tierKey === "core" ? "bg-cyan-400" :
-                          tierKey === "enterprise" ? "bg-amber-400" :
-                            "bg-violet-400"
-                    )} />
+                  {/* Current Plan badge */}
+                  {currentPlanTier === tierKey && (
+                    <Badge className={cn(
+                      "absolute -top-2 right-2 text-xs px-1.5 py-0.5 font-extrabold border-0 z-10",
+                      tierKey === "genesis" ? "bg-teal-400 text-black" :
+                        tierKey === "core" ? "bg-cyan-400 text-black" :
+                          "bg-amber-400/20 text-amber-300"
+                    )}>
+                      Current Plan
+                    </Badge>
                   )}
                 </Card>
               );
@@ -1035,8 +1055,10 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                     <p className="text-[10px] text-slate-300">{tier.shortDescription}</p>
                   </div>
 
-                  {isSelected && (
-                    <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-violet-400" />
+                  {currentPlanTier === tierKey && (
+                    <Badge className="absolute top-2 right-2 text-[9px] px-1.5 py-0.5 font-semibold border-0 bg-violet-400/20 text-violet-300">
+                      Current Plan
+                    </Badge>
                   )}
                 </Card>
               );
@@ -2330,8 +2352,8 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                       );
                     })()}
 
-                    {/* Coupon Code */}
-                    {(isCore || isEnterprise) && (
+                    {/* Coupon Code - hide for existing plan holders */}
+                    {(isCore || isEnterprise) && !currentPlanTier && (
                       <div className="pt-2 border-t border-slate-600/50">
                         <p className="text-[10px] text-slate-400 mb-1.5 flex items-center gap-1">
                           <Tag className="w-3 h-3" />
@@ -2501,7 +2523,7 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                           setIsContactOpen(true);
                         }
                       }}
-                      disabled={isCheckoutLoading}
+                      disabled={isCheckoutLoading || (!!currentPlanTier && selectedTier === currentPlanTier)}
                       className={cn(
                         "w-full font-semibold py-5 text-sm shadow-lg",
                         isGenesis
@@ -2520,7 +2542,15 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                         </>
                       ) : isRegistrationFlow
                         ? (isGenesis ? "Continue with Genesis" : isEnterprise ? "Continue with Enterprise" : isInvestor ? "Continue as Investor" : "Continue with this Plan")
-                        : (isGenesis ? "Start Free" : isEnterprise ? (enterpriseCouponApplied ? `Pay €${ENTERPRISE_COUPON_PRICE}/mo` : "Contact Sales") : isInvestor ? "Join Network" : couponApplied ? `Pay €${PILOT_PRICE}/mo` : "Start Trial")
+                        : currentPlanTier
+                          ? (selectedTier === currentPlanTier ? "Current Plan" : (() => {
+                              const tierOrder: Tier[] = ["genesis", "core", "enterprise"];
+                              const currentIdx = tierOrder.indexOf(currentPlanTier);
+                              const selectedIdx = tierOrder.indexOf(selectedTier);
+                              if (isInvestor) return "Join Network";
+                              return selectedIdx > currentIdx ? "Upgrade Plan" : "Downgrade";
+                            })())
+                          : (isGenesis ? "Start Free" : isEnterprise ? (enterpriseCouponApplied ? `Pay €${ENTERPRISE_COUPON_PRICE}/mo` : "Contact Sales") : isInvestor ? "Join Network" : couponApplied ? `Pay €${PILOT_PRICE}/mo` : "Start Trial")
                       }
                     </Button>
                   </div>

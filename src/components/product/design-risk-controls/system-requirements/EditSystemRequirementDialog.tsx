@@ -19,6 +19,7 @@ import { MultiSelect } from "@/components/settings/document-control/MultiSelect"
 import { hazardsService } from "@/services/hazardsService";
 import { UserNeedsService } from "@/services/userNeedsService";
 import { AIRequirementUserNeedSuggestions } from "@/components/product/design-risk-controls/requirement-specifications/AIRequirementUserNeedSuggestions";
+import { AIRequirementHazardSuggestions } from "@/components/product/design-risk-controls/requirement-specifications/AIRequirementHazardSuggestions";
 import { toast as sonnerToast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { UserNeed } from "@/components/product/design-risk-controls/user-needs/types";
@@ -246,7 +247,7 @@ export function EditSystemRequirementDialog({
 
             {/* Traces to User Need(s) — Popover + Command searchable multi-select with AI */}
             <div className="space-y-2">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between gap-2">
                 <Label>{lang('systemRequirements.form.tracesTo')}</Label>
                 <AIRequirementUserNeedSuggestions
                   requirementDescription={formData.description}
@@ -263,6 +264,11 @@ export function EditSystemRequirementDialog({
                   onUserNeedCreated={handleAIUserNeedCreated}
                 />
               </div>
+              {!loadingUserNeeds && selectedUserNeeds.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No user need linked yet. Click <span className="font-medium">Suggest with AI</span> to find an existing match or draft a new one from this requirement.
+                </p>
+              )}
               {loadingUserNeeds ? (
                 <div className="h-10 flex items-center px-3 py-2 border rounded-md bg-muted">
                   <span className="text-sm text-muted-foreground">Loading user needs...</span>
@@ -309,7 +315,7 @@ export function EditSystemRequirementDialog({
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[100] bg-popover" align="start">
                       <Command>
                         <CommandInput placeholder="Search user needs..." />
                         <CommandList>
@@ -402,18 +408,39 @@ export function EditSystemRequirementDialog({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>{lang('systemRequirements.form.linkedRisks')}</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={handleCreateNewHazard}
-                  disabled={isCreatingDraftHazard || disabled}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  {isCreatingDraftHazard ? 'Creating...' : 'Create New Hazard'}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <AIRequirementHazardSuggestions
+                    requirementDescription={formData.description}
+                    requirementType="system"
+                    productId={productId}
+                    companyId={companyId}
+                    productName={productName}
+                    existingHazards={hazards.map(h => ({ id: h.id, hazard_id: h.hazard_id, description: h.description }))}
+                    selectedIds={selectedRisks}
+                    onSelect={(id) => setSelectedRisks(prev => prev.includes(id) ? prev : [...prev, id])}
+                    onHazardCreated={() => {
+                      queryClient.invalidateQueries({ queryKey: ['hazards-for-edit', productId] });
+                      queryClient.invalidateQueries({ queryKey: ['hazards', productId] });
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleCreateNewHazard}
+                    disabled={isCreatingDraftHazard || disabled}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    {isCreatingDraftHazard ? 'Creating...' : 'Create New Hazard'}
+                  </Button>
+                </div>
               </div>
+              {!loadingHazards && selectedRisks.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No risk linked yet. Click <span className="font-medium">Suggest with AI</span> to find a matching hazard or draft a new one from this requirement.
+                </p>
+              )}
               {loadingHazards ? (
                 <div className="h-10 flex items-center px-3 py-2 border rounded-md bg-muted">
                   <span className="text-sm text-muted-foreground">Loading hazards...</span>

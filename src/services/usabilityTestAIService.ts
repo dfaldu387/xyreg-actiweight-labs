@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 export interface UsabilityTestSuggestion {
   hazard_id: string;
@@ -40,6 +41,11 @@ export async function generateUsabilityTestCases(
   if (error) {
     console.error('[usabilityTestAIService] Error:', error);
     throw new Error(error.message || 'Failed to generate test cases');
+  }
+
+  if (data?.error === 'NO_CREDITS') {
+    showNoCreditDialog();
+    throw new Error('NO_CREDITS');
   }
 
   if (!data?.success) {

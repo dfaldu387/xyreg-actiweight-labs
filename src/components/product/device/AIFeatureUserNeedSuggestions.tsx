@@ -82,9 +82,11 @@ export function AIFeatureUserNeedSuggestions({
       }
 
       setSuggestions(data?.suggestions || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('AI suggestion error:', err);
-      toast.error('Failed to generate suggestions');
+      if (err?.message !== 'NO_CREDITS') {
+        toast.error('Failed to generate suggestions');
+      }
     } finally {
       setIsLoading(false);
     }

@@ -44,6 +44,25 @@ export async function extractTextFromChecklistFile(file: File): Promise<string> 
 }
 
 /**
+ * Convenience wrapper: extract text from a Blob (e.g. downloaded from storage)
+ * by wrapping it in a File so the same extraction pipeline applies.
+ */
+export async function extractTextFromBlob(blob: Blob, fileName: string): Promise<string> {
+  const file = new File([blob], fileName, { type: blob.type || guessMimeFromName(fileName) });
+  return extractTextFromChecklistFile(file);
+}
+
+function guessMimeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  if (lower.endsWith('.txt')) return 'text/plain';
+  if (lower.endsWith('.csv')) return 'text/csv';
+  return '';
+}
+
+/**
  * Extract text from PDF using PDF.js (pdfjs-dist) page by page.
  * Falls back to the edge function if PDF.js extraction yields low-quality text.
  */

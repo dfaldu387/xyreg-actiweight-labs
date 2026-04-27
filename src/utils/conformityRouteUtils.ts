@@ -7,7 +7,8 @@ export interface ConformityRoute {
 }
 
 export const CONFORMITY_ROUTES: ConformityRoute[] = [
-  { value: 'Self-Declaration (Annex IV)', label: 'Self-Declaration (Annex IV)', forClasses: ['I'] },
+  { value: 'Self-Declaration (Annex II + III)', label: 'Conformity Assessment based on Annex II and Annex III (Self-Declaration, Class I)', forClasses: ['I'] },
+  { value: 'Self-Declaration (Annex IV)', label: 'Self-Declaration (Annex IV — DoC template, legacy)', forClasses: ['I'] },
   { value: 'Annex IX (QMS + TD)', label: 'Annex IX (QMS + Technical Documentation)', forClasses: ['Is', 'Im', 'Ir', 'IIa', 'IIb', 'III'] },
   { value: 'Annex X (Type Examination)', label: 'Annex X (Type Examination)', forClasses: ['IIb', 'III'] },
   { value: 'Annex XI Part A (Production QA)', label: 'Annex XI Part A (Production QA)', forClasses: ['IIa', 'IIb'] },
@@ -27,7 +28,7 @@ export function getSuggestedConformityRoute(riskClass: string | undefined | null
   // EU MDR conformity assessment route mapping
   switch (normalized) {
     case 'I':
-      return 'Self-Declaration (Annex IV)';
+      return 'Self-Declaration (Annex II + III)';
     case 'Is':
     case 'Im':
     case 'Ir':
@@ -45,7 +46,8 @@ export function getSuggestedConformityRoute(riskClass: string | undefined | null
 }
 
 export const CONFORMITY_ROUTE_DESCRIPTIONS: Record<string, string> = {
-  'Self-Declaration (Annex IV)': 'For Class I devices. Manufacturer declares conformity without Notified Body involvement (EU Declaration of Conformity per Annex IV).',
+  'Self-Declaration (Annex II + III)': 'Class I devices (non-sterile, non-measuring, non-reusable surgical). Manufacturer demonstrates conformity per Annex II (Technical Documentation) and Annex III (PMS Technical Documentation), then issues an EU Declaration of Conformity. No Notified Body involvement.',
+  'Self-Declaration (Annex IV)': 'Legacy label. Annex IV defines the EU Declaration of Conformity template — the assessment itself is based on Annex II + III. Use the Annex II + III option for new records.',
   'Annex IX (QMS + TD)': 'Full Quality Management System and Technical Documentation assessment. Most common for Class IIa and above.',
   'Annex X (Type Examination)': 'Assessment of a representative sample/prototype. Often combined with Annex XI.',
   'Annex XI Part A (Production QA)': 'Quality assurance focusing on production processes.',
@@ -59,7 +61,7 @@ export const CONFORMITY_ROUTE_DESCRIPTIONS: Record<string, string> = {
 export function getConformityRouteHelpContent(): string {
   return `The Conformity Assessment Route determines the regulatory pathway for demonstrating CE mark compliance under EU MDR.
 
-• Self-Declaration (Annex IV): Class I devices only (no Notified Body)
+• Conformity Assessment based on Annex II + III: Class I devices (self-declaration, no Notified Body). Annex II = Technical Documentation, Annex III = PMS Technical Documentation. Manufacturer issues an EU Declaration of Conformity.
 • Annex IX: Full QMS + Technical Documentation (most common for IIa+)
 • Annex X: Type Examination of representative sample
 • Annex XI Part A: Production quality assurance

@@ -98,6 +98,7 @@ const SuperAdminPlans = lazy(() => import("@/pages/SuperAdminPlans"));
 const SuperAdminPlanMenuAccess = lazy(() => import("@/pages/SuperAdminPlanMenuAccess"));
 const SuperAdminPlanPricing = lazy(() => import("@/pages/SuperAdminPlanPricing"));
 const SuperAdminApiKeyManagement = lazy(() => import("@/components/super-admin/SuperAdminApiKeyManagement"));
+const SuperAdminAiTokenUsage = lazy(() => import("@/components/super-admin/SuperAdminAiTokenUsage"));
 const SuperAdminDocuments = lazy(() => import("@/pages/SuperAdminDocuments"));
 const SuperAdminTemplates = lazy(() => import("@/pages/SuperAdminTemplates"));
 const SuperAdminReleases = lazy(() => import("@/pages/super-admin/SuperAdminReleases"));
@@ -398,6 +399,15 @@ function App() {
                 <Suspense fallback={<PageLoader />}>
                   <ErrorBoundary level="component">
                     <SuperAdminApiKeyManagement />
+                  </ErrorBoundary>
+                </Suspense>
+              } />
+
+              {/* Super Admin AI Token Usage */}
+              <Route path="app/ai-token-usage" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary level="component">
+                    <SuperAdminAiTokenUsage />
                   </ErrorBoundary>
                 </Suspense>
               } />

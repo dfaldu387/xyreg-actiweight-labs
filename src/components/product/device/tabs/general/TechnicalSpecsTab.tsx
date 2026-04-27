@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useCallback, useEffect } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,8 +13,14 @@ import { HelpTooltip } from '../../sections/HelpTooltip';
 import { DeviceCharacteristics } from '@/types/client.d';
 import { ConditionalDeviceCharacteristics } from '../../sections/ConditionalDeviceCharacteristics';
 import { useTranslation } from '@/hooks/useTranslation';
+import {
+  MaterialsBodyContactEditor,
+  normalizeMaterialEntries,
+  type MaterialEntry,
+} from '../../sections/MaterialsBodyContactEditor';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,12 +42,101 @@ const TRL_OPTIONS = [
   { value: 8, label: 'TRL 8: Market Ready', description: 'Regulatory clearance obtained' },
 ];
 
+/**
+ * Persistent tri-state status pill for Annex-I-driving fields.
+ * - true  → green ("Answered: Yes")
+ * - false → muted ("Answered: No")
+ * - null/undefined → amber ("Not yet assessed")
+ * Stays visible after the orange navigation highlight pulse fades, so users
+ * can always tell whether a field is unanswered or deliberately answered.
+ */
+const TriStateBadge: React.FC<{ value: boolean | null | undefined; className?: string }> = ({ value, className }) => {
+  if (value === true) {
+    return (
+      <Badge
+        variant="outline"
+        className={`text-xs border-green-500/40 bg-green-500/10 text-green-700 dark:text-green-400 ${className ?? ''}`}
+      >
+        Answered: Yes
+      </Badge>
+    );
+  }
+  if (value === false) {
+    return (
+      <Badge variant="outline" className={`text-xs text-muted-foreground ${className ?? ''}`}>
+        Answered: No
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className={`text-xs border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400 ${className ?? ''}`}
+    >
+      Not yet assessed
+    </Badge>
+  );
+};
+
+/**
+ * Tri-state Yes / No / Not yet assessed row used for GSPR-driving binary
+ * fields on Technical Specs. Mirrors the pattern already used by the
+ * absorbed/dispersed and CMR sections so the user can always tell whether a
+ * field is unanswered or deliberately answered.
+ */
+const TriStateRow: React.FC<{
+  id: string;
+  label: React.ReactNode;
+  tooltip?: string;
+  value: boolean | null | undefined;
+  onChange: (next: boolean | null) => void;
+  disabled?: boolean;
+  saving?: boolean;
+  lockBadge?: React.ReactNode;
+}> = ({ id, label, tooltip, value, onChange, disabled, saving, lockBadge }) => {
+  const radioValue = value === true ? 'yes' : value === false ? 'no' : 'unset';
+  return (
+    <div id={id} className="col-span-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border rounded-md p-2">
+      <Label className="flex items-center gap-2 text-sm font-normal">
+        {label}
+        {lockBadge}
+        {tooltip && <HelpTooltip content={tooltip} />}
+        <TriStateBadge value={value} />
+        {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+      </Label>
+      <RadioGroup
+        value={radioValue}
+        onValueChange={(val) => {
+          const next = val === 'yes' ? true : val === 'no' ? false : null;
+          onChange(next);
+        }}
+        className="flex gap-3"
+        disabled={disabled}
+      >
+        <div className="flex items-center gap-1">
+          <RadioGroupItem value="yes" id={`${id}-yes`} />
+          <Label htmlFor={`${id}-yes`} className="text-xs cursor-pointer">Yes</Label>
+        </div>
+        <div className="flex items-center gap-1">
+          <RadioGroupItem value="no" id={`${id}-no`} />
+          <Label htmlFor={`${id}-no`} className="text-xs cursor-pointer">No</Label>
+        </div>
+        <div className="flex items-center gap-1">
+          <RadioGroupItem value="unset" id={`${id}-unset`} />
+          <Label htmlFor={`${id}-unset`} className="text-xs cursor-pointer text-muted-foreground">Not yet assessed</Label>
+        </div>
+      </RadioGroup>
+    </div>
+  );
+};
+
 interface TechnicalSpecsTabProps {
   keyTechnologyCharacteristics?: DeviceCharacteristics;
   trlLevel?: number | null;
   onKeyTechnologyCharacteristicsChange?: (value: DeviceCharacteristics) => void;
   onTrlLevelChange?: (value: number | null) => void;
   isLoading?: boolean;
+  isActiveDevice?: boolean;
   eudamedLockedFields?: Record<string, boolean | { locked: true; eudamedValue: boolean | string }>;
   // Governance & scope
   belongsToFamily?: boolean;
@@ -145,6 +240,7 @@ export function TechnicalSpecsTab({
   onKeyTechnologyCharacteristicsChange,
   onTrlLevelChange,
   isLoading,
+  isActiveDevice,
   eudamedLockedFields = {},
   belongsToFamily = false,
   isMaster = false,
@@ -175,13 +271,55 @@ export function TechnicalSpecsTab({
   const { lang } = useTranslation();
   const [savingField, setSavingField] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [pendingChange, setPendingChange] = useState<{ field: string; value: any; isSterility?: boolean } | null>(null);
 
-  // Check if we should show Genesis styling
+  // Check if we should show Genesis styling.
+  // NOTE: gap-analysis deep-links are NOT a guided flow — they should not paint
+  // unrelated sections green/amber. Only the actual deep-link target gets the
+  // temporary amber pulse from the highlight effect below.
   const returnTo = searchParams.get('returnTo');
   const section = searchParams.get('section');
-  const isInGenesisFlow = returnTo === 'genesis' || returnTo === 'venture-blueprint' || returnTo === 'investor-share' || returnTo === 'gap-analysis';
+  const isInGenesisFlow = returnTo === 'genesis' || returnTo === 'venture-blueprint' || returnTo === 'investor-share';
   const showTrlBorder = isInGenesisFlow || section === 'trl';
+
+  // Deep-link highlight: poll for the target section (it may render after async
+  // product/device data lands), then scroll into view + strong amber pulse for 4s.
+  const highlight = searchParams.get('highlight');
+  useEffect(() => {
+    if (!highlight) return;
+    let cancelled = false;
+    let removeTimer: number | undefined;
+    const start = Date.now();
+    const tryHighlight = () => {
+      if (cancelled) return;
+      const el = document.getElementById(highlight);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add(
+          'ring-4', 'ring-amber-500', 'ring-offset-4',
+          'bg-amber-50', 'dark:bg-amber-950/30',
+          'rounded-lg', 'transition-all', 'duration-500'
+        );
+        removeTimer = window.setTimeout(() => {
+          el.classList.remove(
+            'ring-4', 'ring-amber-500', 'ring-offset-4',
+            'bg-amber-50', 'dark:bg-amber-950/30'
+          );
+        }, 4000);
+        return;
+      }
+      if (Date.now() - start < 2000) {
+        window.setTimeout(tryHighlight, 100);
+      }
+    };
+    const startTimer = window.setTimeout(tryHighlight, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startTimer);
+      if (removeTimer) window.clearTimeout(removeTimer);
+    };
+  }, [highlight]);
 
   const isFieldLocked = (field: string) => {
     const entry = eudamedLockedFields[field];
@@ -450,7 +588,7 @@ export function TechnicalSpecsTab({
       </div>
 
       {/* System Architecture / Software Classification */}
-      <div>
+      <div id="software-classification-section">
         <div className="flex items-center gap-1 mb-3">
           <Label className="text-sm font-medium">System Architecture</Label>
           {renderScopeAndGov('technical_systemArchitecture', extractSectionValue('technical_systemArchitecture', keyTechnologyCharacteristics))}
@@ -467,88 +605,122 @@ export function TechnicalSpecsTab({
         ))}
       </div>
 
-      {/* Key Technology Characteristics */}
-      <div>
+      {/* Key Technology Characteristics — also serves as anchor for GSPR 21 (diagnostic/monitoring). */}
+      <div id="measuring-function-section">
+        <div id="diagnostic-monitoring-section" className="sr-only" aria-hidden="true" />
         <div className="flex items-center gap-1 mb-3">
           <Label className="text-sm font-medium">{lang('deviceBasics.technical.keyTechCharLabel')}</Label>
           {renderScopeAndGov('technical_keyTechCharacteristics', extractSectionValue('technical_keyTechCharacteristics', keyTechnologyCharacteristics))}
         </div>
         {wrapWithOverlay('technical_keyTechCharacteristics', (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className={`flex items-center space-x-2 ${isFieldLocked('hasMeasuringFunction') ? 'bg-blue-50/50 dark:bg-blue-950/10 rounded px-2 py-1' : ''}`}>
-              <Checkbox
-                id="hasMeasuringFunction"
-                checked={keyTechnologyCharacteristics.hasMeasuringFunction || false}
-                onCheckedChange={checked => handleCharacteristicChange('hasMeasuringFunction', checked as boolean)}
-                disabled={savingField === 'hasMeasuringFunction'}
-              />
-              <Label htmlFor="hasMeasuringFunction" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.hasMeasuringFunction')}
-                {renderLockBadge('hasMeasuringFunction', keyTechnologyCharacteristics.hasMeasuringFunction)}
-                <HelpTooltip content={lang('deviceBasics.technical.hasMeasuringFunctionTooltip')} />
-                {savingField === 'hasMeasuringFunction' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
+            <TriStateRow
+              id="hasMeasuringFunction-row"
+              label={lang('deviceBasics.technical.hasMeasuringFunction')}
+              tooltip={lang('deviceBasics.technical.hasMeasuringFunctionTooltip')}
+              value={(keyTechnologyCharacteristics as any).hasMeasuringFunction}
+              onChange={(next) => handleCharacteristicChange('hasMeasuringFunction', next)}
+              disabled={savingField === 'hasMeasuringFunction'}
+              saving={savingField === 'hasMeasuringFunction'}
+              lockBadge={renderLockBadge('hasMeasuringFunction', keyTechnologyCharacteristics.hasMeasuringFunction)}
+            />
 
-            <div className={`flex items-center space-x-2 ${isFieldLocked('isReusable') ? 'bg-blue-50/50 dark:bg-blue-950/10 rounded px-2 py-1' : ''}`}>
-              <Checkbox
-                id="isReusable"
-                checked={keyTechnologyCharacteristics.isReusable || false}
-                onCheckedChange={checked => handleCharacteristicChange('isReusable', checked as boolean)}
-                disabled={savingField === 'isReusable'}
-              />
-              <Label htmlFor="isReusable" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.isReusable')}
-                {renderLockBadge('isReusable', keyTechnologyCharacteristics.isReusable)}
-                <HelpTooltip content={lang('deviceBasics.technical.isReusableTooltip')} />
-                {savingField === 'isReusable' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
+            <TriStateRow
+              id="isReusable-row"
+              label={lang('deviceBasics.technical.isReusable')}
+              tooltip={lang('deviceBasics.technical.isReusableTooltip')}
+              value={(keyTechnologyCharacteristics as any).isReusable}
+              onChange={(next) => handleCharacteristicChange('isReusable', next)}
+              disabled={savingField === 'isReusable'}
+              saving={savingField === 'isReusable'}
+              lockBadge={renderLockBadge('isReusable', keyTechnologyCharacteristics.isReusable)}
+            />
 
-            <div className={`flex items-center space-x-2 ${isFieldLocked('incorporatesMedicinalSubstance') ? 'bg-blue-50/50 dark:bg-blue-950/10 rounded px-2 py-1' : ''}`}>
-              <Checkbox
-                id="incorporatesMedicinalSubstance"
-                checked={keyTechnologyCharacteristics.incorporatesMedicinalSubstance || false}
-                onCheckedChange={checked => handleCharacteristicChange('incorporatesMedicinalSubstance', checked as boolean)}
-                disabled={savingField === 'incorporatesMedicinalSubstance'}
-              />
-              <Label htmlFor="incorporatesMedicinalSubstance" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.incorporatesMedicinalSubstance')}
-                {renderLockBadge('incorporatesMedicinalSubstance', keyTechnologyCharacteristics.incorporatesMedicinalSubstance)}
-                <HelpTooltip content={lang('deviceBasics.technical.incorporatesMedicinalSubstanceTooltip')} />
-                {savingField === 'incorporatesMedicinalSubstance' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
+            <TriStateRow
+              id="medicinal-substance-section"
+              label={lang('deviceBasics.technical.incorporatesMedicinalSubstance')}
+              tooltip={lang('deviceBasics.technical.incorporatesMedicinalSubstanceTooltip')}
+              value={(keyTechnologyCharacteristics as any).incorporatesMedicinalSubstance}
+              onChange={(next) => handleCharacteristicChange('incorporatesMedicinalSubstance', next)}
+              disabled={savingField === 'incorporatesMedicinalSubstance'}
+              saving={savingField === 'incorporatesMedicinalSubstance'}
+              lockBadge={renderLockBadge('incorporatesMedicinalSubstance', keyTechnologyCharacteristics.incorporatesMedicinalSubstance)}
+            />
 
-            <div className={`flex items-center space-x-2 ${isFieldLocked('containsHumanAnimalMaterial') ? 'bg-blue-50/50 dark:bg-blue-950/10 rounded px-2 py-1' : ''}`}>
-              <Checkbox
-                id="containsHumanAnimalMaterial"
-                checked={keyTechnologyCharacteristics.containsHumanAnimalMaterial || false}
-                onCheckedChange={checked => handleCharacteristicChange('containsHumanAnimalMaterial', checked as boolean)}
-                disabled={savingField === 'containsHumanAnimalMaterial'}
-              />
-              <Label htmlFor="containsHumanAnimalMaterial" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.containsHumanAnimalMaterial')}
-                {renderLockBadge('containsHumanAnimalMaterial', keyTechnologyCharacteristics.containsHumanAnimalMaterial)}
-                <HelpTooltip content={lang('deviceBasics.technical.containsHumanAnimalMaterialTooltip')} />
-                {savingField === 'containsHumanAnimalMaterial' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
+            {(() => {
+              const ktc: any = keyTechnologyCharacteristics;
+              const triRows: Array<{ field: 'containsAnimalTissue' | 'containsHumanTissue' | 'containsMicroOrgs'; label: string; tooltip: string; }> = [
+                { field: 'containsAnimalTissue', label: 'Contains animal tissue / derivatives', tooltip: 'Tissues, cells or substances of animal origin (e.g. bovine collagen, porcine heparin) — MDR Annex I §22.' },
+                { field: 'containsHumanTissue',  label: 'Contains human tissue / derivatives',  tooltip: 'Tissues, cells or derivatives of human origin (e.g. demineralised bone matrix, human serum) — MDR Annex I §22.' },
+                { field: 'containsMicroOrgs',    label: 'Contains non-viable micro-organisms', tooltip: 'Non-viable bacteria, viruses or other micro-organisms / their derivatives used as part of the device.' },
+              ];
+              const valueOf = (f: string): 'yes' | 'no' | 'unset' => {
+                const v = ktc[f];
+                if (v === true) return 'yes';
+                if (v === false) return 'no';
+                return 'unset';
+              };
+              const summary = (() => {
+                const vals = triRows.map(r => ktc[r.field]);
+                if (vals.some(v => v === true)) return 'Yes';
+                if (vals.every(v => v === false)) return 'No';
+                return 'Unknown';
+              })();
+              return (
+                <div id="biological-origin-section" className="col-span-full border rounded-md p-3 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Label className="font-semibold">Biological-origin materials</Label>
+                    <HelpTooltip content="MDR Annex I §22 + ISO 10993 require disclosing biological-origin sources separately. 'Not yet assessed' keeps the GSPR open; 'No' marks it as Suggested N/A; 'Yes' triggers the full clause." />
+                    <Badge variant="outline" className="ml-auto text-xs">Summary: {summary}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {triRows.map(row => (
+                      <div key={row.field} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <Label className="flex items-center gap-2 text-sm font-normal">
+                          {row.label}
+                          <HelpTooltip content={row.tooltip} />
+                          <TriStateBadge value={ktc[row.field]} />
+                          {savingField === row.field && <Loader2 className="h-3 w-3 animate-spin" />}
+                        </Label>
+                        <RadioGroup
+                          value={valueOf(row.field)}
+                          onValueChange={(val) => {
+                            const next = val === 'yes' ? true : val === 'no' ? false : null;
+                            handleCharacteristicChange(row.field, next);
+                          }}
+                          className="flex gap-3"
+                          disabled={savingField === row.field}
+                        >
+                          <div className="flex items-center gap-1">
+                            <RadioGroupItem value="yes" id={`${row.field}-yes`} />
+                            <Label htmlFor={`${row.field}-yes`} className="text-xs cursor-pointer">Yes</Label>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <RadioGroupItem value="no" id={`${row.field}-no`} />
+                            <Label htmlFor={`${row.field}-no`} className="text-xs cursor-pointer">No</Label>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <RadioGroupItem value="unset" id={`${row.field}-unset`} />
+                            <Label htmlFor={`${row.field}-unset`} className="text-xs cursor-pointer text-muted-foreground">Not yet assessed</Label>
+                          </div>
+                        </RadioGroup>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
-            <div className={`flex items-center space-x-2 ${isFieldLocked('isSingleUse') ? 'bg-blue-50/50 dark:bg-blue-950/10 rounded px-2 py-1' : ''}`}>
-              <Checkbox
-                id="isSingleUse"
-                checked={keyTechnologyCharacteristics.isSingleUse || false}
-                onCheckedChange={checked => handleCharacteristicChange('isSingleUse', checked as boolean)}
-                disabled={savingField === 'isSingleUse'}
-              />
-              <Label htmlFor="isSingleUse" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.isSingleUse')}
-                {renderLockBadge('isSingleUse', keyTechnologyCharacteristics.isSingleUse)}
-                <HelpTooltip content={lang('deviceBasics.technical.isSingleUseTooltip')} />
-                {savingField === 'isSingleUse' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
+            <TriStateRow
+              id="isSingleUse-row"
+              label={lang('deviceBasics.technical.isSingleUse')}
+              tooltip={lang('deviceBasics.technical.isSingleUseTooltip')}
+              value={(keyTechnologyCharacteristics as any).isSingleUse}
+              onChange={(next) => handleCharacteristicChange('isSingleUse', next)}
+              disabled={savingField === 'isSingleUse'}
+              saving={savingField === 'isSingleUse'}
+              lockBadge={renderLockBadge('isSingleUse', keyTechnologyCharacteristics.isSingleUse)}
+            />
 
             <div className="flex items-center space-x-2">
               <Checkbox
@@ -582,7 +754,7 @@ export function TechnicalSpecsTab({
       </div>
 
       {/* Sterility Requirements */}
-      <div>
+      <div id="sterility-section">
         <div className="flex items-center gap-1 mb-3">
           <Label className="text-sm font-medium">{lang('deviceBasics.technical.sterilityLabel')}</Label>
           {renderScopeAndGov('technical_sterility', extractSectionValue('technical_sterility', keyTechnologyCharacteristics))}
@@ -636,7 +808,7 @@ export function TechnicalSpecsTab({
       </div>
 
       {/* Power Source */}
-      <div>
+      <div id="power-source-section">
         <div className="flex items-center gap-1 mb-3">
           <Label className="text-sm font-medium">{lang('deviceBasics.technical.powerSourceLabel')}</Label>
           {renderScopeAndGov('technical_powerSource', extractSectionValue('technical_powerSource', keyTechnologyCharacteristics))}
@@ -699,8 +871,8 @@ export function TechnicalSpecsTab({
         ))}
       </div>
 
-      {/* Energy Transfer */}
-      <div>
+      {/* Energy Transfer — also serves as anchor for GSPR 15 (mechanical/thermal). */}
+      <div id="mechanical-thermal-section">
         <div className="flex items-center gap-1 mb-3">
           <Label className="text-sm font-medium">Energy Transfer</Label>
           <HelpTooltip content="Whether the device transfers energy to or from the patient, as defined per IEC 60601-1." />
@@ -757,82 +929,471 @@ export function TechnicalSpecsTab({
         ))}
       </div>
 
+      {/* Emits radiation — GSPR 17 (paired with Energy Transfer) */}
+      <div id="emits-radiation-section">
+        <div className="flex items-center gap-1 mb-2">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            Emits radiation (ionising or non-ionising)
+            <HelpTooltip content="Device emits ionising radiation (X-ray, gamma) or non-ionising radiation (laser, RF, UV, magnetic fields) per MDR Annex I §17." />
+          </Label>
+          <TriStateBadge value={(keyTechnologyCharacteristics as any)?.emitsRadiation} className="ml-2" />
+          {renderScopeAndGov('classification_emitsRadiation', (keyTechnologyCharacteristics as any)?.emitsRadiation)}
+        </div>
+        <RadioGroup
+          value={
+            (keyTechnologyCharacteristics as any)?.emitsRadiation === true
+              ? "yes"
+              : (keyTechnologyCharacteristics as any)?.emitsRadiation === false
+                ? "no"
+                : "unset"
+          }
+          onValueChange={(value) => {
+            if (onKeyTechnologyCharacteristicsChange) {
+              const next =
+                value === "yes" ? true : value === "no" ? false : null;
+              onKeyTechnologyCharacteristicsChange({
+                ...keyTechnologyCharacteristics,
+                emitsRadiation: next,
+              } as DeviceCharacteristics);
+            }
+          }}
+          disabled={isLoading}
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="no" id="radiation-no" />
+            <Label htmlFor="radiation-no">Does not emit radiation</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="yes" id="radiation-yes" />
+            <Label htmlFor="radiation-yes">Emits ionising or non-ionising radiation</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="unset" id="radiation-unset" />
+            <Label htmlFor="radiation-unset" className="text-muted-foreground">Not yet assessed</Label>
+          </div>
+        </RadioGroup>
+      </div>
+
+      {/* Materials in patient body contact — GSPR 10.
+          Always rendered so deep-link highlights resolve. When the prerequisite
+          (anatomical location / body contact) isn't established, the field is
+          disabled and an inline notice points users to the gating selector. */}
+      {(() => {
+        const anat = (keyTechnologyCharacteristics as any)?.anatomicalLocation;
+        const hasAnatomical =
+          !!anat && anat !== 'none' && anat !== 'not_defined';
+        const returnTo = searchParams.get('returnTo');
+        const goToAnatomical = () => {
+          if (!productId) return;
+          const params = new URLSearchParams();
+          params.set('tab', 'basics');
+          params.set('subtab', 'classification');
+          params.set('highlight', 'anatomical-location-section');
+          if (returnTo) params.set('returnTo', returnTo);
+          navigate(`/app/product/${productId}/device-information?${params.toString()}`);
+        };
+        return (
+          <div id="materials-body-contact-section">
+            {/* Inline mirror of Anatomical Location — same SSOT field as the
+                Classification subtab. User can resolve the gating prerequisite
+                in place without navigating away. */}
+            <div className="mb-3 rounded-md border border-border bg-muted/20 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Label className="text-sm font-medium">
+                  Body contact context
+                </Label>
+                <span className="text-xs text-muted-foreground">
+                  (set here or on Classification — same value)
+                </span>
+              </div>
+              <Label className="text-xs text-muted-foreground">Anatomical Location</Label>
+              <Select
+                value={anat || ''}
+                onValueChange={(value) => {
+                  if (!onKeyTechnologyCharacteristicsChange) return;
+                  // When the user explicitly picks "No direct body contact",
+                  // also clear the materials list so the two answers stay
+                  // consistent (the GSPR rule layer treats this as
+                  // explicitly-empty per Part C).
+                  const next: any = {
+                    ...keyTechnologyCharacteristics,
+                    anatomicalLocation: value,
+                  };
+                  if (value === 'none') {
+                    next.materialsInBodyContact = [];
+                    next.materialsInBodyContactExplicitlyEmpty = true;
+                  }
+                  onKeyTechnologyCharacteristicsChange(next as DeviceCharacteristics);
+                }}
+                disabled={isLoading}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select anatomical location of device contact" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="not_defined">Not defined</SelectItem>
+                  <SelectItem value="none">No direct body contact</SelectItem>
+                  <SelectItem value="skin_surface">Skin surface only</SelectItem>
+                  <SelectItem value="body_orifices">Body orifices (mouth, nose, ear, etc.)</SelectItem>
+                  <SelectItem value="wounded_skin">Wounded or damaged skin</SelectItem>
+                  <SelectItem value="cardiovascular_system">Cardiovascular system</SelectItem>
+                  <SelectItem value="central_nervous_system">Central nervous system</SelectItem>
+                  <SelectItem value="circulatory_system">Circulatory system</SelectItem>
+                  <SelectItem value="teeth">Teeth</SelectItem>
+                  <SelectItem value="oral_cavity">Oral cavity</SelectItem>
+                  <SelectItem value="ear_canal">Ear canal</SelectItem>
+                  <SelectItem value="nasal_cavity">Nasal cavity</SelectItem>
+                  <SelectItem value="pharynx">Pharynx</SelectItem>
+                  <SelectItem value="lacrimal_duct">Lacrimal duct</SelectItem>
+                  <SelectItem value="vagina_cervix">Vagina/cervix</SelectItem>
+                  <SelectItem value="urethra">Urethra</SelectItem>
+                  <SelectItem value="rectum">Rectum</SelectItem>
+                  <SelectItem value="other">Other body location</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Drives Materials in body contact, ISO 10993 biocompatibility,
+                and MDR Annex VIII Rules 5–8.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1 mb-2">
+              <Label htmlFor="materialsInBodyContact" className="text-sm font-medium flex items-center gap-2">
+                Materials in patient body contact
+                <HelpTooltip content="List the materials (e.g. silicone, titanium, PEEK) that come into direct or indirect contact with the patient's body — required for biocompatibility evaluation under MDR Annex I §10 and ISO 10993-1." />
+              </Label>
+              {renderScopeAndGov('technical_materialsInBodyContact', (keyTechnologyCharacteristics as any)?.materialsInBodyContact)}
+              {(() => {
+                const ktc = keyTechnologyCharacteristics as any;
+                const entries = normalizeMaterialEntries(ktc?.materialsInBodyContact);
+                const explicitlyEmpty = ktc?.materialsInBodyContactExplicitlyEmpty === true;
+                const triValue: boolean | null =
+                  entries.length > 0 ? true : explicitlyEmpty ? false : null;
+                return <TriStateBadge value={triValue} />;
+              })()}
+            </div>
+            {!anat || anat === 'not_defined' ? (
+              <div className="mb-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                Set the device's <strong>Anatomical Location</strong> first
+                (Device Basics → Classification) — this field becomes editable
+                once body contact is established.{' '}
+                <button
+                  type="button"
+                  onClick={goToAnatomical}
+                  className="underline font-medium hover:opacity-80"
+                >
+                  Set Anatomical Location →
+                </button>
+              </div>
+            ) : anat === 'none' ? (
+              <div className="mb-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                This device has <strong>no patient body contact</strong> (per
+                Anatomical Location). Materials list does not apply. Change the
+                Anatomical Location dropdown above if this is incorrect.
+              </div>
+            ) : (
+              <MaterialsBodyContactEditor
+                productId={productId}
+                value={normalizeMaterialEntries(
+                  (keyTechnologyCharacteristics as any)?.materialsInBodyContact,
+                )}
+                disabled={isLoading || !hasAnatomical}
+                onChange={(next: MaterialEntry[]) => {
+                  handleBatchCharacteristicChange(({
+                    materialsInBodyContact: next,
+                    // Adding a material clears the "explicitly empty" flag.
+                    materialsInBodyContactExplicitlyEmpty:
+                      next.length > 0 ? false : (keyTechnologyCharacteristics as any)
+                        ?.materialsInBodyContactExplicitlyEmpty === true,
+                  } as unknown) as Partial<DeviceCharacteristics>);
+                }}
+              />
+            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              Need full material details (supplier, grade, lot)?{' '}
+              <button
+                type="button"
+                onClick={() => productId && navigate(`/app/product/${productId}/bom`)}
+                className="underline text-primary hover:text-primary/80"
+              >
+                Manage them in the Bill of Materials module
+              </button>
+              {' '}— this field is the biocompatibility-relevant subset.
+            </p>
+          </div>
+        );
+      })()}
+
+      {/* Substances absorbed/dispersed in body — GSPR 13 */}
+      <div id="absorbed-dispersed-section">
+        <div className="flex items-center gap-1 mb-2">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            Substances absorbed by or dispersed in the body
+            <HelpTooltip content="Device delivers or releases substances (e.g. drugs, contrast agents, ions, particles) that are absorbed by, dispersed within, or locally distributed throughout the body — MDR Annex I §13." />
+          </Label>
+          <TriStateBadge value={(keyTechnologyCharacteristics as any)?.absorbedDispersedInBody} className="ml-2" />
+          {renderScopeAndGov('classification_absorbedDispersedInBody', (keyTechnologyCharacteristics as any)?.absorbedDispersedInBody)}
+        </div>
+        <RadioGroup
+          value={
+            (keyTechnologyCharacteristics as any)?.absorbedDispersedInBody === true
+              ? "yes"
+              : (keyTechnologyCharacteristics as any)?.absorbedDispersedInBody === false
+                ? "no"
+                : "unset"
+          }
+          onValueChange={(value) => {
+            if (onKeyTechnologyCharacteristicsChange) {
+              const next =
+                value === "yes" ? true : value === "no" ? false : null;
+              onKeyTechnologyCharacteristicsChange({
+                ...keyTechnologyCharacteristics,
+                absorbedDispersedInBody: next,
+              } as DeviceCharacteristics);
+            }
+          }}
+          disabled={isLoading}
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="no" id="absorbed-no" />
+            <Label htmlFor="absorbed-no">No substances absorbed/dispersed in the body</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="yes" id="absorbed-yes" />
+            <Label htmlFor="absorbed-yes">Substances are absorbed or dispersed in the body</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="unset" id="absorbed-unset" />
+            <Label htmlFor="absorbed-unset" className="text-muted-foreground">Not yet assessed</Label>
+          </div>
+        </RadioGroup>
+      </div>
+
+      {/* CMR / endocrine-disruptor substances — GSPR 10.4.1 */}
+      <div id="cmr-substances-section">
+        <div className="flex items-center gap-1 mb-2">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            Contains CMR substances or endocrine disruptors
+            <HelpTooltip content="Carcinogenic, mutagenic, or reproductive toxicants per Regulation (EC) 1272/2008, or endocrine-disrupting substances per MDR Annex I §10.4.1. Includes substances above 0.1% w/w in parts intended to come into body contact." />
+          </Label>
+          <TriStateBadge value={(keyTechnologyCharacteristics as any)?.cmrSubstances} className="ml-2" />
+          {renderScopeAndGov('classification_cmrSubstances', (keyTechnologyCharacteristics as any)?.cmrSubstances)}
+        </div>
+        <RadioGroup
+          value={
+            (keyTechnologyCharacteristics as any)?.cmrSubstances === true
+              ? "yes"
+              : (keyTechnologyCharacteristics as any)?.cmrSubstances === false
+                ? "no"
+                : "unset"
+          }
+          onValueChange={(value) => {
+            if (onKeyTechnologyCharacteristicsChange) {
+              const next =
+                value === "yes" ? true : value === "no" ? false : null;
+              onKeyTechnologyCharacteristicsChange({
+                ...keyTechnologyCharacteristics,
+                cmrSubstances: next,
+              } as DeviceCharacteristics);
+            }
+          }}
+          disabled={isLoading}
+        >
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="no" id="cmr-no" />
+            <Label htmlFor="cmr-no">No CMR / endocrine-disrupting substances</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="yes" id="cmr-yes" />
+            <Label htmlFor="cmr-yes">Contains CMR or endocrine-disrupting substances</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="unset" id="cmr-unset" />
+            <Label htmlFor="cmr-unset" className="text-muted-foreground">Not yet assessed</Label>
+          </div>
+        </RadioGroup>
+      </div>
+
       {/* Connectivity Features */}
-      <div>
+      <div id="connectivity-emc-section">
         <div className="flex items-center gap-1 mb-3">
           <Label className="text-sm font-medium">{lang('deviceBasics.technical.connectivityLabel')}</Label>
+          {(() => {
+            const ktc: any = keyTechnologyCharacteristics;
+            // Roll the connectivity answer up into a single tri-state value for the badge.
+            // - hasNoConnectivity === true → user chose "No connectivity" → false
+            // - any protocol flag true     → user chose "Has connectivity" → true
+            // - hasNoConnectivity === null/undefined AND no protocols      → unanswered
+            const anyProtocol = !!(ktc?.hasBluetooth || ktc?.hasWifi || ktc?.hasCellular || ktc?.hasUsb);
+            const tri: boolean | null =
+              ktc?.hasNoConnectivity === true ? false : anyProtocol ? true : null;
+            return <TriStateBadge value={tri} className="ml-2" />;
+          })()}
           {renderScopeAndGov('technical_connectivity', extractSectionValue('technical_connectivity', keyTechnologyCharacteristics))}
         </div>
         {wrapWithOverlay('technical_connectivity', (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="hasBluetooth"
-                checked={keyTechnologyCharacteristics.hasBluetooth || false}
-                onCheckedChange={checked => handleCharacteristicChange('hasBluetooth', checked as boolean)}
-                disabled={savingField === 'hasBluetooth'}
-              />
-              <Label htmlFor="hasBluetooth" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.bluetooth')}
-                <HelpTooltip content={lang('deviceBasics.technical.bluetoothTooltip')} />
-                {savingField === 'hasBluetooth' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="hasWifi"
-                checked={keyTechnologyCharacteristics.hasWifi || false}
-                onCheckedChange={checked => handleCharacteristicChange('hasWifi', checked as boolean)}
-                disabled={savingField === 'hasWifi'}
-              />
-              <Label htmlFor="hasWifi" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.wifi')}
-                <HelpTooltip content={lang('deviceBasics.technical.wifiTooltip')} />
-                {savingField === 'hasWifi' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="hasCellular"
-                checked={keyTechnologyCharacteristics.hasCellular || false}
-                onCheckedChange={checked => handleCharacteristicChange('hasCellular', checked as boolean)}
-                disabled={savingField === 'hasCellular'}
-              />
-              <Label htmlFor="hasCellular" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.cellular')}
-                <HelpTooltip content={lang('deviceBasics.technical.cellularTooltip')} />
-                {savingField === 'hasCellular' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="hasUsb"
-                checked={keyTechnologyCharacteristics.hasUsb || false}
-                onCheckedChange={checked => handleCharacteristicChange('hasUsb', checked as boolean)}
-                disabled={savingField === 'hasUsb'}
-              />
-              <Label htmlFor="hasUsb" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.usb')}
-                <HelpTooltip content={lang('deviceBasics.technical.usbTooltip')} />
-                {savingField === 'hasUsb' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="hasNoConnectivity"
-                checked={keyTechnologyCharacteristics.hasNoConnectivity || false}
-                onCheckedChange={checked => handleCharacteristicChange('hasNoConnectivity', checked as boolean)}
-                disabled={savingField === 'hasNoConnectivity'}
-              />
-              <Label htmlFor="hasNoConnectivity" className="flex items-center gap-2">
-                {lang('deviceBasics.technical.noConnectivity')}
-                <HelpTooltip content={lang('deviceBasics.technical.noConnectivityTooltip')} />
-                {savingField === 'hasNoConnectivity' && <Loader2 className="h-4 w-4 animate-spin" />}
-              </Label>
-            </div>
-          </div>
+          (() => {
+            const ktc: any = keyTechnologyCharacteristics;
+            const anyProtocol = !!(ktc?.hasBluetooth || ktc?.hasWifi || ktc?.hasCellular || ktc?.hasUsb);
+            // Tri-state parent: 'has' = device has connectivity (show protocols),
+            // 'none' = device has no connectivity, 'unset' = not yet assessed.
+            const parentValue: 'has' | 'none' | 'unset' =
+              ktc?.hasNoConnectivity === true
+                ? 'none'
+                : anyProtocol || ktc?.hasNoConnectivity === false
+                  ? 'has'
+                  : 'unset';
+
+            const setParent = (val: 'has' | 'none' | 'unset') => {
+              if (!onKeyTechnologyCharacteristicsChange) return;
+              if (val === 'none') {
+                // Explicit: no connectivity → clear all protocol flags so the
+                // useProductDeviceContext rollup reports a clean false.
+                onKeyTechnologyCharacteristicsChange({
+                  ...keyTechnologyCharacteristics,
+                  hasNoConnectivity: true,
+                  hasBluetooth: false,
+                  hasWifi: false,
+                  hasCellular: false,
+                  hasUsb: false,
+                } as DeviceCharacteristics);
+              } else if (val === 'has') {
+                // Device has connectivity — clear the negative flag, leave protocols
+                // for the user to tick.
+                onKeyTechnologyCharacteristicsChange({
+                  ...keyTechnologyCharacteristics,
+                  hasNoConnectivity: false,
+                } as DeviceCharacteristics);
+              } else {
+                // Not yet assessed — clear the negative flag (null = unanswered).
+                onKeyTechnologyCharacteristicsChange({
+                  ...keyTechnologyCharacteristics,
+                  hasNoConnectivity: null,
+                } as DeviceCharacteristics);
+              }
+            };
+
+            return (
+              <div className="space-y-3">
+                <RadioGroup
+                  value={parentValue}
+                  onValueChange={(v) => setParent(v as 'has' | 'none' | 'unset')}
+                  className="flex flex-col gap-2"
+                  disabled={isLoading}
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="has" id="connectivity-has" />
+                    <Label htmlFor="connectivity-has">Device has connectivity</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="none" id="connectivity-none" />
+                    <Label htmlFor="connectivity-none" className="flex items-center gap-2">
+                      {lang('deviceBasics.technical.noConnectivity')}
+                      <HelpTooltip content={lang('deviceBasics.technical.noConnectivityTooltip')} />
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="unset" id="connectivity-unset" />
+                    <Label htmlFor="connectivity-unset" className="text-muted-foreground">Not yet assessed</Label>
+                  </div>
+                </RadioGroup>
+
+                {parentValue === 'has' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-6 border-l-2 border-border">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="hasBluetooth"
+                        checked={keyTechnologyCharacteristics.hasBluetooth || false}
+                        onCheckedChange={checked => handleCharacteristicChange('hasBluetooth', checked as boolean)}
+                        disabled={savingField === 'hasBluetooth'}
+                      />
+                      <Label htmlFor="hasBluetooth" className="flex items-center gap-2">
+                        {lang('deviceBasics.technical.bluetooth')}
+                        <HelpTooltip content={lang('deviceBasics.technical.bluetoothTooltip')} />
+                        {savingField === 'hasBluetooth' && <Loader2 className="h-4 w-4 animate-spin" />}
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="hasWifi"
+                        checked={keyTechnologyCharacteristics.hasWifi || false}
+                        onCheckedChange={checked => handleCharacteristicChange('hasWifi', checked as boolean)}
+                        disabled={savingField === 'hasWifi'}
+                      />
+                      <Label htmlFor="hasWifi" className="flex items-center gap-2">
+                        {lang('deviceBasics.technical.wifi')}
+                        <HelpTooltip content={lang('deviceBasics.technical.wifiTooltip')} />
+                        {savingField === 'hasWifi' && <Loader2 className="h-4 w-4 animate-spin" />}
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="hasCellular"
+                        checked={keyTechnologyCharacteristics.hasCellular || false}
+                        onCheckedChange={checked => handleCharacteristicChange('hasCellular', checked as boolean)}
+                        disabled={savingField === 'hasCellular'}
+                      />
+                      <Label htmlFor="hasCellular" className="flex items-center gap-2">
+                        {lang('deviceBasics.technical.cellular')}
+                        <HelpTooltip content={lang('deviceBasics.technical.cellularTooltip')} />
+                        {savingField === 'hasCellular' && <Loader2 className="h-4 w-4 animate-spin" />}
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="hasUsb"
+                        checked={keyTechnologyCharacteristics.hasUsb || false}
+                        onCheckedChange={checked => handleCharacteristicChange('hasUsb', checked as boolean)}
+                        disabled={savingField === 'hasUsb'}
+                      />
+                      <Label htmlFor="hasUsb" className="flex items-center gap-2">
+                        {lang('deviceBasics.technical.usb')}
+                        <HelpTooltip content={lang('deviceBasics.technical.usbTooltip')} />
+                        {savingField === 'hasUsb' && <Loader2 className="h-4 w-4 animate-spin" />}
+                      </Label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()
         ))}
       </div>
+
+      {/* EMC profile — GSPR 14 / 17.2 (only for active/powered devices) */}
+      {isActiveDevice === true && (
+        <div id="emc-profile-section">
+          <div className="flex items-center gap-1 mb-2">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              EMC profile
+              <HelpTooltip content="Electromagnetic compatibility standard applied to the device — MDR Annex I §14 / §17.2. Required for powered devices." />
+            </Label>
+            {renderScopeAndGov('classification_emcProfile', (keyTechnologyCharacteristics as any)?.emcProfile)}
+          </div>
+          <Select
+            value={(keyTechnologyCharacteristics as any)?.emcProfile || undefined}
+            onValueChange={(value) => {
+              if (onKeyTechnologyCharacteristicsChange) {
+                onKeyTechnologyCharacteristicsChange({
+                  ...keyTechnologyCharacteristics,
+                  emcProfile: value,
+                } as DeviceCharacteristics);
+              }
+            }}
+            disabled={isLoading}
+          >
+            <SelectTrigger className="w-full md:w-80">
+              <SelectValue placeholder="Select EMC profile" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="N/A">N/A — no electrical/electronic components</SelectItem>
+              <SelectItem value="IEC 60601-1-2">IEC 60601-1-2 (medical electrical equipment)</SelectItem>
+              <SelectItem value="IEC 61326">IEC 61326 (laboratory/measurement equipment)</SelectItem>
+              <SelectItem value="Other">Other</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* AI/ML Features */}
       <div>

@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Sparkles, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +34,7 @@ export function RequirementSpecificationsModule({
   const [showAISuggestions, setShowAISuggestions] = useState(false);
   const [deletingRequirement, setDeletingRequirement] = useState<RequirementSpecification | null>(null);
   const baselineLock = useBaselineLockError();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Fetch product details for AI suggestions
   const { data: productData } = useProductDetails(productId);
@@ -52,6 +54,21 @@ export function RequirementSpecificationsModule({
     queryKey: ['requirement-specifications', productId],
     queryFn: () => requirementSpecificationsService.getByProductId(productId),
   });
+
+  // Auto-open a requirement when navigated from the Traceability Matrix
+  // (covers hardware/software/system requirements rendered through this shared module)
+  useEffect(() => {
+    const openId = searchParams.get('openItemId');
+    if (!openId || isLoading || !requirements.length) return;
+    const found = requirements.find(r => r.id === openId);
+    if (found) {
+      setEditingRequirement(found);
+      setIsEditDialogOpen(true);
+    }
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('openItemId');
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, requirements, isLoading, setSearchParams]);
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateRequirementSpecificationData) => {

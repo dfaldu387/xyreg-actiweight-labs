@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 export interface TemplateField {
   id: string;
@@ -90,22 +91,30 @@ export class AITemplateImporterService {
         const { data, error } = await supabase.functions.invoke('ai-document-analyzer', {
           body: formData
         });
-        
+
         if (error) throw error;
+        if (data?.error === 'NO_CREDITS') {
+          showNoCreditDialog();
+          throw new Error('NO_CREDITS');
+        }
         return data.extracted_text;
       }
-      
+
       if (file.type.includes('wordprocessingml') || file.type.includes('msword')) {
         // For Word documents, we'll send to the edge function for processing
         const formData = new FormData();
         formData.append('file', file);
         formData.append('action', 'extract_text');
-        
+
         const { data, error } = await supabase.functions.invoke('ai-document-analyzer', {
           body: formData
         });
-        
+
         if (error) throw error;
+        if (data?.error === 'NO_CREDITS') {
+          showNoCreditDialog();
+          throw new Error('NO_CREDITS');
+        }
         return data.extracted_text;
       }
       
@@ -132,7 +141,12 @@ export class AITemplateImporterService {
         console.error('Edge function error:', error);
         throw error;
       }
-      
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        throw new Error('NO_CREDITS');
+      }
+
       if (!data?.success) {
         throw new Error(data?.error || 'AI analysis failed');
       }

@@ -1,234 +1,252 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/**
+ * AI System Requirements Generator Edge Function
+ *
+ * Uses Google Vertex AI (Gemini) to generate system requirements for medical devices.
+ *
+ * Request body: { companyId, productData, userNeeds, selectedCategories, existingItems?, additionalPrompt?, outputLanguage? }
+ * Response:     { success, suggestions, metadata }
+ */
+import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { trackTokenUsage, extractGeminiDetailedUsage, logAiTokenUsage, checkAiCredits } from "../_shared/token-tracking.ts";
 
-interface UserNeed {
-  user_need_id: string;
-  description: string;
-}
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+const MODEL = "gemini-2.5-flash";
+const ENCRYPTION_KEY = "medtech-api-key-2024";
+
+function decryptApiKey(encryptedKey: string): string {
+  if (encryptedKey.startsWith("AIza")) return encryptedKey;
+  try {
+    const base64Decoded = atob(encryptedKey);
+    return Array.from(base64Decoded)
+      .map((char, index) =>
+        String.fromCharCode(char.charCodeAt(0) ^ ENCRYPTION_KEY.charCodeAt(index % ENCRYPTION_KEY.length))
+      )
+      .join("");
+  } catch {
+    return encryptedKey;
   }
+}
+
+interface UserNeed { user_need_id: string; description: string; }
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { companyId, productData, userNeeds, selectedCategories, additionalPrompt, outputLanguage, existingItems } = await req.json();
-    
-    console.log('[ai-system-requirements-generator] Starting system requirements generation');
-    console.log('[ai-system-requirements-generator] Request:', {
-      companyId,
-      productName: productData.product_name,
-      userNeedsCount: userNeeds.length,
-      selectedCategories
-    });
+    console.log("[ai-system-requirements-generator] Starting generation");
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+    // Check AI credits before processing
+    if (companyId) {
+      const creditCheck = await checkAiCredits(companyId);
+      if (!creditCheck.allowed) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "NO_CREDITS",
+            message: "No AI credits remaining. Purchase an AI Booster Pack to continue.",
+            used: creditCheck.used,
+            limit: creditCheck.limit,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
-    console.log('[ai-system-requirements-generator] API key found, calling Lovable AI Gateway');
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Build system prompt for system requirements AI role as "system architect"
+    // Extract user ID
+    let userId: string | undefined;
+    const authHeader = req.headers.get("authorization");
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      userId = user?.id;
+    }
+
+    // --- Resolve Gemini API key ---
+    let geminiApiKey = "";
+    if (companyId) {
+      const { data: keyRecord } = await supabase
+        .from("company_api_keys")
+        .select("encrypted_key")
+        .eq("company_id", companyId)
+        .eq("key_type", "gemini")
+        .maybeSingle();
+      if (keyRecord?.encrypted_key) {
+        geminiApiKey = decryptApiKey(keyRecord.encrypted_key);
+      }
+    }
+    if (!geminiApiKey) {
+      geminiApiKey = Deno.env.get("GEMINI_API_KEY") || "";
+    }
+    if (!geminiApiKey) {
+      return new Response(JSON.stringify({ success: false, error: "No Gemini API key configured. Add one in Settings > API Keys." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiApiKey}`;
+    console.log("[ai-system-requirements-generator] Using Gemini direct API");
+
+    // --- Build prompt ---
     const hasUserNeeds = userNeeds && userNeeds.length > 0;
-    
     const existingItemsSection = existingItems && existingItems.length > 0
-      ? `\n\nEXISTING REQUIREMENTS (DO NOT suggest these again or anything semantically equivalent):\n${existingItems.map((item: string) => `- "${item}"`).join('\n')}\n\nGenerate ONLY NEW requirements that are substantially different from the above.`
-      : '';
+      ? `\n\nEXISTING REQUIREMENTS (DO NOT suggest these again):\n${existingItems.map((item: string) => `- "${item}"`).join("\n")}\n\nGenerate ONLY NEW requirements that are substantially different.`
+      : "";
 
-    let systemPrompt;
+    let systemPrompt: string;
     if (hasUserNeeds) {
-      systemPrompt = `You are a System Architect for medical device development. Your role is to translate user needs into measurable, testable system requirements that can be implemented by engineering teams.${existingItemsSection}
+      systemPrompt = `You are a System Architect for medical device development. Translate user needs into measurable, testable system requirements.${existingItemsSection}
 
 CONTEXT:
-- Device: ${productData.product_name || 'Medical Device'}
-- Clinical Purpose: ${productData.clinical_purpose || 'Not specified'}
-- Target Population: ${productData.target_population || 'Not specified'}
-- Use Environment: ${productData.use_environment || 'Not specified'}
-- Device Class: ${productData.device_class || 'Not specified'}
+- Device: ${productData.product_name || "Medical Device"}
+- Clinical Purpose: ${productData.clinical_purpose || "Not specified"}
+- Target Population: ${productData.target_population || "Not specified"}
+- Use Environment: ${productData.use_environment || "Not specified"}
+- Device Class: ${productData.device_class || "Not specified"}
 
 USER NEEDS TO DERIVE FROM:
-${userNeeds.map((un: UserNeed) => `${un.user_need_id}: ${un.description}`).join('\n')}
+${userNeeds.map((un: UserNeed) => `${un.user_need_id}: ${un.description}`).join("\n")}
 
-SYSTEM ARCHITECT PRINCIPLES:
+PRINCIPLES:
 1. Translate qualitative user needs into quantitative, measurable system requirements
-2. Each system requirement MUST trace back to specific user needs
-3. Focus on what the system must do, not how it does it
+2. Each requirement MUST trace back to specific user needs
+3. Focus on what the system must do, not how
 4. Include performance, safety, usability, and compliance requirements
 5. Make requirements testable and verifiable
-6. Consider industry standards (ISO 13485, IEC 60601 family)
+6. Consider standards (ISO 13485, IEC 60601 family)
 
-CATEGORIES TO FOCUS ON:
-${selectedCategories.length > 0 ? selectedCategories.join(', ') : 'Safety, Performance, Usability, Environmental, Compliance'}
+CATEGORIES: ${selectedCategories?.length > 0 ? selectedCategories.join(", ") : "Safety, Performance, Usability, Environmental, Compliance"}
 
-Generate 5-8 system requirements that derive from the provided user needs. Each requirement should be:
-- Specific and measurable
-- Clearly linked to user needs via traces_to field
-- Include acceptance criteria that can be tested
-- Consider potential risks that need to be addressed`;
+Generate 5-8 system requirements derived from the provided user needs.`;
     } else {
-      systemPrompt = `You are a System Architect for medical device development. Your role is to generate fundamental system requirements for medical devices based on industry standards and best practices.${existingItemsSection}
+      systemPrompt = `You are a System Architect for medical device development. Generate fundamental system requirements based on industry standards.${existingItemsSection}
 
 CONTEXT:
-- Device: ${productData.product_name || 'Medical Device'}
-- Clinical Purpose: ${productData.clinical_purpose || 'Not specified'}
-- Target Population: ${productData.target_population || 'Not specified'}
-- Use Environment: ${productData.use_environment || 'Not specified'}
-- Device Class: ${productData.device_class || 'Not specified'}
+- Device: ${productData.product_name || "Medical Device"}
+- Clinical Purpose: ${productData.clinical_purpose || "Not specified"}
+- Target Population: ${productData.target_population || "Not specified"}
+- Use Environment: ${productData.use_environment || "Not specified"}
+- Device Class: ${productData.device_class || "Not specified"}
 
-SYSTEM ARCHITECT PRINCIPLES:
+PRINCIPLES:
 1. Generate fundamental system requirements based on medical device standards
-2. Focus on what the system must do, not how it does it
+2. Focus on what the system must do, not how
 3. Include performance, safety, usability, and compliance requirements
 4. Make requirements testable and verifiable
-5. Consider industry standards (ISO 13485, IEC 60601 family)
-6. Generate requirements that are applicable to most medical devices
+5. Consider standards (ISO 13485, IEC 60601 family)
 
-CATEGORIES TO FOCUS ON:
-${selectedCategories.length > 0 ? selectedCategories.join(', ') : 'Safety, Performance, Usability, Environmental, Compliance'}
+CATEGORIES: ${selectedCategories?.length > 0 ? selectedCategories.join(", ") : "Safety, Performance, Usability, Environmental, Compliance"}
 
-Generate 5-8 fundamental system requirements for this medical device. Each requirement should be:
-- Specific and measurable
-- Based on medical device industry standards
-- Include acceptance criteria that can be tested
-- Consider potential risks that need to be addressed`;
+Generate 5-8 fundamental system requirements.`;
     }
 
-    // Build the traces_to example from actual user need IDs
-    const tracesToExample = hasUserNeeds
-      ? userNeeds.slice(0, 3).map((un: UserNeed) => un.user_need_id).join(', ')
-      : '';
+    const tracesToExample = hasUserNeeds ? userNeeds.slice(0, 3).map((un: UserNeed) => un.user_need_id).join(", ") : "";
     const tracesToInstruction = hasUserNeeds
-      ? `"traces_to": "${tracesToExample}" (use ONLY actual user need IDs from the list above, comma-separated)`
-      : `"traces_to": "" (leave empty string - no user needs provided; put standard references in rationale instead)`;
+      ? `"traces_to": "${tracesToExample}" (use ONLY actual user need IDs, comma-separated)`
+      : `"traces_to": "" (leave empty - no user needs provided)`;
 
     systemPrompt += `
 
-Return ONLY a JSON array with this exact structure:
+Return ONLY a JSON array:
 [
   {
     "description": "The system shall...",
     "category": "Safety|Performance|Usability|Environmental|Compliance",
-    "rationale": "This requirement ensures that... (include applicable standards like IEC 60601-1, ISO 14971 here)",
+    "rationale": "This requirement ensures...",
     ${tracesToInstruction},
     "linked_risks": "Potential failure modes or safety concerns",
     "acceptance_criteria": "Specific, measurable criteria for verification",
     "confidence": 0.85
   }
-]`;
+]${outputLanguage && outputLanguage !== "en" ? `\n\nGenerate ALL text in ${outputLanguage === "de" ? "German" : outputLanguage === "fr" ? "French" : outputLanguage === "fi" ? "Finnish" : outputLanguage}. Keep JSON keys in English.` : ""}${additionalPrompt ? `\n\nAdditional instructions:\n${additionalPrompt}` : ""}`;
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: hasUserNeeds 
-            ? 'Generate system requirements derived from these user needs following medical device development best practices.' 
-            : 'Generate fundamental system requirements for this medical device following industry standards and best practices.' }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-      }),
+    const userPrompt = hasUserNeeds
+      ? "Generate system requirements derived from these user needs following medical device development best practices."
+      : "Generate fundamental system requirements for this medical device following industry standards.";
+
+    // --- Call Vertex AI with retry ---
+    const requestBody = JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      generationConfig: { temperature: 0.7, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 0 } },
     });
 
-    console.log('[ai-system-requirements-generator] Lovable AI Gateway response status:', response.status);
+    let suggestions: any[] | null = null;
+    let vertexData: any = null;
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: "Rate limits exceeded, please try again later.",
-          errorType: "rate_limit"
-        }), {
-          status: 429,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const vertexResponse = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
+        body: requestBody,
+      });
+
+      if (!vertexResponse.ok) {
+        const errorText = await vertexResponse.text();
+        console.error("[ai-system-requirements-generator] Vertex error:", vertexResponse.status, errorText);
+        if (vertexResponse.status === 429) return new Response(JSON.stringify({ success: false, error: "Rate limit exceeded.", errorType: "rate_limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: false, error: `AI service error (${vertexResponse.status})` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: "Payment required, please add funds to your Lovable AI workspace.",
-          errorType: "payment_required"
-        }), {
-          status: 402,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      const errorText = await response.text();
-      console.error('[ai-system-requirements-generator] API error:', response.status, errorText);
-      throw new Error(`AI API error: ${response.status}`);
-    }
 
-    const data = await response.json();
-    console.log('[ai-system-requirements-generator] Received response from Lovable AI');
+      vertexData = await vertexResponse.json();
+      const parts = vertexData?.candidates?.[0]?.content?.parts || [];
+      const allText = parts.map((p: any) => p.text ?? "").join("\n");
+      const nonThoughtText = parts.filter((p: any) => !p.thought).map((p: any) => p.text ?? "").join("\n");
+      const aiResponse = (nonThoughtText.trim() || allText.trim());
+      console.log(`[ai-system-requirements-generator] Attempt ${attempt + 1}: parts=${parts.length}, responseLen=${aiResponse.length}`);
 
-    const aiResponse = data.choices[0].message.content;
-    console.log('[ai-system-requirements-generator] AI Response:', aiResponse);
+      if (!aiResponse) { if (attempt === 0) { continue; } return new Response(JSON.stringify({ success: false, error: "No content generated" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
 
-    let suggestions;
-    try {
-      // Try to extract JSON from markdown code blocks first
-      const codeBlockMatch = aiResponse.match(/```json\s*([\s\S]*?)\s*```/);
-      if (codeBlockMatch) {
-        suggestions = JSON.parse(codeBlockMatch[1]);
-        console.log('[ai-system-requirements-generator] Parsed from code block:', suggestions.length, 'suggestions');
-      } else {
-        // Try to find JSON array directly
-        const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          suggestions = JSON.parse(jsonMatch[0]);
-          console.log('[ai-system-requirements-generator] Parsed from JSON array:', suggestions.length, 'suggestions');
-        } else {
-          console.error('[ai-system-requirements-generator] No JSON array found in response');
-          console.error('[ai-system-requirements-generator] Response content:', aiResponse);
-          throw new Error('Invalid AI response format');
+      try {
+        try { const d = JSON.parse(aiResponse); suggestions = Array.isArray(d) ? d : (d.suggestions || d.data || []); }
+        catch {
+          const cbm = aiResponse.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+          if (cbm) { suggestions = JSON.parse(cbm[1]); }
+          else { const jm = aiResponse.match(/\[[\s\S]*\]/); if (jm) suggestions = JSON.parse(jm[0]); else throw new Error("No JSON array"); }
         }
+        if (!Array.isArray(suggestions)) throw new Error("Not an array");
+        break;
+      } catch (e) {
+        console.error(`[ai-system-requirements-generator] Parse attempt ${attempt + 1} failed:`, e);
+        if (attempt === 0) { suggestions = null; continue; }
+        return new Response(JSON.stringify({ success: false, error: "Failed to parse AI response" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
-
-      if (!Array.isArray(suggestions)) {
-        console.error('[ai-system-requirements-generator] Parsed result is not an array:', typeof suggestions);
-        throw new Error('AI response is not a valid array');
-      }
-
-    } catch (parseError) {
-      console.error('[ai-system-requirements-generator] JSON parsing error:', parseError);
-      console.error('[ai-system-requirements-generator] Raw AI response:', aiResponse);
-      throw new Error('Failed to parse AI response');
     }
 
-    console.log('[ai-system-requirements-generator] Successfully generated', suggestions.length, 'suggestions');
+    if (!suggestions || suggestions.length === 0) {
+      return new Response(JSON.stringify({ success: false, error: "No suggestions generated" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Track token usage
+    if (companyId && vertexData) {
+      const detailedUsage = extractGeminiDetailedUsage(vertexData);
+      if (detailedUsage) {
+        EdgeRuntime.waitUntil(Promise.all([
+          logAiTokenUsage({ companyId, userId, source: "ai_system_requirements", model: MODEL, usage: detailedUsage, metadata: { productName: productData.product_name ?? null } }),
+          trackTokenUsage(companyId, "google_vertex", { promptTokens: detailedUsage.inputTokens, completionTokens: detailedUsage.outputTokens, totalTokens: detailedUsage.totalTokens }),
+        ]));
+      }
+    }
+
+    console.log("[ai-system-requirements-generator] Generated", suggestions.length, "suggestions");
 
     return new Response(JSON.stringify({
       success: true,
       suggestions,
-      metadata: {
-        generatedAt: new Date().toISOString(),
-        productName: productData.product_name,
-        totalSuggestions: suggestions.length,
-        categoriesGenerated: [...new Set(suggestions.map((s: any) => s.category))]
-      }
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      metadata: { generatedAt: new Date().toISOString(), productName: productData.product_name, totalSuggestions: suggestions.length, categoriesGenerated: [...new Set(suggestions.map((s: any) => s.category))] },
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
-    console.error('[ai-system-requirements-generator] Error:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error occurred',
-      errorType: 'unknown'
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error("[ai-system-requirements-generator] Error:", error);
+    return new Response(JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Unknown error", errorType: "unknown" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });

@@ -6,9 +6,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Clock, Layers, Settings } from "lucide-react";
+import { Clock, Layers, Settings, X } from "lucide-react";
 import { BulkDueDateManager } from "./BulkDueDateManager";
 import { BulkPhaseManager } from "./BulkPhaseManager";
+import { BulkNAManager } from "./BulkNAManager";
 import { GapAnalysisItem } from "@/types/client";
 
 interface BulkActionsMenuProps {
@@ -21,6 +22,7 @@ interface BulkActionsMenuProps {
 export function BulkActionsMenu({ items, companyId, onComplete, disabled = false }: BulkActionsMenuProps) {
   const [dueDateDialog, setDueDateDialog] = React.useState(false);
   const [phasesDialog, setPhasesDialog] = React.useState(false);
+  const [naDialog, setNaDialog] = React.useState(false);
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
   const handleDueDateClick = () => {
     if (disabled) return;
@@ -32,6 +34,12 @@ export function BulkActionsMenu({ items, companyId, onComplete, disabled = false
     if (disabled) return;
     setDropdownOpen(false);
     setPhasesDialog(true);
+  };
+
+  const handleNAClick = () => {
+    if (disabled) return;
+    setDropdownOpen(false);
+    setNaDialog(true);
   };
 
   return (
@@ -52,6 +60,10 @@ export function BulkActionsMenu({ items, companyId, onComplete, disabled = false
             <Layers className="h-4 w-4 mr-2" />
             Set Phases
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => handleNAClick()}>
+            <X className="h-4 w-4 mr-2" />
+            Mark as N/A
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -67,6 +79,12 @@ export function BulkActionsMenu({ items, companyId, onComplete, disabled = false
         onComplete={onComplete}
         open={phasesDialog}
         onOpenChange={setPhasesDialog}
+      />
+      <BulkNAManager
+        items={items}
+        onComplete={onComplete}
+        open={naDialog}
+        onOpenChange={setNaDialog}
       />
     </>
   );

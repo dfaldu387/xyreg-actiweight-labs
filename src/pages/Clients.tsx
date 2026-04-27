@@ -15,6 +15,7 @@ import { DirectNameFix } from "@/components/eudamed/DirectNameFix";
 import { CompanyUsageService } from "@/services/companyUsageService";
 import { HelpAnchor } from "@/components/help/HelpAnchor";
 import { AwaitingMyReviewWidget } from "@/components/review/AwaitingMyReviewWidget";
+import { useCompanyTimesBatch } from "@/hooks/useCompanyTimesBatch";
 
 import { Badge } from "@/components/ui/badge";
 import { usePlanMenuAccess } from "@/hooks/usePlanMenuAccess";
@@ -76,6 +77,10 @@ function ClientsContent() {
     refreshClients,
     isDataLoaded
   } = useSimpleClientsFixed();
+
+  // Batch-fetch time tracking data for all clients (replaces per-card N+1 queries)
+  const clientIds = useMemo(() => clients.map(c => c.id), [clients]);
+  const { data: companyTimesMap } = useCompanyTimesBatch(clientIds);
 
   // Fetch recent company IDs from database
   const [recentCompanyIds, setRecentCompanyIds] = useState<string[]>([]);
@@ -320,6 +325,7 @@ function ClientsContent() {
                             onClientSelect={handleClientSelect}
                             onCompanyDashboardClick={handleCompanyDashboardClick}
                             disabled={isRestricted}
+                            companyTimesMap={companyTimesMap}
                           />
                         ))}
                       </div>
@@ -343,6 +349,7 @@ function ClientsContent() {
                             onClientSelect={handleClientSelect}
                             onCompanyDashboardClick={handleCompanyDashboardClick}
                             disabled={isRestricted}
+                            companyTimesMap={companyTimesMap}
                           />
                         ))}
 

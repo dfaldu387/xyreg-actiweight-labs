@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
-import { Users, CreditCard, Settings, Shield, FileText, History, MessageSquare, Key, Layers, Ticket, Sparkles, DollarSign, Rocket } from 'lucide-react';
+import { Users, CreditCard, Settings, Shield, FileText, History, MessageSquare, Key, Layers, Ticket, Sparkles, DollarSign, Rocket, Coins } from 'lucide-react';
 
 export default function SuperAdminSidebar() {
   const location = useLocation();
@@ -42,6 +42,12 @@ export default function SuperAdminSidebar() {
       label: 'API Key Management',
       icon: Key,
       path: '/super-admin/app/api-keys',
+    },
+    {
+      id: 'ai-token-usage',
+      label: 'AI Token Usage',
+      icon: Coins,
+      path: '/super-admin/app/ai-token-usage',
     },
     {
       id: 'documents',

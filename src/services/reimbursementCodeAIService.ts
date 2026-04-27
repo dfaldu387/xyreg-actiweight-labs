@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 export interface ReimbursementCodeSuggestion {
   code: string;
@@ -51,6 +52,11 @@ export class ReimbursementCodeAIService {
       if (error) {
         console.error('[ReimbursementCodeAIService] Error calling edge function:', error);
         throw error;
+      }
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        throw new Error('NO_CREDITS');
       }
 
       if (!data?.success) {

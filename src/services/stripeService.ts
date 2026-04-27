@@ -867,7 +867,7 @@ export class StripeService {
                     lineItems.push({
                         priceId,
                         name: 'AI Booster Pack',
-                        description: `${data.tier === 'genesis' ? '500' : '1000'} AI credits/month`,
+                        description: `500 AI credits — consumed per AI generation`,
                         amount,
                         quantity: data.aiBoosterPacks,
                         isRecurring: true, // Monthly recurring
@@ -875,7 +875,7 @@ export class StripeService {
                 } else {
                     lineItems.push({
                         name: 'AI Booster Pack',
-                        description: `${data.tier === 'genesis' ? '500' : '1000'} AI credits/month`,
+                        description: `500 AI credits — consumed per AI generation`,
                         amount,
                         quantity: data.aiBoosterPacks,
                         isRecurring: true,

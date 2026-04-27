@@ -171,6 +171,7 @@ export function useApiKeyStatus(companyId: string) {
     openaiAvailable: !!apiKeys.keys.find(key => key.key_type === 'openai'),
     anthropicAvailable: !!apiKeys.keys.find(key => key.key_type === 'anthropic'),
     serpapiAvailable: !!apiKeys.keys.find(key => key.key_type === 'serpapi'),
+    googleVertexAvailable: !!apiKeys.keys.find(key => key.key_type === 'google_vertex'),
     elevenlabsAvailable: !!apiKeys.keys.find(key => key.key_type === 'elevenlabs'),
     getKey: (keyType: ApiKeyType) => apiKeys.keys.find(key => key.key_type === keyType)?.encrypted_key || null
   };

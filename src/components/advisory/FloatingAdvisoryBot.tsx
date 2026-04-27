@@ -13,6 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import { ADVISORY_AGENTS, type AdvisoryAgent, getAgentById } from '@/data/advisoryAgents';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 import { useProductDetails } from '@/hooks/useProductDetails';
 import { CompanyContextService } from '@/services/companyContext';
 import { useAdvisoryThreads, type AdvisoryConversation } from '@/hooks/useAdvisoryThreads';
@@ -242,6 +243,12 @@ export function FloatingAdvisoryBot() {
   
   const documentContext = useSyncExternalStore(documentContextStore.subscribe, documentContextStore.get);
   const [open, setOpen] = useState(false);
+  // Close bot when no-credit dialog navigates to add-ons
+  useEffect(() => {
+    const handler = () => setOpen(false);
+    window.addEventListener('close-ai-panels', handler);
+    return () => window.removeEventListener('close-ai-panels', handler);
+  }, []);
   const [selectedAgent, setSelectedAgent] = useState<AdvisoryAgent | null>(getAgentById('professor-xyreg') || ADVISORY_AGENTS[0]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -482,21 +489,20 @@ export function FloatingAdvisoryBot() {
           companyId,
         }
       });
+      // Check for NO_CREDITS in both data and error paths
+      if (response.data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return;
+      }
       if (response.error) {
-        const ctx = (response.error as any)?.context;
-        try {
-          if (ctx && typeof ctx.text === 'function') {
-            const bodyText = await ctx.text();
-            console.error('[vertex-advisory-chat] edge fn error body:', bodyText);
-          } else {
-            console.error('[vertex-advisory-chat] edge fn error context:', ctx);
-          }
-        } catch (logErr) {
-          console.error('[vertex-advisory-chat] failed to read error body:', logErr);
-        }
+        console.error('[vertex-advisory-chat] edge fn error:', response.error);
         throw response.error;
       }
       const data = response.data;
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return;
+      }
       if (data?.error) {
         toast({ title: 'Error', description: data.error, variant: 'destructive' });
         return;
@@ -760,9 +766,8 @@ export function FloatingAdvisoryBot() {
     document.addEventListener('mouseup', handleMouseUp);
   }, [currentWidth, currentHeight]);
 
-  const railRightCss = isRightRailOpen
-    ? 'calc(var(--xy-right-rail-width, 320px) + 16px)'
-    : ('24px' as const);
+  // Always pin to the absolute bottom-right, regardless of any right rail.
+  const railRightCss = '24px' as const;
   const posStyle: React.CSSProperties = position
     ? { left: position.x, top: position.y }
     : { right: railRightCss, bottom: 80 };

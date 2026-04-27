@@ -89,10 +89,10 @@ export function AIContextSourcesPanel({
   const [initialized, setInitialized] = React.useState(false);
   const [outputLanguage, setOutputLanguage] = React.useState<string>(appLanguage);
   const [sectionOpen, setSectionOpen] = React.useState<Record<string, boolean>>({
-    device: true,
-    standards: mode === 'select',
-    documents: mode === 'select',
-    additional: true,
+    device: false,
+    standards: false,
+    documents: false,
+    additional: false,
   });
 
   // ── Product query ──
@@ -269,28 +269,28 @@ export function AIContextSourcesPanel({
       label: 'Device Information',
       icon: <Settings className="h-3.5 w-3.5" />,
       sources: deviceSources,
-      defaultOpen: true,
+      defaultOpen: false,
     },
     ...(standardSources.length > 0 ? [{
       id: 'standards',
       label: 'Standards & Regulations',
       icon: <Shield className="h-3.5 w-3.5" />,
       sources: standardSources,
-      defaultOpen: mode === 'select',
+      defaultOpen: false,
     }] : []),
     ...(docSources.length > 0 ? [{
       id: 'documents',
       label: 'Internal Documents',
       icon: <BookOpen className="h-3.5 w-3.5" />,
       sources: docSources,
-      defaultOpen: mode === 'select',
+      defaultOpen: false,
     }] : []),
     ...(additionalContextSources.length > 0 ? [{
       id: 'additional',
       label: 'Additional Context',
       icon: <CheckCircle className="h-3.5 w-3.5" />,
       sources: additionalContextSources,
-      defaultOpen: true,
+      defaultOpen: false,
     }] : []),
   ];
 

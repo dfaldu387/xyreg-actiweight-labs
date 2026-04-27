@@ -6,7 +6,6 @@ import { Crosshair, ArrowRight, ArrowLeft, Map, CheckCircle, ClipboardCheck, Git
 import { useViabilityFunnelProgress } from '@/hooks/useViabilityFunnelProgress';
 import { supabase } from '@/integrations/supabase/client';
 import { ALL_DEVELOPMENT_STEPS } from '@/components/product/business-case/blueprintStepMapping';
-import { ANNEX_II_SECTIONS } from '@/config/gapAnnexIISections';
 import { findBestMatchingStepIndex } from '@/utils/stepRouteMatching';
 
 // Build step list from blueprintStepMapping for Venture Blueprint navigation
@@ -22,32 +21,6 @@ function buildVentureBlueprintStepList(productId: string): StepNavItem[] {
     route: `/app/product/${productId}/${step.route}`,
     complete: false,
   }));
-}
-
-function buildGapAnalysisStepList(productId: string): StepNavItem[] {
-  const steps: StepNavItem[] = [];
-  for (const section of ANNEX_II_SECTIONS) {
-    const baseRoute = `/app/product/${productId}/gap-analysis`;
-
-    if (section.subItems && section.subItems.length > 0) {
-      // Each sub-item becomes its own step
-      for (const sub of section.subItems) {
-        steps.push({
-          label: `${section.section}.${sub.letter} ${sub.description}`,
-          route: baseRoute,
-          complete: false,
-        });
-      }
-    } else {
-      // Section without sub-items is a single step
-      steps.push({
-        label: `${section.section} ${section.title}`,
-        route: baseRoute,
-        complete: false,
-      });
-    }
-  }
-  return steps;
 }
 
 // Simple return button destinations (non-step-based flows)
@@ -99,7 +72,7 @@ export function FloatingReturnButton() {
 
   const isVentureBlueprint = returnTo === 'venture-blueprint';
   const isGenesis = returnTo === 'genesis' || returnTo === 'investor-share';
-  const isGapAnalysis = returnTo === 'gap-analysis';
+  const isGapAnalysis = returnTo === 'gap-analysis' || returnTo === 'annex-i';
   const isUsabilityEngineering = returnTo === 'usability-engineering';
   const isUsabilityHazards = returnTo === 'usability-hazards';
   const isRegulatory = returnTo === 'regulatory';
@@ -117,6 +90,16 @@ export function FloatingReturnButton() {
 
   // Simple return configs for non-step-based flows
   const simpleReturnConfigs: Record<string, SimpleReturnConfig> = {
+    'gap-analysis': {
+      path: `/app/product/${productId}/gap-analysis?tab=mdr&subtab=annex-i`,
+      label: 'Return to Annex I',
+      icon: <FileCheck className="h-4 w-4" />
+    },
+    'annex-i': {
+      path: `/app/product/${productId}/gap-analysis?tab=mdr&subtab=annex-i`,
+      label: 'Return to Annex I',
+      icon: <FileCheck className="h-4 w-4" />
+    },
     'usability-engineering': {
       path: `/app/product/${productId}/design-risk-controls?tab=usability-engineering`,
       label: 'Return to Usability Engineering',
@@ -209,14 +192,8 @@ export function FloatingReturnButton() {
     return buildVentureBlueprintStepList(productId);
   }, [productId]);
 
-  // Build step list for Gap Analysis from ANNEX_II_SECTIONS
-  const gapAnalysisSteps = useMemo(() => {
-    if (!productId) return [];
-    return buildGapAnalysisStepList(productId);
-  }, [productId]);
-
   // Use the appropriate step list based on flow type
-  const stepList = isGapAnalysis ? gapAnalysisSteps : isVentureBlueprint ? ventureBlueprintSteps : readinessChecklist;
+  const stepList = isVentureBlueprint ? ventureBlueprintSteps : readinessChecklist;
 
   // Only show for known return destinations
   if (!returnTo || !productId) {
@@ -227,7 +204,7 @@ export function FloatingReturnButton() {
   const isViabilityScorecard = returnTo === 'viability-scorecard';
 
   // Handle simple return flows (non-step-based)
-  if (isUsabilityEngineering || isUsabilityHazards || isRegulatory || isRegulatoryDNA || isOverview || isDeviceOverview || isBusinessCase || isViabilityScorecard || isUserNeeds || isSystemRequirements || isSoftwareRequirements || isHardwareRequirements || isMatrix || isDesignReview || isVariantDevice || isVariants) {
+  if (isGapAnalysis || isUsabilityEngineering || isUsabilityHazards || isRegulatory || isRegulatoryDNA || isOverview || isDeviceOverview || isBusinessCase || isViabilityScorecard || isUserNeeds || isSystemRequirements || isSoftwareRequirements || isHardwareRequirements || isMatrix || isDesignReview || isVariantDevice || isVariants) {
     const config = simpleReturnConfigs[returnTo];
     if (!config) return null;
 
@@ -251,7 +228,7 @@ export function FloatingReturnButton() {
     );
   }
   
-  if (!isVentureBlueprint && !isGenesis && !isGapAnalysis) {
+  if (!isVentureBlueprint && !isGenesis) {
     return null;
   }
 
@@ -275,9 +252,7 @@ export function FloatingReturnButton() {
   const handleNext = () => {
     if (nextStepIndex < 0) {
       // Return to home when on last step
-      if (isGapAnalysis) {
-        navigate(`/app/product/${productId}/gap-analysis`);
-      } else if (isVentureBlueprint) {
+      if (isVentureBlueprint) {
         navigate(`/app/product/${productId}/business-case?tab=venture-blueprint`);
       } else {
         navigate(`/app/product/${productId}/business-case?tab=genesis`);
@@ -308,14 +283,14 @@ export function FloatingReturnButton() {
   // Only show "Return to Genesis/Blueprint" when on the last step (no next step)
   const isLastStep = nextStepIndex < 0;
   const nextLabel = isLastStep
-    ? (isGapAnalysis ? 'Return to Gap Analysis' : isVentureBlueprint ? 'Return to Blueprint' : 'Return to Genesis')
+    ? (isVentureBlueprint ? 'Return to Blueprint' : 'Return to Genesis')
     : `${getShortLabel(stepList[nextStepIndex].label)}`;
 
   const prevLabel = previousStepIndex >= 0
     ? getShortLabel(stepList[previousStepIndex].label)
     : null;
 
-  const Icon = isGapAnalysis ? FileCheck : isVentureBlueprint ? Map : Crosshair;
+  const Icon = isVentureBlueprint ? Map : Crosshair;
 
   // Color scheme: white buttons with dark text
   const buttonStyle = '!bg-slate-100 hover:!bg-slate-200 text-slate-700 border border-slate-500 shadow-sm';

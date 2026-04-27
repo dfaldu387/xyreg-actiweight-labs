@@ -13,6 +13,8 @@ import { useCompanyRole } from '@/context/CompanyRoleContext';
 import { RefDocsBadge } from '@/components/common/RefDocsBadge';
 import { SendToReviewGroupDialog } from './SendToReviewGroupDialog';
 import { CopyDocumentDialog } from '@/components/product/documents/CopyDocumentDialog';
+import { TierBadge } from './TierBadge';
+import { formatSopDisplayName } from '@/constants/sopAutoSeedTiers';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -238,6 +240,7 @@ export function CompanyDocumentCard({
           <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/20">
             {document.document_type}
           </Badge>
+          <TierBadge source={document.name} />
           {document.sub_section && (
             <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
               {(document as any as { sub_section?: string }).sub_section}
@@ -254,7 +257,7 @@ export function CompanyDocumentCard({
         </div>
         
         <h5 className="font-medium mb-2">
-          {document.name}
+          {formatSopDisplayName(document.name)}
         </h5>
         {document.description && (
           <h6 className="text-sm text-muted-foreground mb-2">{document.description}</h6>

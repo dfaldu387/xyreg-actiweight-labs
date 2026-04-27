@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { findAnnexIIConfig } from '@/config/gapAnnexIISections';
 import { GapItem } from '@/components/product/gap-analysis/GapItem';
 import { IEC60601ClauseForm, type SsotTechSpecs } from '@/components/product/gap-analysis/IEC60601ClauseForm';
+import { GapClauseNAControls } from '@/components/product/gap-analysis/GapClauseNAControls';
 import { IEC_60601_FORM_FIELDS, type ClauseFormConfig } from '@/config/gapIEC60601FormFields';
 import { MDR_ANNEX_II_FORM_FIELDS } from '@/config/gapAnnexIIFormFields';
 import { IEC_62304_FORM_FIELDS } from '@/config/gapIEC62304FormFields';
@@ -530,29 +531,88 @@ export default function ProductGapItemDetailPage() {
       {/* Content with sidebar */}
       <div className={`flex-1 overflow-hidden ${fwConfig ? 'mr-[280px] lg:mr-[300px] xl:mr-[320px]' : ''}`}>
         {showClauseForm ? (
-          <IEC60601ClauseForm
-            itemId={item.id}
-            section={sectionStr!}
-            initialResponses={(item as any).form_responses || {}}
-            currentStepIndex={currentStepIndex}
-            onStepChange={setCurrentStepIndex}
-            onStepsInfo={handleStepsInfo}
-            productId={productId}
-            companyId={(item as any).company_id}
-            formFields={resolvedFormFields || undefined}
-            ssotIntendedUseCategory={isIEC60601_1 ? ssotIntendedUseCategory : undefined}
-            onSsotIntendedUseCategoryChange={isIEC60601_1 ? handleSsotIntendedUseCategoryChange : undefined}
-            ssotEnergyTransfer={isIEC60601_1 ? ssotTechSpecs['energyTransferDirection']?.value : undefined}
-            onSsotEnergyTransferChange={isIEC60601_1 ? ssotTechSpecs['energyTransferDirection']?.onChange : undefined}
-            ssotEnergyType={isIEC60601_1 ? ssotTechSpecs['energyTransferType']?.value : undefined}
-            onSsotEnergyTypeChange={isIEC60601_1 ? ssotTechSpecs['energyTransferType']?.onChange : undefined}
-            deviceComponents={isIEC60601_1 ? deviceComponents : undefined}
-            ssotTechSpecs={isIEC60601_1 ? ssotTechSpecs : undefined}
-            derivedSsotFields={(isIEC60601_1 || isAnnexII) ? derivedSsotFields : undefined}
-            ssotEssentialPerformance={isIEC60601_1 ? ssotEssentialPerformance : undefined}
-            formReadOnly={isInheritedItem}
-            frameworkId={fwConfig?.frameworkFilter}
-          />
+          <div className="h-full overflow-y-auto">
+            <div className="px-4 pt-4">
+              <GapClauseNAControls
+                itemId={item.id}
+                currentStatus={(item as any).status}
+                initialReason={(item as any).automatic_na_reason}
+                isAutoExcluded={(item as any).is_auto_excluded}
+                disabled={isInheritedItem}
+                framework={fw}
+                clause={sectionStr}
+                itemTitle={(item as any).title || (item as any).requirement}
+                deviceContext={{
+                  deviceClass: (productData as any)?.class,
+                  hasSoftware:
+                    typeof (techChars as any)?.isSoftwareAsaMedicalDevice === 'boolean'
+                      ? (techChars as any).isSoftwareAsaMedicalDevice
+                      : typeof (techChars as any)?.hasSoftware === 'boolean'
+                        ? (techChars as any).hasSoftware
+                        : undefined,
+                  isImplantable:
+                    typeof (techChars as any)?.isImplantable === 'boolean'
+                      ? (techChars as any).isImplantable
+                      : undefined,
+                  hasMeasuringFunction:
+                    typeof (techChars as any)?.hasMeasuringFunction === 'boolean'
+                      ? (techChars as any).hasMeasuringFunction
+                      : undefined,
+                  isSterile:
+                    typeof (techChars as any)?.isDeliveredSterile === 'boolean'
+                      ? (techChars as any).isDeliveredSterile
+                      : typeof (techChars as any)?.isIntendedToBeSterile === 'boolean'
+                        ? (techChars as any).isIntendedToBeSterile
+                        : undefined,
+                  isActive:
+                    typeof (techChars as any)?.isActive === 'boolean'
+                      ? (techChars as any).isActive
+                      : undefined,
+                  isInVitroDiagnostic:
+                    typeof (techChars as any)?.isInVitroDiagnostic === 'boolean'
+                      ? (techChars as any).isInVitroDiagnostic
+                      : ((productData as any)?.primary_regulatory_type || '')
+                          .toLowerCase()
+                          .includes('ivd') || undefined,
+                }}
+                onStatusChanged={() => {
+                  queryClient.invalidateQueries({ queryKey: ['gap-analysis-item', itemId] });
+                }}
+              />
+            </div>
+            <div
+              className={
+                (item as any).status === 'not_applicable'
+                  ? 'opacity-60 pointer-events-none'
+                  : ''
+              }
+              aria-disabled={(item as any).status === 'not_applicable'}
+            >
+              <IEC60601ClauseForm
+                itemId={item.id}
+                section={sectionStr!}
+                initialResponses={(item as any).form_responses || {}}
+                currentStepIndex={currentStepIndex}
+                onStepChange={setCurrentStepIndex}
+                onStepsInfo={handleStepsInfo}
+                productId={productId}
+                companyId={(item as any).company_id}
+                formFields={resolvedFormFields || undefined}
+                ssotIntendedUseCategory={isIEC60601_1 ? ssotIntendedUseCategory : undefined}
+                onSsotIntendedUseCategoryChange={isIEC60601_1 ? handleSsotIntendedUseCategoryChange : undefined}
+                ssotEnergyTransfer={isIEC60601_1 ? ssotTechSpecs['energyTransferDirection']?.value : undefined}
+                onSsotEnergyTransferChange={isIEC60601_1 ? ssotTechSpecs['energyTransferDirection']?.onChange : undefined}
+                ssotEnergyType={isIEC60601_1 ? ssotTechSpecs['energyTransferType']?.value : undefined}
+                onSsotEnergyTypeChange={isIEC60601_1 ? ssotTechSpecs['energyTransferType']?.onChange : undefined}
+                deviceComponents={isIEC60601_1 ? deviceComponents : undefined}
+                ssotTechSpecs={isIEC60601_1 ? ssotTechSpecs : undefined}
+                derivedSsotFields={(isIEC60601_1 || isAnnexII) ? derivedSsotFields : undefined}
+                ssotEssentialPerformance={isIEC60601_1 ? ssotEssentialPerformance : undefined}
+                formReadOnly={isInheritedItem || (item as any).status === 'not_applicable'}
+                frameworkId={fwConfig?.frameworkFilter}
+              />
+            </div>
+          </div>
         ) : (
           <div className="overflow-y-auto p-4 space-y-6 h-full">
             {config?.subItems && config.subItems.length > 0 && (

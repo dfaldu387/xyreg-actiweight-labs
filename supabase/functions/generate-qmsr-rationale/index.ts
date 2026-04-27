@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { trackTokenUsage, extractLovableAIUsage } from "../_shared/token-tracking.ts";
+import { trackTokenUsage, extractLovableAIUsage, checkAiCredits, logAiTokenUsage } from "../_shared/token-tracking.ts";
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
 
@@ -59,6 +59,23 @@ serve(async (req) => {
 
     if (!type || !context) {
       throw new Error('Type and context are required');
+    }
+
+    // Check AI credits before processing
+    if (companyId) {
+      const creditCheck = await checkAiCredits(companyId);
+      if (!creditCheck.allowed) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "NO_CREDITS",
+            message: "No AI credits remaining. Purchase an AI Booster Pack to continue.",
+            used: creditCheck.used,
+            limit: creditCheck.limit,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
     }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -326,7 +343,20 @@ The rationale should:
       const usage = extractLovableAIUsage(aiData);
       if (usage) {
         EdgeRuntime.waitUntil(
-          trackTokenUsage(companyId, 'gemini', usage)
+          Promise.all([
+            trackTokenUsage(companyId, 'gemini', usage),
+            logAiTokenUsage({
+              companyId,
+              source: 'generate_qmsr_rationale',
+              model: 'gemini-2.5-flash',
+              usage: {
+                inputTokens: usage.promptTokens,
+                outputTokens: usage.completionTokens,
+                thinkingTokens: 0,
+                totalTokens: usage.totalTokens,
+              },
+            }),
+          ])
         );
       }
     }

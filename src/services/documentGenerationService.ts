@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { AIContentRecommendationService } from './aiContentRecommendationService';
 import { AIChangeTrackingService } from './aiChangeTrackingService';
 import { AISuggestionService } from './aiSuggestionService';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 interface DocumentGenerationRequest {
   template: DocumentTemplate;
@@ -224,6 +225,11 @@ export class DocumentGenerationService {
           success: false,
           error: error.message || 'AI-powered document generation failed'
         };
+      }
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return { success: false, error: 'NO_CREDITS' };
       }
 
       if (!data || !data.template) {

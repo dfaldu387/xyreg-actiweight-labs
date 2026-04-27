@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.4';
+import { checkAiCredits, logAiTokenUsage, trackTokenUsage, extractGeminiUsage } from "../_shared/token-tracking.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -46,11 +47,38 @@ serve(async (req) => {
       });
     }
 
+    // Check AI credits before processing
+    if (companyId) {
+      const creditCheck = await checkAiCredits(companyId);
+      if (!creditCheck.allowed) {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "NO_CREDITS",
+            message: "No AI credits remaining. Purchase an AI Booster Pack to continue.",
+            used: creditCheck.used,
+            limit: creditCheck.limit,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch company's Gemini API key (same pattern as ai-hazard-generator)
+    // Extract user ID from auth header
+    let userId: string | undefined;
+    const authHeader = req.headers.get("authorization");
+    if (authHeader) {
+      const supabaseAnon = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!);
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabaseAnon.auth.getUser(token);
+      userId = user?.id;
+    }
+
+    // Fetch company's Gemini API key
     const { data: apiKeys, error: apiKeyError } = await supabase
       .from('company_api_keys')
       .select('*')
@@ -113,13 +141,6 @@ Product Context (for background only — the hazard above takes priority):
 - Duration of Use: ${productData.duration_of_use || 'Not specified'}
 - Device Class: ${productData.device_class || 'Not specified'}
 
-FIELD-LEVEL CONSTRAINTS:
-- "hazardous_situation": MUST be a refined version of the provided Root Cause above. Do NOT replace it with a generic platform scenario.
-- "potential_harm": MUST be consistent with the provided Potential Harm above. Refine the wording but keep the same clinical outcome.
-- "foreseeable_sequence_events": MUST lead logically to the provided hazardous situation.
-- "description": Should describe the hazard source that leads to the root cause above.
-- All other fields should be consistent with the hazard described above.
-
 Return a JSON object with this exact structure:
 {
   "description": "Clear identification of the hazard source (2-3 sentences)",
@@ -127,14 +148,14 @@ Return a JSON object with this exact structure:
   "hazardous_situation": "Refined version of the provided Root Cause (2-3 sentences)",
   "potential_harm": "Consistent with the provided Potential Harm (1-2 sentences)",
   "category": "One of: materials_patient_contact, combination_other_products, human_factors, training_requirements, cleaning_maintenance, negative_air_pressure, electrical_energy, sterility_requirements, critical_data_storage, software_use, disposal, manufacturing_residues, transport_storage, shelf_life, product_realization, customer_requirements, purchasing, service_provision, monitoring_devices",
-  "initial_severity": 1-5 (1=Negligible, 2=Minor, 3=Serious, 4=Major, 5=Catastrophic),
-  "initial_probability": 1-5 (1=Very Rare, 2=Rare, 3=Occasional, 4=Likely, 5=Very Likely),
-  "risk_control_measure": "Detailed description of the recommended risk control measure to reduce the risk (2-3 sentences)",
+  "initial_severity": 1-5,
+  "initial_probability": 1-5,
+  "risk_control_measure": "Detailed description of the recommended risk control measure (2-3 sentences)",
   "risk_control_type": "One of: design, protective_measure, information_for_safety",
-  "residual_severity": 1-5 (after applying the risk control measure),
-  "residual_probability": 1-5 (after applying the risk control measure),
+  "residual_severity": 1-5,
+  "residual_probability": 1-5,
   "verification_implementation": "How to verify the risk control measure was correctly implemented (1-2 sentences)",
-  "verification_effectiveness": "Evidence that the risk control measure is effective in reducing risk (1-2 sentences)",
+  "verification_effectiveness": "Evidence that the risk control measure is effective (1-2 sentences)",
   "rationale": "Brief explanation of why this hazard was identified (1-2 sentences)",
   "confidence": 0.7-1.0
 }
@@ -162,31 +183,29 @@ PRODUCT CONTEXT:
 - Duration of Use: ${productData.duration_of_use || 'Not specified'}
 - Device Class: ${productData.device_class || 'Not specified'}
 
-Analyze the requirement/hazard and identify the MOST SIGNIFICANT hazard.
-
 Return a JSON object with this exact structure:
 {
   "description": "Clear identification of the hazard source (2-3 sentences)",
-  "foreseeable_sequence_events": "Step-by-step chain of events from the hazard to a hazardous situation (3-5 steps described narratively)",
-  "hazardous_situation": "The specific circumstance where people, property, or environment are exposed to the hazard (2-3 sentences)",
-  "potential_harm": "The specific injury, damage, or adverse outcome that could result (1-2 sentences)",
+  "foreseeable_sequence_events": "Step-by-step chain of events (3-5 steps described narratively)",
+  "hazardous_situation": "The specific circumstance where people are exposed to the hazard (2-3 sentences)",
+  "potential_harm": "The specific injury or adverse outcome (1-2 sentences)",
   "category": "One of: materials_patient_contact, combination_other_products, human_factors, training_requirements, cleaning_maintenance, negative_air_pressure, electrical_energy, sterility_requirements, critical_data_storage, software_use, disposal, manufacturing_residues, transport_storage, shelf_life, product_realization, customer_requirements, purchasing, service_provision, monitoring_devices",
-  "initial_severity": 1-5 (1=Negligible, 2=Minor, 3=Serious, 4=Major, 5=Catastrophic),
-  "initial_probability": 1-5 (1=Very Rare, 2=Rare, 3=Occasional, 4=Likely, 5=Very Likely),
-  "risk_control_measure": "Detailed description of the recommended risk control measure to reduce the risk (2-3 sentences)",
+  "initial_severity": 1-5,
+  "initial_probability": 1-5,
+  "risk_control_measure": "Detailed description of the recommended risk control measure (2-3 sentences)",
   "risk_control_type": "One of: design, protective_measure, information_for_safety",
-  "residual_severity": 1-5 (after applying the risk control measure),
-  "residual_probability": 1-5 (after applying the risk control measure),
-  "verification_implementation": "How to verify the risk control measure was correctly implemented (1-2 sentences)",
-  "verification_effectiveness": "Evidence that the risk control measure is effective in reducing risk (1-2 sentences)",
-  "rationale": "Brief explanation of why this hazard was identified for this requirement (1-2 sentences)",
+  "residual_severity": 1-5,
+  "residual_probability": 1-5,
+  "verification_implementation": "How to verify the risk control measure (1-2 sentences)",
+  "verification_effectiveness": "Evidence that the risk control measure is effective (1-2 sentences)",
+  "rationale": "Brief explanation of why this hazard was identified (1-2 sentences)",
   "confidence": 0.7-1.0
 }
 
 IMPORTANT:
 - The residual risk should be LOWER than the initial risk after applying controls
 - Be specific to this device and requirement, not generic
-- The risk_control_type should follow ISO 14971 priority: design controls first, then protective measures, then information for safety
+- The risk_control_type should follow ISO 14971 priority
 - Only return the JSON object, no other text`;
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
@@ -214,6 +233,30 @@ IMPORTANT:
     }
 
     const data = await response.json();
+
+    // Track token usage
+    const geminiUsage = extractGeminiUsage(data);
+    if (geminiUsage && companyId) {
+      try {
+        await Promise.all([
+          logAiTokenUsage({
+            companyId,
+            userId,
+            source: 'ai_hazard_analysis',
+            model: 'gemini-2.5-flash',
+            usage: {
+              inputTokens: geminiUsage.promptTokens,
+              outputTokens: geminiUsage.completionTokens,
+              thinkingTokens: 0,
+              totalTokens: geminiUsage.totalTokens,
+            },
+          }),
+          trackTokenUsage(companyId, 'gemini', geminiUsage),
+        ]);
+      } catch (trackErr) {
+        console.error('[ai-hazard-filler] Token tracking error:', trackErr);
+      }
+    }
 
     if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
       return new Response(JSON.stringify({

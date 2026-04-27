@@ -5,6 +5,12 @@ window.addEventListener('error', (event) => {
 });
 window.addEventListener('unhandledrejection', (event) => {
   console.error('[UNHANDLED REJECTION]', event.reason?.message || event.reason, event.reason?.stack);
+  // Catch NO_CREDITS errors from any AI call and show the dialog
+  const msg = event.reason?.message || event.reason?.toString?.() || '';
+  if (msg.includes('NO_CREDITS')) {
+    event.preventDefault();
+    window.dispatchEvent(new Event('no-ai-credits'));
+  }
 });
 
 import React from 'react'
@@ -31,6 +37,7 @@ import { HelpModeProvider } from './context/HelpModeContext'
 import { GapAnalysisHelpProvider } from './context/GapAnalysisHelpContext'
 import { Toaster } from "sonner";
 import { RightRailProvider } from './context/RightRailContext';
+import { AiCreditProvider } from './context/AiCreditContext';
 // Ensure we have an element to mount the app - BrowserRouter must wrap all providers
 const rootElement = document.getElementById("root");
 
@@ -53,6 +60,7 @@ root.render(
               <AuthProvider>
                 <SubscriptionProvider>
                   <CompanyRoleProvider>
+                  <AiCreditProvider>
                   <MissionControlProvider>
                     <AdvancedSettingsProvider>
                       <OnboardingTourProvider>
@@ -69,6 +77,7 @@ root.render(
                       </OnboardingTourProvider>
                     </AdvancedSettingsProvider>
                   </MissionControlProvider>
+                  </AiCreditProvider>
                 </CompanyRoleProvider>
                 </SubscriptionProvider>
               </AuthProvider>

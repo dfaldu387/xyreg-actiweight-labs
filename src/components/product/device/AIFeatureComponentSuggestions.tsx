@@ -91,9 +91,11 @@ export function AIFeatureComponentSuggestions({
       );
       setSuggestions(filtered);
       setNewSuggestions(data?.newSuggestions || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('AI component suggestion error:', err);
-      toast.error('Failed to generate suggestions');
+      if (err?.message !== 'NO_CREDITS') {
+        toast.error('Failed to generate suggestions');
+      }
     } finally {
       setIsLoading(false);
     }

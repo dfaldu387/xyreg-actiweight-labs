@@ -195,12 +195,55 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         setIsSubscriptionLoading(true);
       }
 
-      // Get subscription from user_subscriptions table
-      const { data: subData, error: subError } = await supabase
-        .from('user_subscriptions')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
+      // OPTIMIZED: Resolve company ID in parallel with subscription query
+      // Build company resolution promise based on current route
+      let companyIdPromise: Promise<string | null>;
+
+      if (urlCompanyName) {
+        const decodedName = decodeURIComponent(urlCompanyName);
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(decodedName)) {
+          companyIdPromise = Promise.resolve(decodedName);
+        } else {
+          companyIdPromise = supabase
+            .from('companies')
+            .select('id')
+            .eq('name', decodedName)
+            .limit(1)
+            .single()
+            .then(({ data }) => data?.id || null);
+        }
+      } else if (urlProductId && location.pathname.includes('/product/')) {
+        companyIdPromise = supabase
+          .from('products')
+          .select('company_id')
+          .eq('id', urlProductId)
+          .single()
+          .then(({ data }) => data?.company_id || null);
+      } else {
+        // Fallback: get primary company (or any company) from user_company_access
+        companyIdPromise = supabase
+          .from('user_company_access')
+          .select('company_id, is_primary')
+          .eq('user_id', userId)
+          .order('is_primary', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+          .then(({ data }) => data?.company_id || null);
+      }
+
+      // Run subscription query and company resolution in PARALLEL
+      const [subResult, userCompanyId] = await Promise.all([
+        supabase
+          .from('user_subscriptions')
+          .select('*')
+          .eq('user_id', userId)
+          .single(),
+        companyIdPromise
+      ]);
+
+      const { data: subData, error: subError } = subResult;
 
       if (subError && subError.code !== 'PGRST116') {
         throw subError;
@@ -246,69 +289,6 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         // Priority 1: Check new pricing system (new_pricing_company_plans table)
         // This takes precedence over stripe_subscriptions for accurate plan display
         let foundPlanName: string | null = null;
-
-        // Get the company ID to use for plan lookup
-        // Priority: URL company > product's company > user's primary company > any company
-        let userCompanyId: string | null = null;
-
-        // 1. Check if company name is in URL
-        if (urlCompanyName) {
-          const decodedName = decodeURIComponent(urlCompanyName);
-          // Check if it's already a UUID
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-          if (uuidRegex.test(decodedName)) {
-            userCompanyId = decodedName;
-          } else {
-            // Resolve company name to ID
-            const { data: companyByName } = await supabase
-              .from('companies')
-              .select('id')
-              .eq('name', decodedName)
-              .limit(1)
-              .single();
-            if (companyByName?.id) {
-              userCompanyId = companyByName.id;
-            }
-          }
-        }
-
-        // 2. Check if we're on a product route and can get company from product
-        if (!userCompanyId && urlProductId && location.pathname.includes('/product/')) {
-          const { data: product } = await supabase
-            .from('products')
-            .select('company_id')
-            .eq('id', urlProductId)
-            .single();
-          if (product?.company_id) {
-            userCompanyId = product.company_id;
-          }
-        }
-
-        // 3. Fallback: Try to get primary company from user_company_access
-        if (!userCompanyId) {
-          const { data: primaryCompany } = await supabase
-            .from('user_company_access')
-            .select('company_id')
-            .eq('user_id', userId)
-            .eq('is_primary', true)
-            .limit(1)
-            .single();
-
-          if (primaryCompany?.company_id) {
-            userCompanyId = primaryCompany.company_id;
-          } else {
-            // Fallback: get any company the user has access to
-            const { data: anyCompany } = await supabase
-              .from('user_company_access')
-              .select('company_id')
-              .eq('user_id', userId)
-              .order('created_at', { ascending: false })
-              .limit(1)
-              .single();
-
-            userCompanyId = anyCompany?.company_id || null;
-          }
-        }
 
         if (userCompanyId) {
           // Fetch the company's plan from new pricing system (includes menu_access and expires_at)

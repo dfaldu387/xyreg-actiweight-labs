@@ -120,7 +120,9 @@ export function AIInlineEditBar({
       setResult(data.content);
     } catch (err: any) {
       if (controller.signal.aborted) return;
-      toast.error('AI generation failed', { description: err.message });
+      if (err?.message !== 'NO_CREDITS') {
+        toast.error('AI generation failed', { description: err.message });
+      }
     } finally {
       if (!controller.signal.aborted) {
         setIsGenerating(false);

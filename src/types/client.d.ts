@@ -164,6 +164,12 @@ export interface DeviceCharacteristics {
   isAbsorbedByBody?: boolean;
   administersMedicine?: boolean;
   containsNanomaterials?: boolean;
+  // GSPR Annex I context inputs
+  cmrSubstances?: boolean;                 // GSPR 10.4.1
+  materialsInBodyContact?: string[];       // GSPR 10
+  absorbedDispersedInBody?: boolean;       // GSPR 13
+  emitsRadiation?: boolean;                // GSPR 17
+  emcProfile?: string;                     // GSPR 14 ('N/A' | 'IEC 60601-1-2' | 'IEC 61326' | 'Other')
   // Power Source characteristics
   isBatteryPowered?: boolean;
   isMainsPowered?: boolean;

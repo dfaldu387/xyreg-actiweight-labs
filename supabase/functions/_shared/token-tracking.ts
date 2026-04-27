@@ -93,6 +93,126 @@ export function extractLovableAIUsage(responseData: any): TokenUsage | null {
 /**
  * Extract token usage from direct Gemini API response
  */
+// --- Per-request AI token usage tracking ---
+
+export type AiSource = 'professor_xyreg' | 'document_ai_assistant' | 'auto_fill_section' | 'ai_suggestion' | 'ai_user_needs' | 'ai_system_requirements' | 'ai_software_requirements' | 'ai_hardware_requirements' | 'ai_hazard_analysis' | 'ai_vv_plan';
+
+interface DetailedTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  thinkingTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Extract detailed token usage from Gemini response including thinking tokens
+ */
+export function extractGeminiDetailedUsage(responseData: any): DetailedTokenUsage | null {
+  try {
+    const usageMetadata = responseData.usageMetadata;
+    if (!usageMetadata) return null;
+
+    return {
+      inputTokens: usageMetadata.promptTokenCount || 0,
+      outputTokens: usageMetadata.candidatesTokenCount || 0,
+      thinkingTokens: usageMetadata.thoughtsTokenCount || 0,
+      totalTokens: usageMetadata.totalTokenCount || 0,
+    };
+  } catch (error) {
+    console.error('[token-tracking] Error extracting Gemini detailed usage:', error);
+    return null;
+  }
+}
+
+interface AiTokenUsageRecord {
+  companyId: string;
+  userId?: string;
+  source: AiSource;
+  model: string;
+  usage: DetailedTokenUsage;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Check if a company has remaining AI credits (1 credit = 1 API call).
+ * Returns { allowed: true } or { allowed: false, used, limit }.
+ */
+export async function checkAiCredits(companyId: string): Promise<{ allowed: boolean; used: number; limit: number }> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const now = new Date();
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { data: usageRows } = await supabase
+      .from('ai_token_usage')
+      .select('id')
+      .eq('company_id', companyId)
+      .gte('created_at', firstOfMonth.toISOString());
+
+    const used = (usageRows || []).length;
+
+    const { data: companyPlan } = await supabase
+      .from('new_pricing_company_plans')
+      .select('ai_booster_packs, plan:new_pricing_plans(included_ai_credits)')
+      .eq('company_id', companyId)
+      .in('status', ['active', 'trial', 'cancelled'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Credit limit = ai_booster_packs value directly (set by super admin / webhook)
+    // We do NOT use included_ai_credits from the plan as it stores token counts, not API call credits
+    let limit = 0;
+    if (companyPlan) {
+      limit = companyPlan.ai_booster_packs || 0;
+    }
+
+    // If no plan exists at all, allow (company not provisioned yet)
+    if (!companyPlan) return { allowed: true, used, limit };
+
+    // If company has a plan, enforce credit limit (0 means no credits available)
+    const allowed = used < limit;
+    console.log(`[token-tracking] Credit check: used=${used}, limit=${limit}, allowed=${allowed}`);
+    return { allowed, used, limit };
+  } catch (error) {
+    console.error('[token-tracking] Error checking AI credits:', error);
+    return { allowed: true, used: 0, limit: 0 };
+  }
+}
+
+/**
+ * Log a per-request AI token usage row into ai_token_usage table
+ */
+export async function logAiTokenUsage(record: AiTokenUsageRecord): Promise<void> {
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { error } = await supabase.from('ai_token_usage').insert({
+      company_id: record.companyId,
+      user_id: record.userId ?? null,
+      source: record.source,
+      model: record.model,
+      input_tokens: record.usage.inputTokens,
+      output_tokens: record.usage.outputTokens,
+      thinking_tokens: record.usage.thinkingTokens,
+      total_tokens: record.usage.totalTokens,
+      metadata: record.metadata ?? {},
+    });
+
+    if (error) {
+      console.error('[token-tracking] Error logging AI token usage:', error);
+    } else {
+      console.log(`[token-tracking] AI usage logged: source=${record.source}, total=${record.usage.totalTokens}`);
+    }
+  } catch (error) {
+    console.error('[token-tracking] Unexpected error logging AI token usage:', error);
+  }
+}
+
 export function extractGeminiUsage(responseData: any): TokenUsage | null {
   try {
     const usageMetadata = responseData.usageMetadata;

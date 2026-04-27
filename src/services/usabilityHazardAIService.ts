@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 import { HazardSuggestion } from './hazardAIService';
 
 export interface UsabilityHazardAIRequest {
@@ -32,6 +33,11 @@ export async function generateUsabilityHazardSuggestions(
   if (error) {
     console.error('[UsabilityHazardAI] Edge function error:', error);
     throw error;
+  }
+
+  if (data?.error === 'NO_CREDITS') {
+    showNoCreditDialog();
+    throw new Error('NO_CREDITS');
   }
 
   if (!data?.success) {

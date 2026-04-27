@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 export interface RequirementSpecSuggestion {
   description: string;
@@ -70,6 +71,11 @@ export class RequirementSpecsAIService {
       }
 
       console.log('[RequirementSpecsAIService] Raw response from edge function:', data);
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        throw new Error('NO_CREDITS');
+      }
 
       if (!data?.success) {
         console.error('[RequirementSpecsAIService] AI generation failed:', data?.error);

@@ -172,7 +172,8 @@ export function HazardAISuggestionsDialog({
       } else {
         throw new Error(response.error || 'Failed to generate suggestions');
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message === 'NO_CREDITS') return;
       const errorMessage = err instanceof Error ? err.message : 'Failed to generate AI suggestions';
       setError(errorMessage);
     } finally {
@@ -203,7 +204,7 @@ export function HazardAISuggestionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
@@ -215,7 +216,7 @@ export function HazardAISuggestionsDialog({
           </p>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 overflow-y-auto">
           {/* Category filter dropdown */}
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-foreground whitespace-nowrap">Category:</label>

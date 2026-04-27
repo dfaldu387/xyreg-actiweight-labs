@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Sparkles, Download, Plus, ExternalLink, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,12 +34,27 @@ export function SoftwareRequirementsModule({ productId, companyId, disabled = fa
   const queryClient = useQueryClient();
   const { lang } = useTranslation();
   const baselineLock = useBaselineLockError();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: requirements = [], isLoading } = useQuery({
     queryKey: ['requirement-specifications', productId, 'software'],
     queryFn: () => requirementSpecificationsService.getByProductAndType(productId, 'software'),
     enabled: !!productId
   });
+
+  // Auto-open a software requirement when navigated from the Traceability Matrix
+  useEffect(() => {
+    const openId = searchParams.get('openItemId');
+    if (!openId || isLoading || !requirements.length) return;
+    const found = requirements.find(r => r.id === openId);
+    if (found) {
+      setEditingRequirement(found);
+      setIsEditDialogOpen(true);
+    }
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('openItemId');
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, requirements, isLoading, setSearchParams]);
 
   // Fetch valid SYSR IDs for missing link detection
   const { data: validSystemReqIds = [] } = useQuery({

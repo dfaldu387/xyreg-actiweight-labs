@@ -150,6 +150,31 @@ export function TestCasesModule({ productId, companyId, disabled = false }: Test
     }),
   });
 
+  // Auto-open a test case when navigated from the Traceability Matrix.
+  // The matrix may pass a verification or validation test case, so we look it up
+  // unfiltered (a separate small query) to avoid mismatches with the active tab/filters.
+  const { data: allTestCasesForOpen } = useQuery({
+    queryKey: ['test-cases-all', companyId, productId],
+    queryFn: () => vvService.getTestCases(companyId, productId, {}),
+    enabled: !!searchParams.get('openItemId'),
+  });
+
+  useEffect(() => {
+    const openId = searchParams.get('openItemId');
+    if (!openId || !allTestCasesForOpen || allTestCasesForOpen.length === 0) return;
+    const found = allTestCasesForOpen.find((tc: any) => tc.id === openId);
+    if (found) {
+      // Switch tab to match the test case so any background list refreshes correctly
+      if (found.test_type === 'validation' || found.test_type === 'verification') {
+        setActiveTab(found.test_type);
+      }
+      setDetailTestCase(found);
+    }
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('openItemId');
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, allTestCasesForOpen, setSearchParams]);
+
   const [isGeneratingRC, setIsGeneratingRC] = useState(false);
 
   const handleCreateTestCase = () => {
@@ -265,12 +290,6 @@ export function TestCasesModule({ productId, companyId, disabled = false }: Test
         </div>
 
         <div className="flex gap-2">
-          {testType === 'verification' && (
-            <Button variant="outline" onClick={handleGenerateRCTestCases} disabled={disabled || isGeneratingRC}>
-              <Zap className="h-4 w-4 mr-2" />
-              {isGeneratingRC ? 'Generating...' : 'AI Suggestions'}
-            </Button>
-          )}
           {testType === 'validation' && usabilityHazards.length > 0 && (
             <Button variant="outline" onClick={() => setShowAITestGen(true)} disabled={disabled}>
               <Sparkles className="h-4 w-4 mr-2" />

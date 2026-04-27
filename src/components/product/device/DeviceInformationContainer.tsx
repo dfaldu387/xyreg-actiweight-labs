@@ -813,9 +813,15 @@ export function DeviceInformationContainer({ productId, companyId, initialTab }:
         }
 
         // Invalidate productDetails cache to keep sidebar/gap-analysis in sync
-        if ('markets' in updates || 'primaryRegulatoryType' in updates || 'coreDeviceNature' in updates || 'isActiveDevice' in updates || 'productName' in updates || 'description' in updates || 'intendedUse' in updates || 'intendedPurposeData' in updates || 'basicUdiDi' in updates) {
+        if ('markets' in updates || 'primaryRegulatoryType' in updates || 'coreDeviceNature' in updates || 'isActiveDevice' in updates || 'productName' in updates || 'description' in updates || 'intendedUse' in updates || 'intendedPurposeData' in updates || 'basicUdiDi' in updates || 'keyTechnologyCharacteristics' in updates) {
           queryClient.invalidateQueries({ queryKey: ['productDetails', productId] });
           queryClient.invalidateQueries({ queryKey: ['product', productId] });
+        }
+
+        // Annex I rules read from key_technology_characteristics — invalidate
+        // the device-context cache so GSPR statuses recompute immediately.
+        if ('keyTechnologyCharacteristics' in updates || 'primaryRegulatoryType' in updates) {
+          queryClient.invalidateQueries({ queryKey: ['product-device-context', productId] });
         }
 
         // Invalidate family scope sync cache so other family members see fresh values
@@ -864,6 +870,7 @@ export function DeviceInformationContainer({ productId, companyId, initialTab }:
       queryClient.invalidateQueries({ queryKey: ['funnel-product', productId] });
       queryClient.invalidateQueries({ queryKey: ['product', productId] });
       queryClient.invalidateQueries({ queryKey: ['productDetails', productId] });
+      queryClient.invalidateQueries({ queryKey: ['product-device-context', productId] });
     } catch {
       toast.error('Failed to save changes');
     }

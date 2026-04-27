@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { AIContextSourcesPanel } from '@/components/product/ai-assistant/AIContextSourcesPanel';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Info, Check, AlertTriangle } from 'lucide-react';
+import { Loader2, Sparkles, Check, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { HazardSuggestion } from '@/services/hazardAIService';
@@ -13,6 +11,7 @@ import { hazardsService } from '@/services/hazardsService';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { EditableSuggestionCard } from '@/components/product/ai-assistant/EditableSuggestionCard';
 
 interface UsabilityHazardAISuggestionsDialogProps {
   open: boolean;
@@ -99,7 +98,8 @@ export function UsabilityHazardAISuggestionsDialog({
         }
         setSuggestions(unique);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message === 'NO_CREDITS') return;
       setError(err instanceof Error ? err.message : 'Failed to generate suggestions');
     } finally {
       setIsGenerating(false);
@@ -147,10 +147,21 @@ export function UsabilityHazardAISuggestionsDialog({
     }
   };
 
-  const getConfidenceColor = (c: number) => {
-    if (c >= 0.9) return 'text-green-600';
-    if (c >= 0.8) return 'text-yellow-600';
-    return 'text-red-600';
+  const handleEditSave = (index: number, values: Record<string, string>) => {
+    setSuggestions(prev =>
+      prev.map((s, i) =>
+        i === index
+          ? ({
+              ...s,
+              description: values.description ?? s.description,
+              hazardous_situation: values.hazardous_situation ?? s.hazardous_situation,
+              potential_harm: values.potential_harm ?? s.potential_harm,
+              foreseeable_sequence_events: values.foreseeable_sequence_events ?? s.foreseeable_sequence_events,
+              user_edited: true,
+            } as any)
+          : s
+      )
+    );
   };
 
   return (
@@ -245,69 +256,69 @@ export function UsabilityHazardAISuggestionsDialog({
               </div>
 
               <div className="grid gap-3">
-                {suggestions.map((s, index) => (
-                  <Card
-                    key={index}
-                    className={`cursor-pointer transition-all hover:shadow-md ${selected.has(index) ? 'ring-2 ring-primary' : ''}`}
-                    onClick={() => handleToggle(index)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3">
-                        <Checkbox checked={selected.has(index)} className="mt-1" />
-                        <div className="flex-1 space-y-2">
+                {suggestions.map((s, index) => {
+                  const categoryLabelMap: Record<string, string> = {
+                    materials_patient_contact: 'Materials (C.1)',
+                    combination_other_products: 'Combination (C.2)',
+                    human_factors: 'Human Factors (C.3)',
+                    training_requirements: 'Training (C.4)',
+                    cleaning_maintenance: 'Cleaning (C.5)',
+                    negative_air_pressure: 'Air Pressure (C.6)',
+                    electrical_energy: 'Electrical (C.7)',
+                    sterility_requirements: 'Sterility (C.8)',
+                    critical_data_storage: 'Data Storage (C.9)',
+                    software_use: 'Software (C.10)',
+                    disposal: 'Disposal (C.11)',
+                    manufacturing_residues: 'Residues (C.12)',
+                    transport_storage: 'Transport (C.13)',
+                    shelf_life: 'Shelf Life (C.14)',
+                    product_realization: 'Realization (C.15)',
+                    customer_requirements: 'Customer (C.16)',
+                    purchasing: 'Purchasing (C.17)',
+                    service_provision: 'Service (C.18)',
+                    monitoring_devices: 'Monitoring (C.19)',
+                  };
+                  return (
+                    <EditableSuggestionCard
+                      key={index}
+                      selected={selected.has(index)}
+                      onToggle={() => handleToggle(index)}
+                      confidence={s.confidence}
+                      edited={(s as any).user_edited === true}
+                      rationale={s.rationale}
+                      readOnly={
+                        <div className="space-y-2">
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-sm font-medium">{s.description}</p>
-                            <div className="flex items-center gap-2 shrink-0">
-                              {focusCategory !== 'all' && (
-                                <Badge variant="outline" className="text-xs">
-                                  {({
-                                    materials_patient_contact: 'Materials (C.1)',
-                                    combination_other_products: 'Combination (C.2)',
-                                    human_factors: 'Human Factors (C.3)',
-                                    training_requirements: 'Training (C.4)',
-                                    cleaning_maintenance: 'Cleaning (C.5)',
-                                    negative_air_pressure: 'Air Pressure (C.6)',
-                                    electrical_energy: 'Electrical (C.7)',
-                                    sterility_requirements: 'Sterility (C.8)',
-                                    critical_data_storage: 'Data Storage (C.9)',
-                                    software_use: 'Software (C.10)',
-                                    disposal: 'Disposal (C.11)',
-                                    manufacturing_residues: 'Residues (C.12)',
-                                    transport_storage: 'Transport (C.13)',
-                                    shelf_life: 'Shelf Life (C.14)',
-                                    product_realization: 'Realization (C.15)',
-                                    customer_requirements: 'Customer (C.16)',
-                                    purchasing: 'Purchasing (C.17)',
-                                    service_provision: 'Service (C.18)',
-                                    monitoring_devices: 'Monitoring (C.19)',
-                                  } as Record<string, string>)[focusCategory] || focusCategory}
-                                </Badge>
-                              )}
-                              <span className={`text-xs font-medium ${getConfidenceColor(s.confidence)}`}>
-                                {Math.round(s.confidence * 100)}%
-                              </span>
-                            </div>
+                            {focusCategory !== 'all' && (
+                              <Badge variant="outline" className="text-xs">
+                                {categoryLabelMap[focusCategory] || focusCategory}
+                              </Badge>
+                            )}
                           </div>
                           <div className="grid gap-1 text-xs">
                             {s.hazardous_situation && (
-                              <div><span className="font-medium text-orange-600">Root Cause: </span><span className="text-muted-foreground">{s.hazardous_situation}</span></div>
+                              <div><span className="font-medium text-amber-600 dark:text-amber-400">Root Cause: </span><span className="text-muted-foreground">{s.hazardous_situation}</span></div>
                             )}
                             {s.potential_harm && (
-                              <div><span className="font-medium text-red-600">Harm: </span><span className="text-muted-foreground">{s.potential_harm}</span></div>
+                              <div><span className="font-medium text-destructive">Harm: </span><span className="text-muted-foreground">{s.potential_harm}</span></div>
                             )}
                             {s.foreseeable_sequence_events && (
-                              <div><span className="font-medium text-blue-600">Sequence: </span><span className="text-muted-foreground">{s.foreseeable_sequence_events}</span></div>
+                              <div><span className="font-medium text-primary">Sequence: </span><span className="text-muted-foreground">{s.foreseeable_sequence_events}</span></div>
                             )}
                           </div>
-                          <div className="flex items-start gap-1">
-                            <Info className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <p className="text-xs text-muted-foreground">{s.rationale}</p>
-                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      }
+                      fields={[
+                        { key: 'description', label: 'Description', value: s.description || '', type: 'textarea' },
+                        { key: 'hazardous_situation', label: 'Root Cause / Hazardous Situation', value: s.hazardous_situation || '', type: 'textarea' },
+                        { key: 'potential_harm', label: 'Potential Harm', value: s.potential_harm || '', type: 'textarea' },
+                        { key: 'foreseeable_sequence_events', label: 'Sequence of Events', value: s.foreseeable_sequence_events || '', type: 'textarea' },
+                      ]}
+                      onSave={(values) => handleEditSave(index, values)}
+                    />
+                  );
+                })}
               </div>
             </>
           )}

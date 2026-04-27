@@ -30,6 +30,7 @@ import type { Hazard } from "@/components/product/design-risk-controls/risk-mana
 import { useDebounce } from "@/hooks/useDebounce";
 import { supabase } from "@/integrations/supabase/client";
 import { useDeviceComponents } from "@/hooks/useDeviceComponents";
+import { AIRequirementHazardSuggestions } from "@/components/product/design-risk-controls/requirement-specifications/AIRequirementHazardSuggestions";
 
 const HWR_CATEGORIES = [
   { id: 'Materials', label: 'Materials', description: 'Material specifications and requirements' },
@@ -284,7 +285,42 @@ export function AddHardwareRequirementDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>{lang('hardwareRequirements.form.linkedRisks')}</Label>
+            <div className="flex items-center justify-between">
+              <Label>{lang('hardwareRequirements.form.linkedRisks')}</Label>
+              <AIRequirementHazardSuggestions
+                requirementDescription={description}
+                requirementType="hardware"
+                productId={productId}
+                companyId={companyId}
+                existingHazards={hazards.map(h => ({ id: h.id, hazard_id: h.hazard_id, description: h.description }))}
+                selectedIds={selectedHazards}
+                onSelect={(hazardId) =>
+                  setSelectedHazards(prev => prev.includes(hazardId) ? prev : [...prev, hazardId])
+                }
+                onHazardCreated={(nh) => {
+                  setHazards(prev => [...prev, {
+                    id: nh.id,
+                    hazard_id: nh.hazard_id,
+                    product_id: productId,
+                    company_id: companyId,
+                    description: nh.description,
+                    mitigation_measure: '',
+                    mitigation_type: 'Information for Safety',
+                    residual_risk: 'Medium',
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    created_by: null,
+                  } as Hazard]);
+                  setSelectedHazards(prev => prev.includes(nh.hazard_id) ? prev : [...prev, nh.hazard_id]);
+                  queryClient.invalidateQueries({ queryKey: ["hazards", productId] });
+                }}
+              />
+            </div>
+            {!loadingHazards && selectedHazards.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No risk linked yet. Click <span className="font-medium">Suggest with AI</span> to find a matching hazard or draft a new one from this requirement.
+              </p>
+            )}
             <MultiSelect
               options={hazardOptions}
               selected={selectedHazards}

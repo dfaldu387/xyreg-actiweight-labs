@@ -150,7 +150,7 @@ export function SoftwareAISuggestionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
@@ -163,7 +163,7 @@ export function SoftwareAISuggestionsDialog({
 
         <div className="flex-1 overflow-hidden flex flex-col">
           {suggestions.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+            <div className="flex-1 overflow-y-auto flex flex-col items-center gap-4 py-4">
               <AIContextSourcesPanel
                 productId={productId}
                 additionalSources={['System Requirements']}

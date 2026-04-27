@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 export interface UserNeedSuggestion {
   description: string;
@@ -60,6 +61,11 @@ export class UserNeedsAIService {
       if (error) {
         console.error('[UserNeedsAIService] Error calling edge function:', error);
         throw error;
+      }
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return { success: false, error: 'NO_CREDITS', errorType: 'no_credits' };
       }
 
       if (!data?.suggestions) {

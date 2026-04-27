@@ -9,6 +9,7 @@ import {
   seedAllTierBSopsForCompany,
 } from '@/services/sopAutoSeedService';
 import { TIER_A_AUTO_SEED, TIER_B_CONDITIONAL } from '@/constants/sopAutoSeedTiers';
+import { formatSopDisplayId } from '@/constants/sopAutoSeedTiers';
 
 interface SopAutoSeedStatusProps {
   companyId: string;
@@ -180,7 +181,7 @@ export function SopAutoSeedStatus({ companyId, companyName, onSeeded }: SopAutoS
                 className="flex items-start gap-2 rounded border border-border/60 bg-background/50 px-2 py-1.5"
               >
                 <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
-                  {entry.sop}
+                  {formatSopDisplayId(entry.sop)}
                 </Badge>
                 <span className="text-muted-foreground">{entry.reason}</span>
               </li>

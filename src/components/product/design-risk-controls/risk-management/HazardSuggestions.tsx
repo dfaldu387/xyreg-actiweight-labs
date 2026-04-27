@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Info, Check, X } from 'lucide-react';
+import { Loader2, Sparkles, Check, X } from 'lucide-react';
 import { HazardSuggestion } from '@/services/hazardAIService';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { EditableSuggestionCard } from '@/components/product/ai-assistant/EditableSuggestionCard';
 
 interface HazardSuggestionsProps {
   suggestions: HazardSuggestion[];
@@ -67,6 +66,26 @@ export function HazardSuggestions({
   onClose
 }: HazardSuggestionsProps) {
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
+  const [editedSuggestions, setEditedSuggestions] = useState<Record<number, Partial<HazardSuggestion> & { user_edited?: boolean }>>({});
+
+  const getEffective = (index: number): HazardSuggestion & { user_edited?: boolean } => ({
+    ...(suggestions[index] as any),
+    ...(editedSuggestions[index] || {}),
+  });
+
+  const handleEditSave = (index: number, values: Record<string, string>) => {
+    setEditedSuggestions(prev => ({
+      ...prev,
+      [index]: {
+        ...(prev[index] || {}),
+        description: values.description ?? suggestions[index].description,
+        hazardous_situation: values.hazardous_situation ?? suggestions[index].hazardous_situation,
+        potential_harm: values.potential_harm ?? suggestions[index].potential_harm,
+        foreseeable_sequence_events: values.foreseeable_sequence_events ?? suggestions[index].foreseeable_sequence_events,
+        user_edited: true,
+      },
+    }));
+  };
 
   const handleSuggestionToggle = (index: number) => {
     const newSelected = new Set(selectedSuggestions);
@@ -87,14 +106,8 @@ export function HazardSuggestions({
   };
 
   const handleAddSelected = () => {
-    const selected = Array.from(selectedSuggestions).map(index => suggestions[index]);
+    const selected = Array.from(selectedSuggestions).map(index => getEffective(index));
     onSuggestionsSelected(selected);
-  };
-
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.9) return 'text-green-600 dark:text-green-400';
-    if (confidence >= 0.8) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
   };
 
   if (isLoading) {
@@ -171,59 +184,37 @@ export function HazardSuggestions({
             </div>
 
             <div className="grid gap-3">
-              {suggestions.map((suggestion, index) => (
-                <Card
-                  key={index}
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    selectedSuggestions.has(index) ? 'ring-2 ring-primary' : ''
-                  }`}
-                  onClick={() => handleSuggestionToggle(index)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={selectedSuggestions.has(index)}
-                        onChange={() => handleSuggestionToggle(index)}
-                        className="mt-1"
-                      />
-                      <div className="flex-1 space-y-2">
+              {suggestions.map((raw, index) => {
+                const suggestion = getEffective(index);
+                return (
+                  <EditableSuggestionCard
+                    key={index}
+                    selected={selectedSuggestions.has(index)}
+                    onToggle={() => handleSuggestionToggle(index)}
+                    confidence={suggestion.confidence}
+                    edited={suggestion.user_edited === true}
+                    rationale={suggestion.rationale}
+                    readOnly={
+                      <div className="space-y-2">
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium leading-relaxed">
-                            {suggestion.description}
-                          </p>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <div className={`text-xs font-medium ${getConfidenceColor(suggestion.confidence)}`}>
-                                    {Math.round(suggestion.confidence * 100)}%
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Confidence Score</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <Badge
-                              variant="secondary"
-                              className={categoryColors[suggestion.category] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'}
-                            >
-                              {categoryLabels[suggestion.category] || suggestion.category}
-                            </Badge>
-                          </div>
+                          <p className="text-sm font-medium leading-relaxed">{suggestion.description}</p>
+                          <Badge
+                            variant="secondary"
+                            className={categoryColors[suggestion.category] || 'bg-muted text-muted-foreground'}
+                          >
+                            {categoryLabels[suggestion.category] || suggestion.category}
+                          </Badge>
                         </div>
-                        
-                        {/* AI-Generated Content Preview */}
                         <div className="space-y-2 text-xs">
                           {suggestion.hazardous_situation && (
                             <div>
-                              <span className="font-medium text-red-600 dark:text-red-400">Hazardous Situation:</span>
+                              <span className="font-medium text-destructive">Hazardous Situation:</span>
                               <p className="text-muted-foreground leading-relaxed">{suggestion.hazardous_situation}</p>
                             </div>
                           )}
                           {suggestion.potential_harm && (
                             <div>
-                              <span className="font-medium text-red-600 dark:text-red-400">Potential Harm:</span>
+                              <span className="font-medium text-destructive">Potential Harm:</span>
                               <p className="text-muted-foreground leading-relaxed">{suggestion.potential_harm}</p>
                             </div>
                           )}
@@ -234,18 +225,18 @@ export function HazardSuggestions({
                             </div>
                           )}
                         </div>
-                        
-                        <div className="flex items-start gap-1">
-                          <Info className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            {suggestion.rationale}
-                          </p>
-                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    }
+                    fields={[
+                      { key: 'description', label: 'Description', value: suggestion.description || '', type: 'textarea' },
+                      { key: 'hazardous_situation', label: 'Hazardous Situation', value: suggestion.hazardous_situation || '', type: 'textarea' },
+                      { key: 'potential_harm', label: 'Potential Harm', value: suggestion.potential_harm || '', type: 'textarea' },
+                      { key: 'foreseeable_sequence_events', label: 'Sequence of Events', value: suggestion.foreseeable_sequence_events || '', type: 'textarea' },
+                    ]}
+                    onSave={(values) => handleEditSave(index, values)}
+                  />
+                );
+              })}
             </div>
           </>
         )}

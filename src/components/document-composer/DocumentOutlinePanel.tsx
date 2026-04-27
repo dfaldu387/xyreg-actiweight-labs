@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { FileText, ChevronLeft, ChevronRight, AlignJustify, GripVertical } from 'lucide-react';
+import { FileText, GripVertical } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
@@ -13,25 +13,15 @@ interface DocumentOutlinePanelProps {
   editorContainerRef: React.RefObject<HTMLDivElement | null>;
   refreshTrigger?: number;
   className?: string;
-  onCollapsedChange?: (collapsed: boolean) => void;
-  externalCollapsed?: boolean;
 }
 
 export function DocumentOutlinePanel({
   editorContainerRef,
   refreshTrigger = 0,
   className,
-  onCollapsedChange,
-  externalCollapsed,
 }: DocumentOutlinePanelProps) {
-  const STORAGE_KEY = 'xyreg.outline.collapsed';
   const [headings, setHeadings] = useState<OutlineHeading[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) === '1';
-    } catch { return false; }
-  });
   const [width, setWidth] = useState(300);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isResizingRef = useRef(false);
@@ -160,24 +150,8 @@ export function DocumentOutlinePanel({
     setActiveId(id);
   };
 
-  // Collapsed state
-  // Notify parent of collapse state
-  useEffect(() => {
-    onCollapsedChange?.(collapsed);
-    try { localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
-  }, [collapsed, onCollapsedChange]);
-
-  // Sync with external collapsed control (e.g. floating button in LiveEditor)
-  useEffect(() => {
-    if (externalCollapsed !== undefined && externalCollapsed !== collapsed) {
-      setCollapsed(externalCollapsed);
-    }
-  }, [externalCollapsed]);
-
+  // Safe fallback — parent is responsible for not opening the panel when empty.
   if (headings.length === 0) return null;
-
-  // Collapsed: render nothing — parent shows a floating hamburger icon instead.
-  if (collapsed) return null;
 
   const minLevel = Math.min(...headings.map((h) => h.level));
 
@@ -192,13 +166,6 @@ export function DocumentOutlinePanel({
           <FileText className="w-4 h-4" />
           <span>Document Outline</span>
         </div>
-        <button
-          onClick={() => setCollapsed(true)}
-          className="p-1 rounded hover:bg-muted transition-colors"
-          title="Hide tabs & outlines"
-        >
-          <ChevronLeft className="w-3.5 h-3.5 text-muted-foreground" />
-        </button>
       </div>
 
       {/* Outline items */}

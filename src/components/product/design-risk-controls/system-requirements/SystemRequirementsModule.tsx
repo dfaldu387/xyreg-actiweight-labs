@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Sparkles, Download, Plus, AlertTriangle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +28,7 @@ interface SystemRequirementsModuleProps {
 export function SystemRequirementsModule({ productId, companyId, disabled = false }: SystemRequirementsModuleProps) {
   const { lang } = useTranslation();
   const [showAISuggestions, setShowAISuggestions] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Fetch product name for AI suggestions
   const { data: productName } = useQuery({
@@ -48,6 +50,20 @@ export function SystemRequirementsModule({ productId, companyId, disabled = fals
     queryFn: () => requirementSpecificationsService.getByProductAndType(productId, 'system'),
     enabled: !!productId
   });
+
+  // Auto-open a system requirement when navigated from the Traceability Matrix
+  useEffect(() => {
+    const openId = searchParams.get('openItemId');
+    if (!openId || isLoading || !requirements.length) return;
+    const found = requirements.find(r => r.id === openId);
+    if (found) {
+      setEditingRequirement(found);
+      setIsEditDialogOpen(true);
+    }
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('openItemId');
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, requirements, isLoading, setSearchParams]);
 
   // Fetch valid user need IDs for missing link detection
   const { data: validUserNeedIds = [] } = useQuery({

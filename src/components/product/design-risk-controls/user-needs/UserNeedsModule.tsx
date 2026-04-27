@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Sparkles, Plus, Download, AlertTriangle, Upload, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +32,7 @@ interface UserNeedsModuleProps {
 export function UserNeedsModule({ productId, companyId, disabled = false }: UserNeedsModuleProps) {
   const { lang } = useTranslation();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [editingUserNeed, setEditingUserNeed] = useState<UserNeed | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -64,6 +66,20 @@ export function UserNeedsModule({ productId, companyId, disabled = false }: User
     queryKey: ['user-needs', productId],
     queryFn: () => UserNeedsService.getUserNeeds(productId),
   });
+
+  // Auto-open a user need when navigated from the Traceability Matrix
+  useEffect(() => {
+    const openId = searchParams.get('openItemId');
+    if (!openId || isLoading || !userNeeds.length) return;
+    const found = userNeeds.find(un => un.id === openId);
+    if (found) {
+      setEditingUserNeed(found);
+      setIsEditDialogOpen(true);
+    }
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('openItemId');
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, userNeeds, isLoading, setSearchParams]);
 
   // Query SYSRs to detect traceability gaps
   const { data: allSysrs = [] } = useQuery({

@@ -44,6 +44,7 @@ import {
   IndividualDocument,
 } from "@/services/ganttPhaseDocumentService";
 import { Badge } from "../ui/badge";
+import { DocumentDraftDrawer } from "@/components/product/documents/DocumentDraftDrawer";
 
 // Add CSS for smooth Gantt chart animations
 const ganttAnimationStyles = `
@@ -85,6 +86,16 @@ const ganttAnimationStyles = `
     stroke: #2196F3 !important;
   }
 `;
+
+// Parse date string as UTC midnight (Gantt displays in UTC, so avoid timezone offset)
+const parseLocalDate = (val: string | Date): Date => {
+  if (val instanceof Date) return val;
+  // "2026-04-03" (10 chars, no T) → treat as UTC midnight
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    return new Date(val + 'T00:00:00Z');
+  }
+  return new Date(val);
+};
 
 const dayStyle = {
   backgroundColor: "#e8e8e8",
@@ -223,6 +234,7 @@ interface EnterpriseDocument {
   due_date: string | null;
   deadline: string | null;
   document_type: string | null;
+  source_table?: 'phase_assigned_document_template' | 'document_studio_templates';
 }
 
 export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProps) {
@@ -256,6 +268,112 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
   const draggedActivityDatesRef = useRef<Record<string, { start_date: string; end_date: string }>>({});
   const [enterpriseLinks, setEnterpriseLinks] = useState<any[]>([]);
   const enterpriseLinksRef = useRef<any[]>([]);
+
+  // Enterprise document draft drawer state
+  const [draftDrawerDocument, setDraftDrawerDocument] = useState<EnterpriseDocument | null>(null);
+  // Ref to always access latest enterpriseDocuments in Gantt event handlers (avoids stale closure)
+  const enterpriseDocumentsRef = useRef<EnterpriseDocument[]>([]);
+
+  // Refresh enterprise documents from DB (called after edit dialog save)
+  const refreshEnterpriseDocuments = useCallback(async (editedDocId?: string) => {
+    if (!activeCompanyRole?.companyId) return;
+    
+    const { data: enterpriseDocsData } = await supabase
+      .from('phase_assigned_document_template')
+      .select('id, name, status, phase_id, start_date, date, due_date, deadline, document_type')
+      .eq('company_id', activeCompanyRole.companyId)
+      .eq('document_scope', 'company_document')
+      .order('created_at', { ascending: false });
+
+    const { data: studioDocsData } = await supabase
+      .from('document_studio_templates')
+      .select('id, name, created_at, updated_at, metadata, type, template_id')
+      .eq('company_id', activeCompanyRole.companyId)
+      .is('product_id', null)
+      .order('created_at', { ascending: false });
+
+    const phaseIds = [...new Set((enterpriseDocsData || []).map((d: any) => d.phase_id).filter(Boolean))];
+    let phaseNameMap = new Map<string, string>();
+    if (phaseIds.length > 0) {
+      const { data: cpData } = await supabase
+        .from('company_phases')
+        .select('id, name')
+        .in('id', phaseIds);
+      if (cpData) cpData.forEach((p: any) => phaseNameMap.set(p.id, p.name));
+
+      const missingIds = phaseIds.filter(id => !phaseNameMap.has(id));
+      if (missingIds.length > 0) {
+        const { data: pData } = await supabase
+          .from('phases')
+          .select('id, name')
+          .in('id', missingIds);
+        if (pData) pData.forEach((p: any) => phaseNameMap.set(p.id, p.name));
+      }
+    }
+
+    const ciDocIds = new Set((enterpriseDocsData || []).map((d: any) => d.id));
+    const studioDocIds = new Set((studioDocsData || []).map((d: any) => d.id));
+    const extraStudioDocs = (studioDocsData || [])
+      .filter((doc: any) => !ciDocIds.has(doc.template_id) && !studioDocIds.has(doc.template_id))
+      .map((doc: any) => {
+        const meta = (doc.metadata as any) || {};
+        return {
+          id: doc.id,
+          name: doc.name || 'Untitled Document',
+          status: meta.status || 'Draft',
+          phase_id: meta.phase_id || null,
+          phase_name: null as string | null,
+          start_date: meta.start_date || null,
+          date: meta.date || doc.created_at || null,
+          due_date: meta.due_date || null,
+          deadline: null as string | null,
+          document_type: doc.type || null,
+        };
+      });
+
+    const allEnterpriseDocs: EnterpriseDocument[] = [
+      ...((enterpriseDocsData || []).map((doc: any) => ({
+        id: doc.id,
+        name: doc.name || 'Untitled Document',
+        status: doc.status || 'Not Started',
+        phase_id: doc.phase_id || null,
+        phase_name: doc.phase_id ? (phaseNameMap.get(doc.phase_id) || null) : null,
+        start_date: doc.start_date || null,
+        date: doc.date || null,
+        due_date: doc.due_date || null,
+        deadline: doc.deadline || null,
+        document_type: doc.document_type || null,
+        source_table: 'phase_assigned_document_template' as const,
+      }))),
+      ...extraStudioDocs.map(doc => ({ ...doc, source_table: 'document_studio_templates' as const })),
+    ];
+
+    setEnterpriseDocuments(allEnterpriseDocs);
+    enterpriseDocumentsRef.current = allEnterpriseDocs;
+
+    // Update only the edited doc via Gantt API (SVAR Gantt doesn't react to React state)
+    const api = ganttApiRef.current;
+    if (api && editedDocId) {
+      const editedDoc = allEnterpriseDocs.find(d => d.id === editedDocId);
+      if (editedDoc) {
+        const today = new Date();
+        const docStart = editedDoc.start_date ? parseLocalDate(editedDoc.start_date)
+          : editedDoc.date ? parseLocalDate(editedDoc.date) : today;
+        const docEnd = editedDoc.due_date ? parseLocalDate(editedDoc.due_date)
+          : editedDoc.deadline ? parseLocalDate(editedDoc.deadline)
+          : new Date(docStart.getTime() + 30 * 86400000);
+
+        const taskId = `ent-doc-${editedDocId}`;
+        try {
+          if (api.getTask(taskId)) {
+            api.exec('update-task', { id: taskId, task: { start: docStart, end: docEnd } });
+          }
+        } catch (err) {
+          console.warn('[Enterprise Gantt] Failed to update Gantt bar for:', editedDoc.name, err);
+        }
+      }
+    }
+  }, [activeCompanyRole?.companyId]);
 
   // Translated zoom level names
   const translatedZoomLevelNames = useMemo(() => ({
@@ -425,11 +543,13 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
             due_date: doc.due_date || null,
             deadline: doc.deadline || null,
             document_type: doc.document_type || null,
+            source_table: 'phase_assigned_document_template' as const,
           }))),
-          ...extraStudioDocs,
+          ...extraStudioDocs.map(doc => ({ ...doc, source_table: 'document_studio_templates' as const })),
         ];
 
         setEnterpriseDocuments(allEnterpriseDocs);
+        enterpriseDocumentsRef.current = allEnterpriseDocs;
 
         // Fetch enterprise-level audits
         const { data: auditsData } = await supabase
@@ -629,12 +749,14 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
           navigate(`/app/product/${productId}/milestones?tab=gantt`);
         }
 
-        // Document click → navigate to company documents with search query
+        // Document click → open draft drawer (use ref to get latest data)
         if (taskId.startsWith('ent-doc-')) {
-          const task = api.getTask(taskId);
-          const docName = task?.text || '';
-          if (docName) {
-            navigate(`/app/company/${encodeURIComponent(companyName)}/documents?q=${encodeURIComponent(docName)}`);
+          const docId = taskId.replace('ent-doc-', '');
+          const doc = enterpriseDocumentsRef.current.find(d => d.id === docId);
+          if (doc) {
+            setDraftDrawerDocument(doc);
+          } else {
+            console.warn('[Enterprise Gantt] Document not found in state for id:', docId);
           }
         }
 
@@ -725,9 +847,7 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
             id: targetId,
             task: { ...targetTask, start: newTargetStart, end: newTargetEnd, duration: updatedDuration },
           });
-
-          console.log('[Enterprise Gantt] Recalculated:', targetTask.text, '| new start:', newTargetStart.toISOString(), '| new end:', newTargetEnd.toISOString());
-
+    
           // Update dragged dates ref + recalculate parent summary
           const dbStart = newTargetStart.toISOString().split('T')[0];
           const dbEnd = newTargetEnd.toISOString().split('T')[0];
@@ -887,7 +1007,7 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
       taskId.startsWith('ent-doc-') || taskId.startsWith('ent-audit-') || taskId.startsWith('ent-activity-');
 
     const isSummaryParent = (taskId: string) =>
-      taskId === 'enterprise-docs' || taskId === 'enterprise-audits' || taskId === 'enterprise-activities';
+      taskId === 'company' || taskId === 'enterprise-docs' || taskId === 'enterprise-audits' || taskId === 'enterprise-activities';
 
     // Block drag — only child items (doc/audit/activity bars), NOT summary parents or devices
     const unsubscribeDragTask = api.intercept("drag-task", (ev: any) => {
@@ -946,12 +1066,45 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
       }
     };
 
+    // Recalc company bar when any section summary changes (same pattern as recalcParentSummary for docs)
+    const recalcCompanyBar = () => {
+      try {
+        const sectionIds = ['enterprise-docs', 'enterprise-audits', 'enterprise-activities', 'devices-container'];
+        let minStart: Date | null = null;
+        let maxEnd: Date | null = null;
+        for (const sid of sectionIds) {
+          const section = api.getTask(sid);
+          if (!section) continue;
+          const s = section.start instanceof Date ? section.start : new Date(section.start);
+          const e = section.end instanceof Date ? section.end : new Date(section.end);
+          if (!minStart || s < minStart) minStart = s;
+          if (!maxEnd || e > maxEnd) maxEnd = e;
+        }
+        if (!minStart || !maxEnd) return;
+        const companyTask = api.getTask('company');
+        if (!companyTask) return;
+        const cs = companyTask.start instanceof Date ? companyTask.start : new Date(companyTask.start);
+        const ce = companyTask.end instanceof Date ? companyTask.end : new Date(companyTask.end);
+        if (minStart.getTime() !== cs.getTime() || maxEnd.getTime() !== ce.getTime()) {
+          api.exec('update-task', { id: 'company', task: { start: minStart, end: maxEnd } });
+        }
+      } catch (err) {
+        console.warn('[Enterprise Gantt] recalcCompanyBar error:', err);
+      }
+    };
+
     // Save dates after drag/resize (on runs AFTER update — ev.task has NEW dates)
     const unsubscribeOnUpdate = api.on("update-task", (ev: any) => {
       const taskId = ev?.id?.toString() || '';
       const newStart = ev.task?.start;
       const newEnd = ev.task?.end;
       if (!newStart || !newEnd) return;
+
+      // When a section summary bar changes, update the company bar
+      if (['enterprise-docs', 'enterprise-audits', 'enterprise-activities', 'devices-container'].includes(taskId)) {
+        recalcCompanyBar();
+        return;
+      }
 
       const startDate = newStart instanceof Date ? new Date(newStart.getTime()) : new Date(newStart);
       const endDate = newEnd instanceof Date ? new Date(newEnd.getTime()) : new Date(newEnd);
@@ -1146,34 +1299,26 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
       const startSrc = dragged?.start_date || doc.start_date;
       const dueSrc = dragged?.due_date || doc.due_date;
 
-      const docStart = startSrc ? new Date(startSrc)
-        : doc.date ? new Date(doc.date)
+      const docStart = startSrc ? parseLocalDate(startSrc)
+        : doc.date ? parseLocalDate(doc.date)
         : fallbackStart;
-      const docEnd = dueSrc ? new Date(dueSrc)
-        : doc.deadline ? new Date(doc.deadline)
-        : doc.date ? new Date(new Date(doc.date).getTime() + 30 * 24 * 60 * 60 * 1000)
+      const docEnd = dueSrc ? parseLocalDate(dueSrc)
+        : doc.deadline ? parseLocalDate(doc.deadline)
+        : doc.date ? new Date(parseLocalDate(doc.date).getTime() + 30 * 24 * 60 * 60 * 1000)
         : new Date(docStart.getTime() + 30 * 24 * 60 * 60 * 1000);
       return { docStart, docEnd };
     };
 
-    // Company root summary
-    tasks.push({
-      id: "company",
-      text: companyName,
-      start: companyStart,
-      end: companyEnd,
-      type: "summary",
-      open: true,
-    });
-
     // === 1. DOCUMENTS ===
+    let entStart = companyStart;
+    let entEnd = companyEnd;
     if (enterpriseDocuments.length > 0) {
       const allEntDates = enterpriseDocuments.map(d => {
         const { docStart, docEnd } = getEntDocDates(d, companyStart);
         return { start: docStart, end: docEnd };
       });
-      const entStart = new Date(Math.min(...allEntDates.map(d => d.start.getTime())));
-      const entEnd = new Date(Math.max(...allEntDates.map(d => d.end.getTime())));
+      entStart = new Date(Math.min(...allEntDates.map(d => d.start.getTime())));
+      entEnd = new Date(Math.max(...allEntDates.map(d => d.end.getTime())));
 
       tasks.push({
         id: 'enterprise-docs',
@@ -1333,6 +1478,34 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
 
       // No phase/sub-task children at enterprise level — click device to navigate to device Gantt
     });
+
+    // Company root summary — compute from all section ranges
+    const allRangeStarts = [companyStart, entStart];
+    const allRangeEnds = [companyEnd, entEnd];
+    if (enterpriseAudits.length > 0) {
+      const asDates = enterpriseAudits.map(a => a.start_date ? new Date(a.start_date) : companyStart);
+      const aeDates = enterpriseAudits.map(a => a.end_date ? new Date(a.end_date) : a.deadline_date ? new Date(a.deadline_date) : companyEnd);
+      allRangeStarts.push(new Date(Math.min(...asDates.map(d => d.getTime()))));
+      allRangeEnds.push(new Date(Math.max(...aeDates.map(d => d.getTime()))));
+    }
+    if (enterpriseActivities.length > 0) {
+      const asDates = enterpriseActivities.map(a => a.start_date ? new Date(a.start_date) : companyStart);
+      const aeDates = enterpriseActivities.map(a => a.end_date ? new Date(a.end_date) : companyEnd);
+      allRangeStarts.push(new Date(Math.min(...asDates.map(d => d.getTime()))));
+      allRangeEnds.push(new Date(Math.max(...aeDates.map(d => d.getTime()))));
+    }
+    const finalStart = new Date(Math.min(...allRangeStarts.map(d => d.getTime())));
+    const finalEnd = new Date(Math.max(...allRangeEnds.map(d => d.getTime())));
+
+    tasks.unshift({
+      id: "company",
+      text: companyName,
+      start: finalStart,
+      end: finalEnd,
+      type: "summary",
+      open: true,
+    });
+
     return tasks;
     } catch (error) {
       return [];
@@ -1523,7 +1696,6 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
                 <ZoomIn className="h-4 w-4" />
               </Button>
             </div>
-            <Badge className="min-w-fit bg-blue-500 hover:bg-blue-600 text-sm text-white font-semibold ml-2">{lang('milestones.readOnly')}</Badge>
           </div>
         </CardHeader>
         <CardContent>
@@ -1555,6 +1727,32 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
           </div>
         </CardContent>
       </Card>
+
+      <DocumentDraftDrawer
+        open={!!draftDrawerDocument}
+        onOpenChange={(open) => {
+          if (!open) {
+            // Clear cached drag dates so fresh DB values are used
+            if (draftDrawerDocument) {
+              delete draggedDocDatesRef.current[draftDrawerDocument.id];
+              refreshEnterpriseDocuments(draftDrawerDocument.id);
+            }
+            setDraftDrawerDocument(null);
+          }
+        }}
+        documentId={draftDrawerDocument?.id || ''}
+        documentName={draftDrawerDocument?.name || ''}
+        documentType={draftDrawerDocument?.document_type || ''}
+        companyId={activeCompanyRole?.companyId || ''}
+        onDocumentSaved={() => {
+          if (draftDrawerDocument) {
+            delete draggedDocDatesRef.current[draftDrawerDocument.id];
+            refreshEnterpriseDocuments(draftDrawerDocument.id);
+          }
+          setDraftDrawerDocument(null);
+        }}
+        disableSopMentions
+      />
     </div>
   );
 }

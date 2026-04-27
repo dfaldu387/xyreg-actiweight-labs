@@ -84,9 +84,11 @@ export function AIRequirementUserNeedSuggestions({
       }
 
       setSuggestions(data?.suggestions || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('AI suggestion error:', err);
-      toast.error('Failed to generate suggestions');
+      if (err?.message !== 'NO_CREDITS') {
+        toast.error('Failed to generate suggestions');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -151,17 +153,20 @@ export function AIRequirementUserNeedSuggestions({
           <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
+              variant="outline"
+              size="sm"
               onClick={handleGenerate}
               disabled={isLoading || !requirementDescription.trim()}
-              className="h-6 w-6 text-amber-600 hover:text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/30"
+              className="h-8 gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50 hover:text-amber-800 dark:text-amber-300 dark:border-amber-800 dark:hover:bg-amber-900/30"
             >
               {isLoading ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Sparkles className="h-3.5 w-3.5" />
               )}
+              <span className="text-xs font-medium">
+                {isLoading ? 'Suggesting…' : 'Suggest with AI'}
+              </span>
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-[250px]">

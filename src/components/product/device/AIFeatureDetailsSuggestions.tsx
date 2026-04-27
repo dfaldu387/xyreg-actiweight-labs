@@ -38,7 +38,9 @@ export function useFeatureDetailsSuggestions(featureName: string, productName?: 
       return data as DetailsResult;
     } catch (err: any) {
       console.error('AI suggestion error:', err);
-      toast.error(err.message || 'Failed to generate suggestions');
+      if (err?.message !== 'NO_CREDITS') {
+        toast.error(err.message || 'Failed to generate suggestions');
+      }
       return null;
     } finally {
       setIsLoading(false);

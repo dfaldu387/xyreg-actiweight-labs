@@ -15,6 +15,7 @@ import { MultiSelect } from "@/components/settings/document-control/MultiSelect"
 import { hazardsService } from "@/services/hazardsService";
 import { toast as sonnerToast } from "sonner";
 import { useDeviceComponents } from "@/hooks/useDeviceComponents";
+import { AIRequirementHazardSuggestions } from "@/components/product/design-risk-controls/requirement-specifications/AIRequirementHazardSuggestions";
 
 const HWR_CATEGORIES = [
   { id: 'Materials', label: 'Materials' },
@@ -251,7 +252,32 @@ export function EditHardwareRequirementDialog({
             </div>
 
             <div>
-              <Label htmlFor="linked_risks">Linked Risks</Label>
+              <div className="flex items-center justify-between mb-2">
+                <Label htmlFor="linked_risks">Linked Risks</Label>
+                <div className="flex items-center gap-2">
+                  <AIRequirementHazardSuggestions
+                    requirementDescription={formData.description}
+                    requirementType="hardware"
+                    productId={routeProductId || productId}
+                    companyId={requirement.company_id || ''}
+                    existingHazards={hazards.map(h => ({ id: h.id, hazard_id: h.hazard_id, description: h.description }))}
+                    selectedIds={selectedRisks}
+                    onSelect={(hazardId) =>
+                      setSelectedRisks(prev => prev.includes(hazardId) ? prev : [...prev, hazardId])
+                    }
+                    onHazardCreated={(nh) => {
+                      setSelectedRisks(prev => prev.includes(nh.hazard_id) ? prev : [...prev, nh.hazard_id]);
+                      queryClient.invalidateQueries({ queryKey: ['hazards-for-edit', productId] });
+                      queryClient.invalidateQueries({ queryKey: ['hazards', routeProductId || productId] });
+                    }}
+                  />
+                </div>
+              </div>
+              {!loadingHazards && selectedRisks.length === 0 && (
+                <p className="text-xs text-muted-foreground mb-2">
+                  No risk linked yet. Click <span className="font-medium">Suggest with AI</span> to find a matching hazard or draft a new one from this requirement.
+                </p>
+              )}
               <MultiSelect
                 options={hazardOptions}
                 selected={selectedRisks}

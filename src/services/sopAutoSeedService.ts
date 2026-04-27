@@ -256,3 +256,17 @@ export async function countTierASopsPresent(companyId: string): Promise<number> 
   }
   return count;
 }
+
+/**
+ * Seed a single SOP for a company. Used by the per-row "Use Template"
+ * action in the Templates list. Delegates to the same idempotent core
+ * seeder used at company creation, so personalization (e.g. `[Company
+ * Name]` substitution) and CI/Studio creation behave identically.
+ */
+export async function seedSingleSopForCompany(
+  companyId: string,
+  companyName: string,
+  sopKey: string,
+): Promise<SopSeedResult> {
+  return seedSopsForCompany(companyId, companyName, [sopKey]);
+}

@@ -11,20 +11,22 @@ import { useCompanyRole } from "@/context/CompanyRoleContext";
 import { resolveCompanyToUuid } from "@/utils/simplifiedCompanyResolver";
 import { CompanyUsageService } from '@/services/companyUsageService';
 import { useTranslation } from "@/hooks/useTranslation";
-import { useCompanyTime, formatDuration } from "@/hooks/useCompanyTime";
+import { formatDuration } from "@/hooks/useCompanyTime";
+import { getCompanyTime, type CompanyTimeData } from "@/hooks/useCompanyTimesBatch";
 
 interface ClientCardProps {
   client: Client;
   onClientSelect: (client: Client) => void;
   onCompanyDashboardClick?: () => void;
   disabled?: boolean;
+  companyTimesMap?: Map<string, CompanyTimeData>;
 }
 
-export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, disabled = false }: ClientCardProps) {
+export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, disabled = false, companyTimesMap }: ClientCardProps) {
   const navigate = useNavigate();
   const { switchCompanyRole, companyRoles, refreshCompanyRoles } = useCompanyRole();
   const { lang } = useTranslation();
-  const { totalSeconds, weeklySeconds, isLoading: timeLoading } = useCompanyTime(client.id);
+  const { totalSeconds, weeklySeconds } = getCompanyTime(companyTimesMap, client.id);
 
   const getStatusColor = (status: Client["status"]) => {
     switch (status) {
@@ -145,7 +147,7 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
           </div>
 
           {/* Time tracking stats */}
-          {!timeLoading && (totalSeconds > 0 || weeklySeconds > 0) && (
+          {(totalSeconds > 0 || weeklySeconds > 0) && (
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <Clock className="w-3.5 h-3.5" />
               <span>{lang('clients.thisWeek') || 'This week'}: <span className="font-medium text-foreground">{formatDuration(weeklySeconds)}</span></span>

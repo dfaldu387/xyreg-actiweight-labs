@@ -969,10 +969,20 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
     const currentTemplate = generatedTemplate;
     if (!currentTemplate) return;
 
-    const dc = { ...(currentTemplate.documentControl || {}) };
+    const dc: any = { ...(currentTemplate.documentControl || {}) };
 
     if (field === 'documentOwner') {
       dc.documentOwner = value || undefined;
+    } else if (field === 'documentTitle') {
+      dc.documentTitle = value;
+    } else if (field === 'sopNumber') {
+      dc.sopNumber = value;
+    } else if (field === 'version') {
+      dc.version = value;
+    } else if (field === 'effectiveDate') {
+      dc.effectiveDate = value ? new Date(value) : undefined;
+    } else if (field === 'nextReviewDate') {
+      dc.nextReviewDate = value ? new Date(value) : undefined;
     } else if (field.startsWith('preparedBy.')) {
       dc.preparedBy = { ...(dc.preparedBy || {}), name: value || '' };
     } else if (field.startsWith('reviewedBy.')) {
@@ -1219,7 +1229,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
               ciDocumentId={templateId}
               ciCompanyId={activeCompanyRole?.companyId}
               productId={productId || undefined}
-              showCIProperties={isEditingExistingDocument}
+              showCIProperties={false}
               onIsRecordChange={setIsRecord}
               onRecordIdChange={setRecordId}
               onNextReviewDateChange={setNextReviewDate}
@@ -1333,6 +1343,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
                         recordId={recordId || undefined}
                         nextReviewDate={nextReviewDate || undefined}
                         documentNumber={documentNumber || undefined}
+                        onIsRecordChange={setIsRecord}
                         showSectionNumbers={(generatedTemplate || template)?.formatOptions?.showSectionNumbers}
                         onShowSectionNumbersChange={(show) => {
                           const currentTemplate = generatedTemplate || template;

@@ -1,6 +1,6 @@
 import React, { useState, memo, useCallback, useMemo } from 'react';
 import { RichTextField } from '@/components/shared/RichTextField';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -204,6 +204,7 @@ function DeviceOverviewSectionComponent({
 }: DeviceOverviewSectionProps) {
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo');
+  const navigate = useNavigate();
   const isInGenesisFlow = returnTo === 'genesis' || returnTo === 'venture-blueprint' || returnTo === 'investor-share' || returnTo === 'gap-analysis';
 
   // Debug EMDN props
@@ -1019,35 +1020,62 @@ function DeviceOverviewSectionComponent({
                   </div>}
 
                  {/* Anatomical Location - Critical for classification */}
+                  {/* Anatomical Location — single source of truth lives on the
+                      Classification subtab (and is also editable from Technical
+                      Specs). Show a read-only summary here with a jump button
+                      so there's no second editor that can drift. */}
                   <div>
-                    <Label className="text-sm font-medium">Anatomical Location</Label>
-                    <Select value={keyTechnologyCharacteristics?.anatomicalLocation || ''} onValueChange={value => handleCharacteristicStringChange('anatomicalLocation', value)} disabled={isLoading}>
-                      <SelectTrigger className="mt-2">
-                        <SelectValue placeholder="Select anatomical location of device contact" />
-                      </SelectTrigger>
-                       <SelectContent>
-                         <SelectItem value="not_defined">Not defined</SelectItem>
-                         <SelectItem value="none">No direct body contact</SelectItem>
-                         <SelectItem value="skin_surface">Skin surface only</SelectItem>
-                         <SelectItem value="body_orifices">Body orifices (mouth, nose, ear, etc.)</SelectItem>
-                         <SelectItem value="wounded_skin">Wounded or damaged skin</SelectItem>
-                         <SelectItem value="cardiovascular_system">Cardiovascular system</SelectItem>
-                         <SelectItem value="central_nervous_system">Central nervous system</SelectItem>
-                         <SelectItem value="circulatory_system">Circulatory system</SelectItem>
-                         <SelectItem value="teeth">Teeth</SelectItem>
-                         <SelectItem value="oral_cavity">Oral cavity</SelectItem>
-                         <SelectItem value="ear_canal">Ear canal</SelectItem>
-                         <SelectItem value="nasal_cavity">Nasal cavity</SelectItem>
-                         <SelectItem value="pharynx">Pharynx</SelectItem>
-                         <SelectItem value="lacrimal_duct">Lacrimal duct</SelectItem>
-                         <SelectItem value="vagina_cervix">Vagina/cervix</SelectItem>
-                         <SelectItem value="urethra">Urethra</SelectItem>
-                         <SelectItem value="rectum">Rectum</SelectItem>
-                         <SelectItem value="other">Other body location</SelectItem>
-                       </SelectContent>
-                    </Select>
+                    <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                      <div className="text-sm">
+                        <span className="font-medium">Anatomical Location:</span>{' '}
+                        <span className="text-muted-foreground">
+                          {(() => {
+                            const v = keyTechnologyCharacteristics?.anatomicalLocation;
+                            const labels: Record<string, string> = {
+                              not_defined: 'Not defined',
+                              none: 'No direct body contact',
+                              skin_surface: 'Skin surface only',
+                              body_orifices: 'Body orifices',
+                              wounded_skin: 'Wounded or damaged skin',
+                              cardiovascular_system: 'Cardiovascular system',
+                              central_nervous_system: 'Central nervous system',
+                              circulatory_system: 'Circulatory system',
+                              teeth: 'Teeth',
+                              oral_cavity: 'Oral cavity',
+                              ear_canal: 'Ear canal',
+                              nasal_cavity: 'Nasal cavity',
+                              pharynx: 'Pharynx',
+                              lacrimal_duct: 'Lacrimal duct',
+                              vagina_cervix: 'Vagina/cervix',
+                              urethra: 'Urethra',
+                              rectum: 'Rectum',
+                              other: 'Other body location',
+                            };
+                            return v ? (labels[v] ?? v) : 'Not set';
+                          })()}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (!productId) return;
+                          const params = new URLSearchParams();
+                          params.set('tab', 'basics');
+                          params.set('subtab', 'classification');
+                          params.set('highlight', 'anatomical-location-section');
+                          if (returnTo) params.set('returnTo', returnTo);
+                          navigate(`/app/product/${productId}/device-information?${params.toString()}`);
+                        }}
+                        disabled={!productId}
+                      >
+                        Edit on Classification →
+                      </Button>
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Critical for device classification - specify where the device contacts the body
+                      Single source of truth — edit on the Classification subtab
+                      or directly on Technical Specs.
                     </p>
                   </div>
 

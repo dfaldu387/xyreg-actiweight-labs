@@ -19,6 +19,7 @@ import { GenericGapLaunchView } from "@/components/company/gap-analysis/GenericG
 import { GenericGapSidebar } from "@/components/company/gap-analysis/GenericGapSidebar";
 import { GapAnnexIILaunchView } from "@/components/product/gap-analysis/GapAnnexIILaunchView";
 import { GapAnnexIISidebar } from "@/components/product/gap-analysis/GapAnnexIISidebar";
+import { AnnexIContextPanel } from "@/components/product/gap-analysis/AnnexIContextPanel";
 
 // MDR configs
 import { ANNEX_I_SECTIONS, ANNEX_I_GROUPS } from "@/config/gapAnnexISections";
@@ -131,6 +132,14 @@ export default function ProductGapAnalysisPage() {
     return MDR_FRAMEWORKS.some(fw => enabledFrameworks.has(fw));
   }, [enabledFrameworks]);
 
+  // IVD products are governed by IVDR Annex I, not MDR Annex I — hide MDR entirely.
+  const isIVD = useMemo(() => {
+    const t = (product as any)?.primary_regulatory_type;
+    return typeof t === 'string' && t.toLowerCase().includes('ivd');
+  }, [product]);
+
+  const showMDR = hasMDR && !isIVD;
+
   const hasIEC60601 = useMemo(() => {
     if (!enabledFrameworks) return false;
     return IEC_60601_FRAMEWORKS.some(fw => enabledFrameworks.has(fw));
@@ -169,19 +178,24 @@ export default function ProductGapAnalysisPage() {
     localStorage.setItem(storageKey, JSON.stringify(state));
   }, [activeTab, mdrSubTab, iec60601SubTab, storageKey, productId]);
 
-  // Set default active tab when frameworks load
+  // Sync from URL params — runs on mount AND on every urlTab/urlSubTab change
+  // so the floating "Return to Annex I" button (which sets ?subtab=annex-i)
+  // always wins over any default-tab effects below.
   useEffect(() => {
-    if (!enabledFrameworks || activeTab) return;
-
-    // 1. URL params take priority (returning from detail page)
+    if (!enabledFrameworks) return;
     if (urlTab) {
       setActiveTab(urlTab);
       if (urlSubTab) {
         if (urlTab === 'mdr') setMdrSubTab(urlSubTab);
         if (urlTab === 'iec-60601') setIec60601SubTab(urlSubTab);
       }
-      return;
     }
+  }, [enabledFrameworks, urlTab, urlSubTab]);
+
+  // Set default active tab when frameworks load (only when nothing else has)
+  useEffect(() => {
+    if (!enabledFrameworks || activeTab) return;
+    if (urlTab) return; // URL-sync effect above handles this
 
     // 2. Restore from localStorage (returning from another module)
     try {
@@ -198,7 +212,7 @@ export default function ProductGapAnalysisPage() {
     } catch { /* ignore parse errors */ }
 
     // 3. Fall back to first available framework
-    if (hasMDR) setActiveTab("mdr");
+    if (showMDR) setActiveTab("mdr");
     else if (hasISO14971Device) setActiveTab("iso-14971");
     else if (hasIEC62304) setActiveTab("iec-62304");
     else if (hasIEC62366) setActiveTab("iec-62366");
@@ -208,15 +222,35 @@ export default function ProductGapAnalysisPage() {
     else if (hasISO20417) setActiveTab("iso-20417");
     else if (hasISO10993) setActiveTab("iso-10993");
     else if (hasPPWR) setActiveTab("ppwr");
-  }, [enabledFrameworks, hasMDR, hasISO14971Device, hasIEC62304, hasIEC60601, hasIEC20957, hasIEC62366, hasISO15223, hasISO20417, hasISO10993, hasPPWR]);
+  }, [enabledFrameworks, showMDR, hasISO14971Device, hasIEC62304, hasIEC60601, hasIEC20957, hasIEC62366, hasISO15223, hasISO20417, hasISO10993, hasPPWR]);
 
-  // Set default MDR sub-tab
+  // If product is IVD but the active tab is 'mdr' (saved in localStorage / URL), fall through.
   useEffect(() => {
     if (!enabledFrameworks) return;
-    if (hasAnnexII) setMdrSubTab("annex-ii");
-    else if (hasAnnexI) setMdrSubTab("annex-i");
+    if (activeTab !== 'mdr') return;
+    if (!isIVD) return;
+    if (hasISO14971Device) setActiveTab('iso-14971');
+    else if (hasIEC62304) setActiveTab('iec-62304');
+    else if (hasIEC62366) setActiveTab('iec-62366');
+    else if (hasIEC60601) setActiveTab('iec-60601');
+    else if (hasIEC20957) setActiveTab('iec-20957');
+    else if (hasISO15223) setActiveTab('iso-15223');
+    else if (hasISO20417) setActiveTab('iso-20417');
+    else if (hasISO10993) setActiveTab('iso-10993');
+    else if (hasPPWR) setActiveTab('ppwr');
+    else setActiveTab('');
+  }, [activeTab, isIVD, enabledFrameworks, hasISO14971Device, hasIEC62304, hasIEC62366, hasIEC60601, hasIEC20957, hasISO15223, hasISO20417, hasISO10993, hasPPWR]);
+
+  // Set default MDR sub-tab — but only if URL hasn't specified one.
+  // Prefer Annex I (the user-facing GSPR view, primary deep-link target),
+  // then Annex II, then Annex III.
+  useEffect(() => {
+    if (!enabledFrameworks) return;
+    if (urlSubTab) return; // URL wins — never overwrite an explicit deep-link
+    if (hasAnnexI) setMdrSubTab("annex-i");
+    else if (hasAnnexII) setMdrSubTab("annex-ii");
     else if (hasAnnexIII) setMdrSubTab("annex-iii");
-  }, [enabledFrameworks, hasAnnexI, hasAnnexII, hasAnnexIII]);
+  }, [enabledFrameworks, hasAnnexI, hasAnnexII, hasAnnexIII, urlSubTab]);
 
   // Set default IEC 60601 sub-tab
   useEffect(() => {
@@ -345,7 +379,7 @@ export default function ProductGapAnalysisPage() {
             {/* Main tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="mb-4 flex-wrap h-auto gap-1">
-                {hasMDR && <TabsTrigger value="mdr">EU MDR</TabsTrigger>}
+                {showMDR && <TabsTrigger value="mdr">EU MDR</TabsTrigger>}
                 {hasISO14971Device && <TabsTrigger value="iso-14971">ISO 14971</TabsTrigger>}
                 {hasIEC62304 && <TabsTrigger value="iec-62304">IEC 62304</TabsTrigger>}
                 {hasIEC62366 && <TabsTrigger value="iec-62366">IEC 62366-1</TabsTrigger>}
@@ -357,8 +391,8 @@ export default function ProductGapAnalysisPage() {
                 {hasPPWR && <TabsTrigger value="ppwr">PPWR</TabsTrigger>}
               </TabsList>
 
-              {/* EU MDR — with sub-tabs */}
-              {hasMDR && (
+              {/* EU MDR — with sub-tabs (hidden for IVD products) */}
+              {showMDR && (
                 <TabsContent value="mdr">
                   <Tabs value={mdrSubTab} onValueChange={setMdrSubTab}>
                     <TabsList className="mb-4 h-auto gap-1">
@@ -370,6 +404,12 @@ export default function ProductGapAnalysisPage() {
                     {hasAnnexI && (
                       <TabsContent value="annex-i">
                         <div className="relative">
+                          <AnnexIContextPanel
+                            items={annexIItems}
+                            productId={productId}
+                            onRefresh={refetch}
+                            disabled={isRestricted}
+                          />
                           <GenericGapLaunchView
                             sections={ANNEX_I_SECTIONS}
                             groups={ANNEX_I_GROUPS}

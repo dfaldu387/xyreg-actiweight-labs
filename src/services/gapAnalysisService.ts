@@ -396,6 +396,65 @@ export const updateGapItemStatus = async (itemId: string, status: string): Promi
   }
 };
 
+/**
+ * Persists the user-entered (or AI-suggested) justification for marking a gap
+ * item as N/A. Stored on `gap_analysis_items.automatic_na_reason` so it is
+ * visible in the audit trail and exports.
+ */
+export const updateGapItemNAReason = async (
+  itemId: string,
+  reason: string,
+  opts?: { isAutoExcluded?: boolean }
+): Promise<boolean> => {
+  try {
+    const update: {
+      automatic_na_reason: string;
+      updated_at: string;
+      is_auto_excluded?: boolean;
+    } = {
+      automatic_na_reason: reason,
+      updated_at: new Date().toISOString(),
+    };
+    if (typeof opts?.isAutoExcluded === 'boolean') {
+      update.is_auto_excluded = opts.isAutoExcluded;
+    }
+    const { error } = await supabase
+      .from('gap_analysis_items')
+      .update(update)
+      .eq('id', itemId);
+    if (error) throw error;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Bulk-mark items as N/A with a shared justification reason.
+ * Used by the bulk action bar; per-item edits remain possible afterwards.
+ */
+export const bulkMarkGapItemsNA = async (
+  itemIds: string[],
+  reason: string
+): Promise<boolean> => {
+  if (itemIds.length === 0) return true;
+  try {
+    const { error } = await supabase
+      .from('gap_analysis_items')
+      .update({
+        status: 'not_applicable',
+        automatic_na_reason: reason,
+        is_auto_excluded: false,
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', itemIds);
+    if (error) throw error;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const bulkUpdateGapItemDueDates = async (
   itemIds: string[], 
   dueDate: string | null

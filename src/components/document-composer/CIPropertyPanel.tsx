@@ -256,12 +256,6 @@ export function CIPropertyPanel({
 
   return (
     <Card className="border-0 rounded-none border-t">
-      <CardHeader className="pb-3 px-6 pt-4">
-        <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground font-medium">
-          <Settings2 className="w-4 h-4" />
-          Document Properties
-        </CardTitle>
-      </CardHeader>
       <CardContent className="px-6 pb-4 space-y-4">
         {/* Document / Report Toggle */}
         <div className="space-y-1.5">

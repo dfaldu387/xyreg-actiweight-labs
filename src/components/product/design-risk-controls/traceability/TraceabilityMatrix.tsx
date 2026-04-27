@@ -39,7 +39,7 @@ export function TraceabilityMatrix({ productId, companyId, disabled = false }: T
   const { lang } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const navigateToItem = useCallback((itemType: string) => {
+  const navigateToItem = useCallback((itemType: string, itemId?: string) => {
     const route = TYPE_TO_ROUTE[itemType];
     if (!route) return;
     // Use setSearchParams to preserve existing params (matrixSource, matrixTargets)
@@ -48,6 +48,17 @@ export function TraceabilityMatrix({ productId, companyId, disabled = false }: T
     newParams.set('tab', route.tab);
     if (route.subTab) newParams.set('subTab', route.subTab);
     newParams.set('returnTo', 'matrix');
+    // Clean any stale open params from previous navigations
+    newParams.delete('openItemId');
+    newParams.delete('highlightHazard');
+    if (itemId) {
+      // Hazards/risk controls already have a working auto-open via highlightHazard
+      if (itemType === 'hazard' || itemType === 'risk_control') {
+        newParams.set('highlightHazard', itemId);
+      } else {
+        newParams.set('openItemId', itemId);
+      }
+    }
     setSearchParams(newParams);
   }, [searchParams, setSearchParams]);
 
@@ -196,7 +207,7 @@ export function TraceabilityMatrix({ productId, companyId, disabled = false }: T
                   className={`gap-1 cursor-pointer text-xs hover:opacity-80 transition-opacity ${statusClass}`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigateToItem(targetType);
+                    navigateToItem(targetType, target?.id);
                   }}
                 >
                   {id}
@@ -339,7 +350,7 @@ export function TraceabilityMatrix({ productId, companyId, disabled = false }: T
                                     sourceItem.verificationStatus === 'Verification Failed' || sourceItem.verificationStatus === 'Not Verified' ? 'bg-red-100 text-red-800 border-red-200' :
                                     ''
                                   }`}
-                                  onClick={() => navigateToItem(sourceItem.type)}
+                                  onClick={() => navigateToItem(sourceItem.type, sourceItem.id)}
                                 >
                                   {sourceItem.identifier}
                                   <ExternalLink className="h-2.5 w-2.5 ml-1" />

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 const STOP_WORDS = ['and', 'or', 'for', 'with', 'in', 'on', 'at', 'to', 'from', 'by', 'of', 'the', 'a', 'an'];
 
@@ -71,6 +72,11 @@ export class EmdnKeywordService {
 
       if (error) {
         console.error('[EmdnKeywordService] AI keyword generation error:', error);
+        return this.extractSimpleKeywords(description);
+      }
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
         return this.extractSimpleKeywords(description);
       }
 

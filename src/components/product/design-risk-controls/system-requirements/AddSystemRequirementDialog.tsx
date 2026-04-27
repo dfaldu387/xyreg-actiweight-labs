@@ -33,6 +33,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { UserNeedsService } from "@/services/userNeedsService";
 import { hazardsService } from "@/services/hazardsService";
 import { AIRequirementUserNeedSuggestions } from "@/components/product/design-risk-controls/requirement-specifications/AIRequirementUserNeedSuggestions";
+import { AIRequirementHazardSuggestions } from "@/components/product/design-risk-controls/requirement-specifications/AIRequirementHazardSuggestions";
 import { REQUIREMENT_CATEGORIES } from "@/components/product/design-risk-controls/requirement-specifications/types";
 import type { UserNeed } from "@/components/product/design-risk-controls/user-needs/types";
 import type { Hazard } from "@/components/product/design-risk-controls/risk-management/types";
@@ -271,7 +272,7 @@ export function AddSystemRequirementDialog({
 
           {/* Traces to User Need(s) — Popover + Command searchable multi-select with AI */}
           <div className="space-y-2">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between gap-2">
               <Label>{lang('systemRequirements.form.tracesTo')}</Label>
               <AIRequirementUserNeedSuggestions
                 requirementDescription={description}
@@ -288,6 +289,11 @@ export function AddSystemRequirementDialog({
                 onUserNeedCreated={handleAIUserNeedCreated}
               />
             </div>
+            {!loadingUserNeeds && selectedUserNeeds.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No user need linked yet. Click <span className="font-medium">Suggest with AI</span> to find an existing match or draft a new one from this requirement.
+              </p>
+            )}
             {loadingUserNeeds ? (
               <div className="h-10 flex items-center px-3 py-2 border rounded-md bg-muted">
                 <span className="text-sm text-muted-foreground">Loading user needs...</span>
@@ -332,7 +338,7 @@ export function AddSystemRequirementDialog({
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[100] bg-popover" align="start">
                     <Command>
                       <CommandInput placeholder="Search user needs..." />
                       <CommandList>
@@ -403,18 +409,51 @@ export function AddSystemRequirementDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>{lang('systemRequirements.form.linkedRisks')}</Label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={handleCreateNewHazard}
-                disabled={isCreatingDraftHazard}
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                {isCreatingDraftHazard ? 'Creating...' : 'Create New Hazard'}
-              </Button>
+              <div className="flex items-center gap-2">
+                <AIRequirementHazardSuggestions
+                  requirementDescription={description}
+                  requirementType="system"
+                  productId={productId}
+                  companyId={companyId}
+                  productName={productName}
+                  existingHazards={hazards.map(h => ({ id: h.id, hazard_id: h.hazard_id, description: h.description }))}
+                  selectedIds={selectedHazards}
+                  onSelect={(id) => setSelectedHazards(prev => prev.includes(id) ? prev : [...prev, id])}
+                  onHazardCreated={(nh) => {
+                    setHazards(prev => [...prev, {
+                      id: nh.id,
+                      hazard_id: nh.hazard_id,
+                      product_id: productId,
+                      company_id: companyId,
+                      description: nh.description,
+                      mitigation_measure: '',
+                      mitigation_type: 'Information for Safety',
+                      residual_risk: 'Medium',
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                      created_by: null,
+                    } as Hazard]);
+                    queryClient.invalidateQueries({ queryKey: ["hazards", productId] });
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleCreateNewHazard}
+                  disabled={isCreatingDraftHazard}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  {isCreatingDraftHazard ? 'Creating...' : 'Create New Hazard'}
+                </Button>
+              </div>
             </div>
+            {!loadingHazards && selectedHazards.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No risk linked yet. Click <span className="font-medium">Suggest with AI</span> to find a matching hazard or draft a new one from this requirement.
+              </p>
+            )}
             {loadingHazards ? (
               <div className="h-10 flex items-center px-3 py-2 border rounded-md bg-muted">
                 <span className="text-sm text-muted-foreground">Loading hazards...</span>

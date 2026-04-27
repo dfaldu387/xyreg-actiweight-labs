@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 import {
   PredicateDevice,
   PredicateReference,
@@ -100,6 +101,11 @@ export class FDAPredicateService {
         throw new Error(`FDA predicate search failed: ${error.message}`);
       }
 
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        throw new Error('NO_CREDITS');
+      }
+
       if (!data.success) {
         console.error('[FDAPredicateService] Search returned error:', data.error);
         throw new Error(`FDA predicate API error: ${data.error}`);
@@ -146,6 +152,11 @@ export class FDAPredicateService {
       throw error;
     }
 
+    if (data?.error === 'NO_CREDITS') {
+      showNoCreditDialog();
+      throw new Error('NO_CREDITS');
+    }
+
     if (!data.success) {
       console.error('AI predicate trail failed:', data.error);
       throw new Error(data.error || 'AI predicate trail analysis failed');
@@ -164,6 +175,11 @@ export class FDAPredicateService {
     if (error) {
       console.error('[FDAPredicateService] Error building trail:', error);
       throw new Error(`Failed to build predicate trail: ${error.message}`);
+    }
+
+    if (data?.error === 'NO_CREDITS') {
+      showNoCreditDialog();
+      throw new Error('NO_CREDITS');
     }
 
     if (!data.success) {
@@ -186,6 +202,11 @@ export class FDAPredicateService {
       if (error) {
         console.error('[FDAPredicateService] Error generating bridge:', error);
         throw new Error(`Failed to generate EU-US bridge: ${error.message}`);
+      }
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        throw new Error('NO_CREDITS');
       }
 
       if (!data.success) {
@@ -222,6 +243,11 @@ export class FDAPredicateService {
       const { data, error } = await supabase.functions.invoke('fda-predicate-recommendations', {
         body: { deviceName, deviceClass, productCode }
       });
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return [];
+      }
 
       if (error || !data.success) {
         console.error('[FDAPredicateService] Error getting recommendations:', error || data.error);

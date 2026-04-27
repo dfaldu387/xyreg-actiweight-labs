@@ -8,12 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { CheckCircle2, XCircle, AlertTriangle, Users, ChevronDown, ChevronUp, Bug } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, Users, ChevronDown, ChevronUp, Bug, FilePlus2 } from "lucide-react";
 import { TestCase, VVService } from "@/services/vvService";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getUsabilityEngineeringFile, IntendedUser } from "@/services/usabilityEngineeringService";
 import { LogDefectDialog } from "./LogDefectDialog";
+import { CreateRequirementFromFailureDialog } from "./CreateRequirementFromFailureDialog";
 
 interface ExecuteTestDialogProps {
   testCase: TestCase | null;
@@ -43,6 +44,7 @@ export function ExecuteTestDialog({ testCase, open, onOpenChange, companyId, pro
   // Defect creation prompt state
   const [showDefectPrompt, setShowDefectPrompt] = useState(false);
   const [logDefectOpen, setLogDefectOpen] = useState(false);
+  const [createRequirementOpen, setCreateRequirementOpen] = useState(false);
   const [savedExecutionId, setSavedExecutionId] = useState<string | null>(null);
 
   // Usability fields
@@ -344,11 +346,19 @@ export function ExecuteTestDialog({ testCase, open, onOpenChange, companyId, pro
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Bug className="h-4 w-4 text-destructive" />
-                Test failed — Create a defect record?
+                Test failed — what's the root cause?
               </div>
-              <div className="flex gap-2 justify-end">
+              <div className="flex flex-wrap gap-2 justify-end">
                 <Button variant="outline" size="sm" onClick={() => { setShowDefectPrompt(false); onOpenChange(false); }}>
                   Skip
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { setShowDefectPrompt(false); setCreateRequirementOpen(true); onOpenChange(false); }}
+                  title="Spec gap — create a missing requirement"
+                >
+                  <FilePlus2 className="h-3 w-3 mr-1" /> Create Requirement
                 </Button>
                 <Button size="sm" variant="destructive" onClick={() => { setShowDefectPrompt(false); setLogDefectOpen(true); onOpenChange(false); }}>
                   <Bug className="h-3 w-3 mr-1" /> Log Defect
@@ -375,6 +385,17 @@ export function ExecuteTestDialog({ testCase, open, onOpenChange, companyId, pro
       companyId={companyId}
       prefillTestCaseId={testCase?.id}
       prefillTestExecutionId={savedExecutionId}
+    />
+
+    {/* Create Requirement from Failure Dialog — alternative path on fail */}
+    <CreateRequirementFromFailureDialog
+      open={createRequirementOpen}
+      onOpenChange={setCreateRequirementOpen}
+      testCase={testCase}
+      executionId={savedExecutionId}
+      productId={productId}
+      companyId={companyId}
+      onCreated={onExecutionSaved}
     />
     </>
   );

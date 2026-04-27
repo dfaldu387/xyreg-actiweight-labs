@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { FileText, Download, Share, Save, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine, Eye, EyeOff, Pencil, ShieldCheck, Bold, Italic, Strikethrough, List, ListOrdered, Type, ImagePlus, Undo, Redo, Heading1, Heading2, Heading3, Quote, AlignJustify, MessageSquare, ZoomIn, ZoomOut, PanelRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { FileText, Download, Share, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine, Eye, EyeOff, Pencil, ShieldCheck, Bold, Italic, Strikethrough, Link2, List, ListOrdered, Type, ImagePlus, Undo, Redo, Heading1, Heading2, Heading3, Quote, AlignJustify, MessageSquare, MessageSquarePlus, ZoomIn, ZoomOut, PanelRight, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { AIInlineEditBar } from './AIInlineEditBar';
@@ -27,16 +30,32 @@ import { AISuggestionService } from '@/services/aiSuggestionService';
 import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
 import { AIAutoFillDialog } from './AIAutoFillDialog';
 import { AIDocumentValidationDialog } from './AIDocumentValidationDialog';
+import { DraftEmptyStateModal } from './DraftEmptyStateModal';
+import { SOPPickerModal } from './SOPPickerModal';
+import { InlineAIEditPopover } from './InlineAIEditPopover';
+import { sopContentToSections, SOPFullContent } from '@/data/sopFullContent';
+import { markdownToHtml, restructureInlineAIProse } from '@/utils/markdownToHtml';
 import { documentContextStore } from '@/stores/documentContextStore';
 import { DocumentOutlinePanel } from './DocumentOutlinePanel';
+import { LeftRailTabs } from './LeftRailTabs';
 import { RightPanel } from './RightPanel';
 import { useEditor, EditorContent, NodeViewWrapper, NodeViewProps, ReactNodeViewRenderer } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/react/menus';
+import { TextSelection, Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { TextStyle } from '@tiptap/extension-text-style';
-import { Extension } from '@tiptap/core';
+import { Extension, Mark, mergeAttributes } from '@tiptap/core';
 import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
 import { Trash2 } from 'lucide-react';
+import { useCompanyDocumentMentions } from '@/hooks/useCompanyDocumentMentions';
+import { useCompanyUsers } from '@/hooks/useCompanyUsers';
+import { EditorMentionPopup, MentionItem, MentionSection } from './EditorMentionPopup';
+import { DocMentionHoverCard, DocMentionHoverData } from './DocMentionHoverCard';
+import { PersonMentionHoverCard, PersonMentionHoverData } from './PersonMentionHoverCard';
+import { LinkHoverCard, LinkHoverData } from './LinkHoverCard';
 
 /**
  * Strip redundant leading headings from content that duplicate the section title.
@@ -133,6 +152,136 @@ const ImageWithDelete = Image.extend({
   },
 });
 
+/**
+ * Resolve a DOM anchor element to a prosemirror position that's *inside* the
+ * link mark. Uses posAtCoords from the center of the anchor's bounding rect —
+ * more reliable than posAtDOM, which can land on the boundary where the mark
+ * is not active. Returns null if the lookup fails.
+ */
+function posInsideLink(editor: any, el: HTMLElement): number | null {
+  try {
+    const rect = el.getBoundingClientRect();
+    const hit = editor.view.posAtCoords({
+      left: rect.left + Math.max(2, rect.width / 2),
+      top: rect.top + rect.height / 2,
+    });
+    if (hit && typeof hit.pos === 'number') return hit.pos;
+  } catch {
+    /* fall through */
+  }
+  try {
+    const base = editor.view.posAtDOM(el.firstChild || el, 0);
+    return base + 1;
+  } catch {
+    return null;
+  }
+}
+
+// Mark applied to the inserted document name when the user picks a suggestion
+// from the `@` popup. Using a mark (rather than an atomic node) keeps the text
+// insertion path trivial and lets prosemirror render the styled span via the
+// standard mark rendering path.
+const MentionMark = Mark.create({
+  name: 'docMention',
+  inclusive: false,
+  addAttributes() {
+    return {
+      id: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-id'),
+        renderHTML: (attrs) => (attrs.id ? { 'data-id': attrs.id } : {}),
+      },
+      slug: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-slug'),
+        renderHTML: (attrs) => (attrs.slug ? { 'data-slug': attrs.slug } : {}),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-doc-mention]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'span',
+      mergeAttributes(HTMLAttributes, {
+        'data-doc-mention': '',
+        class: 'xyreg-doc-mention',
+      }),
+      0,
+    ];
+  },
+});
+
+// Mark applied to the inserted person name when the user picks a teammate
+// from the `@` popup. Renders as a subtle green pill to visually distinguish
+// people references from document references.
+const PersonMentionMark = Mark.create({
+  name: 'personMention',
+  inclusive: false,
+  addAttributes() {
+    return {
+      id: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-id'),
+        renderHTML: (attrs) => (attrs.id ? { 'data-id': attrs.id } : {}),
+      },
+      email: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-email'),
+        renderHTML: (attrs) => (attrs.email ? { 'data-email': attrs.email } : {}),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-person-mention]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'span',
+      mergeAttributes(HTMLAttributes, {
+        'data-person-mention': '',
+        class: 'xyreg-person-mention',
+      }),
+      0,
+    ];
+  },
+});
+
+// Mark applied to smart-chip text (Date, Dropdown, Placeholder) inserted from
+// the `@` popup. Renders as a subtle gray pill similar to Google Docs chips.
+const SmartChipMark = Mark.create({
+  name: 'smartChip',
+  inclusive: false,
+  addAttributes() {
+    return {
+      chipType: {
+        default: 'placeholder',
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-chip-type'),
+        renderHTML: (attrs) => (attrs.chipType ? { 'data-chip-type': attrs.chipType } : {}),
+      },
+      variable: {
+        default: null,
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-variable'),
+        renderHTML: (attrs) => (attrs.variable ? { 'data-variable': attrs.variable } : {}),
+      },
+    };
+  },
+  parseHTML() {
+    return [{ tag: 'span[data-smart-chip]' }];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return [
+      'span',
+      mergeAttributes(HTMLAttributes, {
+        'data-smart-chip': '',
+        class: 'xyreg-smart-chip',
+      }),
+      0,
+    ];
+  },
+});
+
 // FontSize extension for inline text sizing (reused from EditableContent)
 const FontSize = Extension.create({
   name: 'fontSize',
@@ -165,6 +314,56 @@ const FontSize = Extension.create({
     };
   },
 });
+
+// Persistent selection highlight used by the Inline AI Edit popover. We can't
+// rely on the browser's native selection because it dims when focus moves to
+// the popover's textarea — this decoration stays bright until explicitly
+// cleared.
+const aiEditHighlightKey = new PluginKey<{ from: number | null; to: number | null }>(
+  'xyregAiEditHighlight',
+);
+
+const AIEditHighlightExtension = Extension.create({
+  name: 'xyregAiEditHighlight',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: aiEditHighlightKey,
+        state: {
+          init() {
+            return { from: null as number | null, to: null as number | null };
+          },
+          apply(tr, prev) {
+            const meta = tr.getMeta(aiEditHighlightKey);
+            if (meta !== undefined) return meta;
+            return prev;
+          },
+        },
+        props: {
+          decorations(state) {
+            const s = aiEditHighlightKey.getState(state);
+            if (!s || s.from == null || s.to == null || s.from >= s.to) return null;
+            return DecorationSet.create(state.doc, [
+              Decoration.inline(s.from, s.to, {
+                class: 'xyreg-ai-edit-highlight',
+              }),
+            ]);
+          },
+        },
+      }),
+    ];
+  },
+});
+
+function setAIEditHighlight(
+  editor: any,
+  range: { from: number; to: number } | null,
+) {
+  if (!editor?.view) return;
+  editor.view.dispatch(
+    editor.state.tr.setMeta(aiEditHighlightKey, range ?? { from: null, to: null }),
+  );
+}
 
 const FONT_SIZES = [
   { label: 'Small', value: '12px' },
@@ -211,12 +410,21 @@ function mergeSectionsToHtml(sections: any[], companyName: string, numbered: boo
           let processed = item.content || '';
           // Skip empty/placeholder content
           if (!processed.trim() || processed === '[AI_PROMPT_NEEDED]') return '';
+          // Normalize markdown (**, __, - bullets, 1. numbered) to HTML. This
+          // is a no-op when the content already looks like HTML, so it's safe
+          // to apply unconditionally and fixes AI-generated content that was
+          // persisted as raw markdown before this conversion existed.
+          processed = markdownToHtml(processed);
           processed = stripRedundantSectionHeading(processed, title);
           processed = replaceCompanyPlaceholders(processed, companyName);
           // If content looks like plain text, wrap in paragraph tags
           if (processed && !processed.trim().startsWith('<')) {
             processed = `<p>${processed}</p>`;
           }
+          // Finally, restructure any paragraphs the AI packed with multiple
+          // bolded sub-headings + inline dash-items into proper headings +
+          // bullet lists. Conservative heuristic — no effect on normal prose.
+          processed = restructureInlineAIProse(processed);
           return processed;
         })
         .filter(Boolean)
@@ -341,11 +549,12 @@ interface LiveEditorProps {
   isEditing?: boolean;
   showSectionNumbers?: boolean;
   onShowSectionNumbersChange?: (show: boolean) => void;
-  /** When true, disables SOP @-mention suggestions in the embedded AI chat. */
+  /** Notify parent when classification toggles in the Configure panel, so SOPDocumentHeader re-renders. */
+  onIsRecordChange?: (isRecord: boolean) => void;
   disableSopMentions?: boolean;
 }
 
-export function LiveEditor({ template, className = '', onContentUpdate, companyId, onDocumentSaved, isEditingExistingDocument = false, editingDocumentId = null, docxSourceDocumentId = null, onAIGenerate, onAddAutoNote, currentNotes = [], isUploadedDocument = false, uploadedDocumentSaved = false, onUploadedDocumentSaved, disabled = false, selectedScope = 'company', selectedProductId, uploadedFileInfo, onDocumentControlChange, companyLogoUrl, onPushToDeviceFields, onCustomSave, isRecord = false, recordId, nextReviewDate, documentNumber, hideVersioning = false, isEditing: isEditingProp, showSectionNumbers = false, onShowSectionNumbersChange, disableSopMentions = false }: LiveEditorProps) {
+export function LiveEditor({ template, className = '', onContentUpdate, companyId, onDocumentSaved, isEditingExistingDocument = false, editingDocumentId = null, docxSourceDocumentId = null, onAIGenerate, onAddAutoNote, currentNotes = [], isUploadedDocument = false, uploadedDocumentSaved = false, onUploadedDocumentSaved, disabled = false, selectedScope = 'company', selectedProductId, uploadedFileInfo, onDocumentControlChange, companyLogoUrl, onPushToDeviceFields, onCustomSave, isRecord = false, recordId, nextReviewDate, documentNumber, hideVersioning = false, isEditing: isEditingProp, showSectionNumbers = false, onShowSectionNumbersChange, onIsRecordChange , disableSopMentions = false }: LiveEditorProps) {
   const { activeCompanyRole } = useCompanyRole();
   const [showVersionModal, setShowVersionModal] = useState(false);
   const [showSaveVersionDialog, setShowSaveVersionDialog] = useState(false);
@@ -353,9 +562,31 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(template?.name || '');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  // Autosave status indicator (Google-docs style: "Saving…" → "Saved").
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const savedFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showAIModal, setShowAIModal] = useState(false);
   const [selectedSection, setSelectedSection] = useState<{title: string, content: string} | null>(null);
   const [showAutoFillDialog, setShowAutoFillDialog] = useState(false);
+  const [showEmptyStateModal, setShowEmptyStateModal] = useState(false);
+  const [showSopPickerModal, setShowSopPickerModal] = useState(false);
+  // Inline "Edit with AI" popover — captured snapshot of the selection.
+  const [inlineAIEdit, setInlineAIEdit] = useState<{
+    text: string;
+    html: string;
+    from: number;
+    to: number;
+    anchorRect: { top: number; left: number; bottom: number; right: number };
+  } | null>(null);
+  // Tracks which template id we already auto-opened the empty-state modal
+  // for, so dismissing it doesn't re-trigger on the next re-render.
+  const emptyStateOpenedForTemplateRef = useRef<string | null>(null);
+
+  // Hyperlink dialog state.
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkDialogUrl, setLinkDialogUrl] = useState('');
+  const [linkDialogText, setLinkDialogText] = useState('');
+  const [linkDialogMode, setLinkDialogMode] = useState<'create' | 'edit'>('create');
   const [showValidationDialog, setShowValidationDialog] = useState(false);
   const [showDocumentAIBar, setShowDocumentAIBar] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
@@ -371,11 +602,14 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   const [isNarrow, setIsNarrow] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < 900 : false
   );
-  const [narrowOutlineOpen, setNarrowOutlineOpen] = useState(false);
   const [narrowRightOpen, setNarrowRightOpen] = useState(false);
   const [outlineCollapsed, setOutlineCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem('xyreg.outline.collapsed') === '1'; } catch { return false; }
+    try { return localStorage.getItem('xyreg.draft.leftRail.collapsed') === '1'; } catch { return false; }
   });
+  useEffect(() => {
+    try { localStorage.setItem('xyreg.draft.leftRail.collapsed', outlineCollapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, [outlineCollapsed]);
+  const [narrowOutlineOpen, setNarrowOutlineOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(() => {
     try { return localStorage.getItem('xyreg.rightPanel.open') !== '0'; } catch { return true; }
   });
@@ -461,7 +695,24 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       StarterKit,
       TextStyle,
       FontSize,
+      AIEditHighlightExtension,
       ImageWithDelete.configure({ inline: false, allowBase64: true }),
+      MentionMark,
+      PersonMentionMark,
+      SmartChipMark,
+      Link.configure({
+        // openOnClick is false because we handle clicks ourselves (new-tab on
+        // plain click, like Google Docs). autolink wires URLs as the user types.
+        openOnClick: false,
+        autolink: true,
+        linkOnPaste: true,
+        protocols: ['http', 'https', 'mailto', 'tel'],
+        HTMLAttributes: {
+          rel: 'noopener noreferrer nofollow',
+          target: '_blank',
+          class: 'xyreg-link',
+        },
+      }),
       Placeholder.configure({
         placeholder: 'Start typing your document...',
         emptyEditorClass: 'is-editor-empty',
@@ -499,14 +750,613 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       },
     },
     onUpdate: () => {
-      // Don't sync to parent on every keystroke — content is synced on explicit save.
-      // Just refresh the outline panel.
+      // Refresh the outline panel on every edit.
       setRefreshTrigger(prev => prev + 1);
+      // Skip autosave for updates caused by our own setContent calls (initial
+      // load, AI auto-fill) and while the editor has not finished hydrating.
+      if (programmaticUpdateRef.current || !editorInitializedRef.current) return;
+      // Debounce: save 1.5s after the user stops typing. Bail if a save is
+      // already in flight — the next edit will reschedule.
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = setTimeout(() => {
+        if (isSavingRef.current) return;
+        handleSaveRef.current?.(true);
+      }, 1500);
     },
   });
 
   // Keep ref in sync so callbacks can access the editor
   editorInstanceRef.current = unifiedEditor;
+
+  // ---------- @mention popup: Google Docs-style categorized picker ----------
+  const docMentionItems = useCompanyDocumentMentions(
+    companyId || activeCompanyRole?.companyId,
+    !disableSopMentions,
+  );
+  const { users: companyUsers } = useCompanyUsers(companyId || activeCompanyRole?.companyId);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionHighlight, setMentionHighlight] = useState(0);
+  const [mentionCoords, setMentionCoords] = useState<{ left: number; top: number } | null>(null);
+  // Submenu view: 'dropdown' shows preset dropdowns; 'placeholder' shows
+  // document variables. null = main menu.
+  const [mentionSubmenu, setMentionSubmenu] = useState<null | 'dropdown' | 'placeholder'>(null);
+  // Range (in prosemirror positions) of the `@query` fragment to replace.
+  const mentionRangeRef = useRef<{ from: number; to: number } | null>(null);
+
+  // Values used to resolve placeholder variables at insertion time.
+  const todayFormatted = useMemo(
+    () => new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    [],
+  );
+  const placeholderVariables = useMemo(
+    () => [
+      { key: 'var:company', variable: 'companyName', label: 'Company name', value: companyName || 'Company' },
+      { key: 'var:document', variable: 'documentName', label: 'Document name', value: template?.name || 'Document' },
+      { key: 'var:docref', variable: 'documentReference', label: 'Document reference', value: template?.documentControl?.sopNumber || 'SOP-000' },
+      { key: 'var:version', variable: 'version', label: 'Version', value: template?.documentControl?.version || '1.0' },
+      { key: 'var:today', variable: 'today', label: "Today's date", value: todayFormatted },
+      { key: 'var:owner', variable: 'owner', label: 'Document owner', value: companyUsers.find((u) => u.is_owner)?.name || 'Owner' },
+    ],
+    [companyName, template?.name, template?.documentControl?.sopNumber, template?.documentControl?.version, todayFormatted, companyUsers],
+  );
+
+  const dropdownPresets = useMemo(
+    () => [
+      { key: 'preset:project-status', label: 'Project status', options: ['Not started', 'In progress', 'Complete'] },
+      { key: 'preset:review-status', label: 'Review status', options: ['Draft', 'Under review', 'Approved'] },
+      { key: 'preset:priority', label: 'Priority', options: ['Low', 'Medium', 'High'] },
+    ],
+    [],
+  );
+
+  const mentionSections = useMemo<MentionSection[]>(() => {
+    const q = mentionQuery.trim().toLowerCase();
+    const matches = (text: string) => !q || text.toLowerCase().includes(q);
+
+    // --- Submenu: dropdown presets ---
+    if (mentionSubmenu === 'dropdown') {
+      const docDropdowns: MentionItem[] = [
+        { key: 'dd:new', type: 'smart-chip', label: '+ New dropdown', icon: 'placeholder', disabled: true, payload: { action: 'new-dropdown' } },
+      ];
+      const presetItems: MentionItem[] = dropdownPresets
+        .filter((p) => matches(p.label))
+        .map((p) => ({
+          key: p.key,
+          type: 'smart-chip',
+          label: p.label,
+          hint: p.options.join(' · '),
+          icon: 'dropdown',
+          payload: { chipType: 'dropdown', value: p.options[0], options: p.options, presetName: p.label },
+        }));
+      const out: MentionSection[] = [];
+      out.push({ id: 'smart-chips', title: '← Document dropdowns', items: docDropdowns });
+      if (presetItems.length) out.push({ id: 'smart-chips', title: 'Preset dropdowns', items: presetItems });
+      return out;
+    }
+
+    // --- Submenu: placeholder variables ---
+    if (mentionSubmenu === 'placeholder') {
+      const vars: MentionItem[] = placeholderVariables
+        .filter((v) => matches(v.label))
+        .map((v) => ({
+          key: v.key,
+          type: 'smart-chip',
+          label: v.label,
+          hint: v.value,
+          icon: 'placeholder',
+          payload: { chipType: 'placeholder', variable: v.variable, value: v.value },
+        }));
+      const customItems: MentionItem[] = [
+        {
+          key: 'var:custom',
+          type: 'smart-chip',
+          label: 'Custom text…',
+          hint: "You'll be prompted for a value",
+          icon: 'placeholder',
+          payload: { chipType: 'placeholder', variable: 'custom' },
+        },
+      ];
+      const out: MentionSection[] = [];
+      if (vars.length) out.push({ id: 'smart-chips', title: '← Document variables', items: vars });
+      out.push({ id: 'building-blocks', title: 'Other', items: customItems });
+      return out;
+    }
+
+    // --- Main menu ---
+    const peopleItems: MentionItem[] = companyUsers
+      .filter((u) => matches(u.name) || matches(u.email))
+      .slice(0, 8)
+      .map((u) => ({
+        key: `person:${u.id}`,
+        type: 'person',
+        label: u.name || u.email,
+        hint: u.email,
+        avatarUrl: u.avatar,
+        avatarInitials: (u.name || u.email)
+          .split(/\s+/)
+          .map((s) => s[0])
+          .filter(Boolean)
+          .slice(0, 2)
+          .join('')
+          .toUpperCase(),
+        payload: { id: u.id, email: u.email, name: u.name || u.email },
+      }));
+
+    const docItems: MentionItem[] = docMentionItems
+      .filter((d) => matches(d.label) || matches(d.value))
+      .slice(0, 8)
+      .map((d) => ({
+        key: `doc:${d.id}`,
+        type: 'document',
+        label: d.label,
+        hint: d.hint,
+        payload: { id: d.id, slug: d.value, label: d.label },
+      }));
+
+    const smartChipItems: MentionItem[] = ([
+      { key: 'chip:date', type: 'smart-chip' as const, label: 'Date', hint: "Insert today's date", icon: 'date' as const, payload: { chipType: 'date' } },
+    ] satisfies MentionItem[]).filter((item) => matches(item.label));
+
+    const sections: MentionSection[] = [];
+    if (docItems.length) sections.push({ id: 'documents', title: 'Documents', items: docItems });
+    if (peopleItems.length) sections.push({ id: 'people', title: 'People', items: peopleItems });
+    if (smartChipItems.length) sections.push({ id: 'smart-chips', title: 'Smart chips', items: smartChipItems });
+    return sections;
+  }, [docMentionItems, companyUsers, mentionQuery, mentionSubmenu, dropdownPresets, placeholderVariables]);
+
+  const selectableItems = useMemo(
+    () => mentionSections.flatMap((s) => s.items).filter((i) => !i.disabled),
+    [mentionSections],
+  );
+
+  useEffect(() => {
+    if (mentionHighlight >= selectableItems.length) setMentionHighlight(0);
+  }, [selectableItems.length, mentionHighlight]);
+
+  const closeMention = useCallback(() => {
+    setMentionOpen(false);
+    setMentionQuery('');
+    setMentionHighlight(0);
+    setMentionCoords(null);
+    setMentionSubmenu(null);
+    mentionRangeRef.current = null;
+  }, []);
+
+  // ---------- Hover preview cards for doc/person mentions and hyperlinks ----------
+  const [docHover, setDocHover] = useState<DocMentionHoverData | null>(null);
+  const [personHover, setPersonHover] = useState<PersonMentionHoverData | null>(null);
+  const [linkHover, setLinkHover] = useState<LinkHoverData | null>(null);
+  const hoverCloseTimer = useRef<number | null>(null);
+  // DOM node of the link currently being hovered — needed so Edit/Remove can
+  // resolve the prosemirror position even though the caret hasn't moved there.
+  const linkHoverElementRef = useRef<HTMLAnchorElement | null>(null);
+  const navigate = useNavigate();
+
+  const navigateToDoc = useCallback(
+    (docName: string) => {
+      const cName = companyName || activeCompanyRole?.companyName;
+      if (!cName) return;
+      navigate(`/app/company/${encodeURIComponent(cName)}/documents?filter=${encodeURIComponent(docName)}`);
+    },
+    [navigate, companyName, activeCompanyRole?.companyName],
+  );
+
+  // ---------- Hyperlink insert / edit flow ----------
+  const openLinkDialog = useCallback(() => {
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    const isActive = editor.isActive('link');
+    if (isActive) {
+      // Cursor is inside an existing link — open in edit mode with prefilled values.
+      const existing = editor.getAttributes('link')?.href || '';
+      setLinkDialogUrl(existing);
+      setLinkDialogText('');
+      setLinkDialogMode('edit');
+    } else {
+      const { from, to } = editor.state.selection;
+      const selected = editor.state.doc.textBetween(from, to, ' ');
+      setLinkDialogUrl('');
+      setLinkDialogText(selected);
+      setLinkDialogMode('create');
+    }
+    setLinkDialogOpen(true);
+  }, []);
+
+  const normalizeUrl = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    // Block dangerous protocols.
+    if (/^\s*javascript:/i.test(trimmed) || /^\s*data:/i.test(trimmed)) return null;
+    // Default to https:// if no protocol/scheme is present.
+    if (/^(https?:|mailto:|tel:)/i.test(trimmed)) return trimmed;
+    if (/^[\w-]+@[\w-]+\.[\w.-]+$/.test(trimmed)) return `mailto:${trimmed}`;
+    return `https://${trimmed}`;
+  };
+
+  const applyLinkFromDialog = useCallback(() => {
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    const href = normalizeUrl(linkDialogUrl);
+    if (!href) {
+      setLinkDialogOpen(false);
+      return;
+    }
+    if (linkDialogMode === 'edit') {
+      // Replace the existing link's href without changing the display text.
+      editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
+    } else {
+      const { from, to } = editor.state.selection;
+      if (from === to) {
+        // Nothing selected — insert the href text and mark it as a link.
+        const displayText = (linkDialogText || href).trim() || href;
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: 'text',
+            text: displayText,
+            marks: [{ type: 'link', attrs: { href } }],
+          })
+          .run();
+      } else {
+        editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
+      }
+    }
+    setLinkDialogOpen(false);
+    setLinkDialogUrl('');
+    setLinkDialogText('');
+  }, [linkDialogUrl, linkDialogText, linkDialogMode]);
+
+  const removeLink = useCallback(() => {
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    editor.chain().focus().extendMarkRange('link').unsetLink().run();
+    setLinkDialogOpen(false);
+  }, []);
+
+  // Ctrl/Cmd+K opens the link dialog.
+  useEffect(() => {
+    const editor = unifiedEditor;
+    if (!editor) return;
+    const dom = editor.view.dom;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        openLinkDialog();
+      }
+    };
+    dom.addEventListener('keydown', handler);
+    return () => dom.removeEventListener('keydown', handler);
+  }, [unifiedEditor, openLinkDialog]);
+
+  // Open link in new tab on plain click (Google Docs behavior).
+  useEffect(() => {
+    const editorEl = editorContainerRef.current;
+    if (!editorEl) return;
+    const handler = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement | null)?.closest?.('a.xyreg-link, a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      // Ignore doc-mention spans that happen to be wrapped elsewhere.
+      if (anchor.closest('[data-doc-mention]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const href = anchor.getAttribute('href');
+      if (href) window.open(href, '_blank', 'noopener,noreferrer');
+    };
+    editorEl.addEventListener('click', handler);
+    return () => editorEl.removeEventListener('click', handler);
+  }, []);
+
+  // Map docId → owner name. `useCompanyUsers` already fetched company teammates.
+  const companyOwnerName = useMemo(() => {
+    const owner = companyUsers.find((u) => u.is_owner);
+    return owner?.name || owner?.email || undefined;
+  }, [companyUsers]);
+
+  // Resolve user metadata for a person-mention chip by id/email lookup into
+  // the already-fetched company users list.
+  const resolvePersonFromChip = useCallback(
+    (chip: HTMLElement): PersonMentionHoverData | null => {
+      const id = chip.getAttribute('data-id');
+      const emailAttr = chip.getAttribute('data-email');
+      const name = (chip.textContent || '').trim();
+      const match = companyUsers.find(
+        (u) => (id && u.id === id) || (emailAttr && u.email === emailAttr) || u.name === name,
+      );
+      const rect = chip.getBoundingClientRect();
+      return {
+        userId: id,
+        name: match?.name || name || 'User',
+        email: match?.email || emailAttr || undefined,
+        role: match?.role,
+        department: match?.department,
+        avatarUrl: match?.avatar,
+        coords: { left: rect.left, top: rect.bottom + 6 },
+      };
+    },
+    [companyUsers],
+  );
+
+  useEffect(() => {
+    const editorEl = editorContainerRef.current;
+    if (!editorEl) return;
+
+    const clearTimer = () => {
+      if (hoverCloseTimer.current) {
+        window.clearTimeout(hoverCloseTimer.current);
+        hoverCloseTimer.current = null;
+      }
+    };
+
+    const handleOver = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      const doc = el.closest?.('[data-doc-mention]') as HTMLElement | null;
+      const person = el.closest?.('[data-person-mention]') as HTMLElement | null;
+      const link = el.closest?.('a.xyreg-link, a[href]') as HTMLAnchorElement | null;
+
+      if (doc) {
+        clearTimer();
+        const rect = doc.getBoundingClientRect();
+        setDocHover({
+          docId: doc.getAttribute('data-id'),
+          docName: doc.textContent || 'Document',
+          ownerName: companyOwnerName,
+          coords: { left: rect.left, top: rect.bottom + 6 },
+        });
+        setPersonHover(null);
+        setLinkHover(null);
+        return;
+      }
+      if (person) {
+        clearTimer();
+        setPersonHover(resolvePersonFromChip(person));
+        setDocHover(null);
+        setLinkHover(null);
+        return;
+      }
+      if (link && !link.closest('[data-doc-mention]')) {
+        clearTimer();
+        const rect = link.getBoundingClientRect();
+        const href = link.getAttribute('href') || '';
+        if (href) {
+          linkHoverElementRef.current = link;
+          setLinkHover({ href, coords: { left: rect.left, top: rect.bottom + 6 } });
+          setDocHover(null);
+          setPersonHover(null);
+        }
+      }
+    };
+
+    const handleOut = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      const over =
+        el.closest?.('[data-doc-mention]') ||
+        el.closest?.('[data-person-mention]') ||
+        el.closest?.('a.xyreg-link, a[href]');
+      if (!over) return;
+      clearTimer();
+      // Small delay so the user can move the cursor onto the card itself.
+      hoverCloseTimer.current = window.setTimeout(() => {
+        setDocHover(null);
+        setPersonHover(null);
+        setLinkHover(null);
+      }, 150);
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement | null)?.closest?.('[data-doc-mention]') as HTMLElement | null;
+      if (!target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const docName = target.textContent || '';
+      navigateToDoc(docName);
+    };
+
+    editorEl.addEventListener('mouseover', handleOver);
+    editorEl.addEventListener('mouseout', handleOut);
+    editorEl.addEventListener('click', handleClick);
+    return () => {
+      editorEl.removeEventListener('mouseover', handleOver);
+      editorEl.removeEventListener('mouseout', handleOut);
+      editorEl.removeEventListener('click', handleClick);
+      clearTimer();
+    };
+  }, [companyOwnerName, navigateToDoc, resolvePersonFromChip]);
+
+  const cancelHoverClose = useCallback(() => {
+    if (hoverCloseTimer.current) {
+      window.clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+  }, []);
+  const scheduleHoverClose = useCallback(() => {
+    if (hoverCloseTimer.current) window.clearTimeout(hoverCloseTimer.current);
+    hoverCloseTimer.current = window.setTimeout(() => {
+      setDocHover(null);
+      setPersonHover(null);
+      setLinkHover(null);
+    }, 150);
+  }, []);
+
+  const insertMentionAtRange = useCallback(
+    (item: MentionItem) => {
+      if (item.disabled) return;
+
+      // Intercept submenu-navigation items before inserting anything.
+      if (item.payload?.action === 'open-dropdown-submenu') {
+        setMentionSubmenu('dropdown');
+        setMentionQuery('');
+        setMentionHighlight(0);
+        return;
+      }
+      if (item.payload?.action === 'open-placeholder-submenu') {
+        setMentionSubmenu('placeholder');
+        setMentionQuery('');
+        setMentionHighlight(0);
+        return;
+      }
+
+      const editor = editorInstanceRef.current;
+      const range = mentionRangeRef.current;
+      if (!editor || !range) return;
+      const docSize = editor.state.doc.content.size;
+      const safeRange = {
+        from: Math.max(0, Math.min(range.from, docSize)),
+        to: Math.max(0, Math.min(range.to, docSize)),
+      };
+
+      // Figure out the text to insert and which mark to attach.
+      let text: string;
+      let markName: 'docMention' | 'personMention' | 'smartChip';
+      let markAttrs: Record<string, any> = {};
+
+      if (item.type === 'document') {
+        text = item.label;
+        markName = 'docMention';
+        markAttrs = { id: item.payload?.id ?? null, slug: item.payload?.slug ?? null };
+      } else if (item.type === 'person') {
+        text = item.label;
+        markName = 'personMention';
+        markAttrs = { id: item.payload?.id ?? null, email: item.payload?.email ?? null };
+      } else if (item.type === 'smart-chip') {
+        const chipType = item.payload?.chipType || 'placeholder';
+        if (chipType === 'date') {
+          text = new Date().toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          markAttrs = { chipType };
+        } else if (chipType === 'dropdown') {
+          // Dropdown preset: text = default value, options stored on the mark.
+          text = `${item.payload?.value || 'Select option'} ▾`;
+          markAttrs = { chipType };
+        } else {
+          // Placeholder: if bound to a variable, resolve it now; if 'custom',
+          // prompt for text. Text shows bracketed so it reads as a fillable.
+          const varName: string | undefined = item.payload?.variable;
+          if (varName === 'custom') {
+            // eslint-disable-next-line no-alert
+            const custom = window.prompt('Placeholder text:', '');
+            if (custom === null) return; // cancelled
+            text = `{${custom || 'Placeholder'}}`;
+            markAttrs = { chipType, variable: 'custom' };
+          } else {
+            const resolved = item.payload?.value || 'Placeholder';
+            text = `{${resolved}}`;
+            markAttrs = { chipType, variable: varName ?? null };
+          }
+        }
+        markName = 'smartChip';
+      } else {
+        return;
+      }
+
+      // Use a prosemirror transaction directly — the chain()+setMark approach
+      // occasionally loses the mark when the insertion sits next to another
+      // mention. Building the text node with the mark attached guarantees it
+      // lands on the document.
+      const schema = editor.schema;
+      const markType = schema.marks[markName];
+      if (!markType) return;
+
+      const mark = markType.create(markAttrs);
+      const textNode = schema.text(text, [mark]);
+      const tr = editor.state.tr;
+      tr.replaceRangeWith(safeRange.from, safeRange.to, textNode);
+      const afterText = safeRange.from + text.length;
+      // Trailing plain space (no mark) so the caret lands outside the chip.
+      tr.insertText(' ', afterText);
+      // Move caret after the space.
+      tr.setSelection(TextSelection.create(tr.doc, afterText + 1));
+      editor.view.dispatch(tr);
+      editor.view.focus();
+      closeMention();
+    },
+    [closeMention],
+  );
+
+  // Watch the editor for a `@` token at the caret and position the popup.
+  useEffect(() => {
+    const editor = unifiedEditor;
+    if (!editor) return;
+
+    const update = () => {
+      const { state, view } = editor;
+      const { selection } = state;
+      if (!selection.empty) {
+        closeMention();
+        return;
+      }
+      const from = selection.from;
+      const $from = state.doc.resolve(from);
+      const textBefore = $from.parent.textBetween(
+        Math.max(0, $from.parentOffset - 50),
+        $from.parentOffset,
+        undefined,
+        '\ufffc',
+      );
+      const match = textBefore.match(/(?:^|\s)@([\w-]*)$/);
+      if (!match) {
+        closeMention();
+        return;
+      }
+      const query = match[1];
+      const tokenStart = from - (match[0].length - (match[0].startsWith('@') ? 0 : 1));
+      mentionRangeRef.current = { from: tokenStart, to: from };
+      setMentionQuery(query);
+      setMentionOpen(true);
+      try {
+        const coords = view.coordsAtPos(tokenStart);
+        setMentionCoords({ left: coords.left, top: coords.bottom + 4 });
+      } catch {
+        setMentionCoords(null);
+      }
+    };
+
+    editor.on('selectionUpdate', update);
+    editor.on('update', update);
+    return () => {
+      editor.off('selectionUpdate', update);
+      editor.off('update', update);
+    };
+  }, [unifiedEditor, closeMention]);
+
+  // Arrow keys / Enter / Escape navigation on the popup. Uses the editor view's
+  // DOM so keys pressed while focus is inside the editor still reach us.
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const dom = unifiedEditor?.view.dom;
+    if (!dom) return;
+    const handler = (e: KeyboardEvent) => {
+      if (!selectableItems.length) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionHighlight((h) => (h + 1) % selectableItems.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionHighlight((h) => (h - 1 + selectableItems.length) % selectableItems.length);
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        insertMentionAtRange(selectableItems[mentionHighlight]);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        // In a submenu, Escape returns to the main menu instead of closing.
+        if (mentionSubmenu) {
+          setMentionSubmenu(null);
+          setMentionQuery('');
+          setMentionHighlight(0);
+        } else {
+          closeMention();
+        }
+      }
+    };
+    dom.addEventListener('keydown', handler, true);
+    return () => dom.removeEventListener('keydown', handler, true);
+  }, [mentionOpen, selectableItems, mentionHighlight, unifiedEditor, insertMentionAtRange, closeMention, mentionSubmenu]);
 
   // Handler for AI-generated content being pasted into the editor.
   // mode='replace' deletes the existing section body (between the matching h2
@@ -586,6 +1436,15 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   const lastNumberingRef = useRef(showSectionNumbers);
   const editorInitializedRef = useRef(false);
 
+  // Autosave plumbing: debounced save on user edits. `programmaticUpdateRef`
+  // suppresses the save when we ourselves set content (e.g. initial hydration,
+  // AI auto-fill). `handleSaveRef` lets `onUpdate` — defined before handleSave —
+  // call the latest handleSave without stale closures.
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const programmaticUpdateRef = useRef(false);
+  const handleSaveRef = useRef<(silent?: boolean) => Promise<void> | void>(() => {});
+  const isSavingRef = useRef(false);
+
   // Set editor content when editor becomes ready, when switching documents,
   // or when sections are updated externally (e.g. AI Auto-Fill)
   useEffect(() => {
@@ -612,10 +1471,148 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       lastTemplateIdRef.current = template?.id;
       lastSectionsJsonRef.current = sectionsJson;
       lastNumberingRef.current = showSectionNumbers;
+      // Mark this update as programmatic so onUpdate does not schedule an
+      // autosave for a content replacement we initiated ourselves.
+      programmaticUpdateRef.current = true;
       unifiedEditor.commands.setContent(newHtml);
+      // setContent fires onUpdate synchronously; clear on next tick so real
+      // user keystrokes that land after are treated as edits.
+      setTimeout(() => { programmaticUpdateRef.current = false; }, 0);
       setRefreshTrigger(prev => prev + 1);
     }
   }, [template?.id, template?.sections, companyName, unifiedEditor, showSectionNumbers]);
+
+  // Auto-open the draft empty-state modal (Generate Manually / Auto-fill by AI
+  // / Copy from SOP) when the draft has no filled sections. Fires once per
+  // template id per mount — the guard ref is set unconditionally on first
+  // eligible run so that parent re-renders (which often pass a new `sections`
+  // array reference with the same contents) don't re-fire this.
+  useEffect(() => {
+    const templateId = template?.id;
+    const sections = template?.sections || [];
+    if (!templateId || sections.length === 0) return;
+    if (emptyStateOpenedForTemplateRef.current === templateId) return;
+    emptyStateOpenedForTemplateRef.current = templateId;
+
+    const allEmpty = sections.every((s: any) => {
+      const items = Array.isArray(s.content) ? s.content : [];
+      // Ignore scaffolding-only content types — a draft isn't "filled" until
+      // there's real body text somewhere.
+      const bodyItems = items.filter(
+        (it: any) => it && it.type !== 'heading' && it.type !== 'table',
+      );
+      if (bodyItems.length === 0) return true;
+      return bodyItems.every((it: any) => {
+        const raw = (it.content || '').trim();
+        if (!raw || raw === '[AI_PROMPT_NEEDED]') return true;
+        // Strip HTML tags and &nbsp;'s — a seeded `<p></p>` or `<p>&nbsp;</p>`
+        // should still count as empty.
+        const textOnly = raw.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+        return textOnly === '';
+      });
+    });
+
+    if (allEmpty) {
+      setShowEmptyStateModal(true);
+    }
+  }, [template?.id, template?.sections?.length]);
+
+  const handleEmptyStateAutoFill = useCallback(() => {
+    setShowEmptyStateModal(false);
+    setShowAutoFillDialog(true);
+  }, []);
+
+  const handleEmptyStateCopyFromSOP = useCallback(() => {
+    setShowEmptyStateModal(false);
+    setShowSopPickerModal(true);
+  }, []);
+
+  // Keep the ProseMirror highlight decoration in sync with the popover state.
+  useEffect(() => {
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    if (inlineAIEdit) {
+      setAIEditHighlight(editor, { from: inlineAIEdit.from, to: inlineAIEdit.to });
+    } else {
+      setAIEditHighlight(editor, null);
+    }
+    return () => setAIEditHighlight(editor, null);
+  }, [inlineAIEdit]);
+
+  const handleSOPSelected = useCallback((sop: SOPFullContent) => {
+    const sections = sopContentToSections(sop);
+    onContentUpdate?.('full-document-content', JSON.stringify(sections));
+    toast.success(`Copied content from ${sop.sopNumber}`);
+  }, [onContentUpdate]);
+
+  // Bubble-menu action: push the current selection into the AI chat panel
+  // as a context chip with from/to positions so the applier can replace the
+  // exact span when the AI proposes a span-rewrite.
+  const handleAddSelectionToChat = useCallback(() => {
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) return;
+    const text = editor.state.doc.textBetween(from, to, '\n').trim();
+    if (!text) return;
+    setRightPanelOpen(true);
+    setNarrowRightOpen(true);
+    // Defer so a newly-mounted RightPanel / DocumentAIChatPanel has time to
+    // attach their window-event listeners before we dispatch.
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('xyreg:open-ai-panel'));
+      window.dispatchEvent(
+        new CustomEvent('xyreg:ai-chat-quote', { detail: { text, from, to } }),
+      );
+    }, 30);
+  }, []);
+
+  // Bubble-menu action: capture selection snapshot and open the inline AI
+  // edit popover. Uses the click target's bounding rect as anchor — rock-solid
+  // even if the DOM selection was collapsed by the button click. Falls back
+  // to coordsAtPos when the button rect isn't provided.
+  const handleOpenInlineAIEdit = useCallback((buttonRect?: DOMRect) => {
+    const editor = editorInstanceRef.current;
+    if (!editor) {
+      toast.error('Editor not ready');
+      return;
+    }
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      toast.error('Please select some text first');
+      return;
+    }
+    const text = editor.state.doc.textBetween(from, to, '\n');
+    let rect: { top: number; bottom: number; left: number; right: number };
+    if (buttonRect) {
+      rect = {
+        top: buttonRect.top,
+        bottom: buttonRect.bottom,
+        left: buttonRect.left,
+        right: buttonRect.right,
+      };
+    } else {
+      try {
+        const sc = editor.view.coordsAtPos(from);
+        const ec = editor.view.coordsAtPos(to);
+        rect = {
+          top: Math.min(sc.top, ec.top),
+          bottom: Math.max(sc.bottom, ec.bottom),
+          left: Math.min(sc.left, ec.left),
+          right: Math.max(sc.right, ec.right),
+        };
+      } catch {
+        rect = { top: 100, bottom: 120, left: 100, right: 500 };
+      }
+    }
+    setInlineAIEdit({
+      text,
+      html: text,
+      from,
+      to,
+      anchorRect: rect,
+    });
+  }, []);
 
   // Check for existing document ID when template changes
   useEffect(() => {
@@ -753,7 +1750,7 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
     return updatedSections;
   }, [unifiedEditor, onContentUpdate, template?.sections]);
 
-  const handleSave = async () => {
+  const handleSave = async (silent: boolean = false) => {
     // If parent wants to handle save (e.g. CI-first flow), delegate entirely
     if (onCustomSave) {
       // Sync editor content first so parent has latest data
@@ -764,16 +1761,23 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
 
     try {
       if (!activeCompanyRole?.companyId) {
-        toast.error('Company information not available');
+        if (!silent) toast.error('Company information not available');
         return;
       }
 
       // For uploaded documents, prevent duplicate saves
       if (isUploadedDocument && uploadedDocumentSaved) {
-        toast.info('This uploaded document has already been saved', {
-          description: 'You can edit it from the My Documents list'
-        });
+        if (!silent) {
+          toast.info('This uploaded document has already been saved', {
+            description: 'You can edit it from the My Documents list'
+          });
+        }
         return;
+      }
+      isSavingRef.current = true;
+      if (silent) {
+        if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+        setSaveStatus('saving');
       }
 
       // Sync editor content to get latest sections
@@ -830,34 +1834,71 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
         // Store the document ID for version tracking
         setCurrentDocumentId(result.id || null);
 
-        // Mark uploaded document as saved
-        if (isUploadedDocument && !uploadedDocumentSaved) {
+        // Mark uploaded document as saved. Skip during silent autosaves because
+        // the parent often transitions UI state (closes modal, redirects to the
+        // saved record) on this callback — not what we want mid-edit.
+        if (isUploadedDocument && !uploadedDocumentSaved && !silent) {
           onUploadedDocumentSaved?.();
         }
 
-        const scopeLabel = selectedScope === 'product' ? 'Device Documents' : 'Company Documents';
-        const successMessage = existingDocumentId ? 'Document updated successfully!' : 'Draft saved successfully!';
-        toast.success(successMessage, {
-          description: `Your document is now available in My Documents and ${scopeLabel}`
-        });
+        if (!silent) {
+          const scopeLabel = selectedScope === 'product' ? 'Device Documents' : 'Company Documents';
+          const successMessage = existingDocumentId ? 'Document updated successfully!' : 'Draft saved successfully!';
+          toast.success(successMessage, {
+            description: `Your document is now available in My Documents and ${scopeLabel}`
+          });
+        }
 
         // Add note through parent handler to update UI immediately
-        if (onAddAutoNote) {
+        // (skip the auto-note spam during silent autosaves).
+        if (onAddAutoNote && !silent) {
           onAddAutoNote(autoNote);
         }
 
-        // Trigger refresh of document list
-        onDocumentSaved?.();
+        // Silent autosaves must not fire parent callbacks that might close the
+        // editing modal or re-navigate. Only manual saves propagate.
+        if (!silent) {
+          onDocumentSaved?.();
+        }
+
+        if (silent) {
+          setSaveStatus('saved');
+          if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+          savedFadeTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
+        }
       } else {
         throw new Error(result.error || 'Failed to save document');
       }
     } catch (error) {
       console.error('Error saving document:', error);
-      toast.error('Failed to save draft', {
-        description: 'Please try again or check your connection'
-      });
+      if (!silent) {
+        toast.error('Failed to save draft', {
+          description: 'Please try again or check your connection'
+        });
+      } else {
+        setSaveStatus('error');
+        if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+        savedFadeTimerRef.current = setTimeout(() => setSaveStatus('idle'), 4000);
+      }
+    } finally {
+      isSavingRef.current = false;
     }
   };
+
+  // Keep the ref in sync so the TipTap onUpdate closure always calls the
+  // latest handleSave (closures in useEditor would otherwise go stale).
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  });
+
+  // Clean up any pending autosave / fade timers when the editor unmounts so we
+  // don't fire a save against a stale document or flip state after navigation.
+  useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+      if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+    };
+  }, []);
 
   const handleDownload = async () => {
     try {
@@ -931,16 +1972,51 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                   </Button>
                 </div>
               ) : (
-                <h1 
-                  className="text-lg font-semibold text-foreground cursor-pointer hover:bg-muted/50 px-2 py-1 rounded"
-                  onClick={() => setIsEditingTitle(true)}
-                  title="Click to edit title"
-                >
-                  {(() => {
-                    const cleanName = (template?.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '');
-                    return cleanName || 'Untitled Document';
-                  })()}
-                </h1>
+                <div className="flex items-center gap-3">
+                  <h1
+                    className="text-lg font-semibold text-foreground cursor-pointer hover:bg-muted/50 px-2 py-1 rounded"
+                    onClick={() => setIsEditingTitle(true)}
+                    title="Click to edit title"
+                  >
+                    {(() => {
+                      const cleanName = (template?.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '');
+                      return cleanName || 'Untitled Document';
+                    })()}
+                  </h1>
+                  {/* Google-Docs-style autosave indicator placed next to the title. */}
+                  {saveStatus !== 'idle' && (
+                    <span
+                      className={
+                        'inline-flex items-center gap-1.5 text-sm font-medium select-none px-2 py-0.5 rounded-md transition-opacity ' +
+                        (saveStatus === 'error'
+                          ? 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-950/40'
+                          : saveStatus === 'saved'
+                            ? 'text-green-700 bg-green-50 dark:text-green-400 dark:bg-green-950/40'
+                            : 'text-muted-foreground bg-muted/40')
+                      }
+                      aria-live="polite"
+                    >
+                      {saveStatus === 'saving' && (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Saving…
+                        </>
+                      )}
+                      {saveStatus === 'saved' && (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Saved
+                        </>
+                      )}
+                      {saveStatus === 'error' && (
+                        <>
+                          <AlertCircle className="w-3.5 h-3.5" />
+                          Save failed — will retry on next edit
+                        </>
+                      )}
+                    </span>
+                  )}
+                </div>
               )}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <span>For {template?.productContext?.name || (selectedScope === 'product' ? 'Product' : 'Company')}</span>
@@ -974,15 +2050,6 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                     <Wand2 className="w-4 h-4 mr-2" />
                     Auto-Fill Sections
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {
-                    if (showDocumentAIBar) return;
-                    const allContent = unifiedEditor?.getText()?.slice(0, 8000) || '';
-                    setSelectedSection({ title: template?.name || 'Document', content: allContent });
-                    setShowDocumentAIBar(true);
-                  }}>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Review Document
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               <Tooltip>
@@ -997,14 +2064,6 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>AI Validate</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button size="icon" onClick={handleSave} className="h-8 w-8">
-                    <Save className="w-4 h-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Save Draft</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1100,6 +2159,15 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
             title="Strikethrough"
           >
             <Strikethrough className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            variant={unifiedEditor.isActive('link') ? 'default' : 'ghost'}
+            size="sm"
+            onClick={openLinkDialog}
+            className="h-7 w-7 p-0"
+            title="Insert link (Ctrl+K)"
+          >
+            <Link2 className="w-3.5 h-3.5" />
           </Button>
 
           <Separator orientation="vertical" className="h-5 mx-1" />
@@ -1270,13 +2338,20 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
 
       {/* Document Content with Outline + Editor + RightPanel */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Outline: rendered on desktop when not collapsed; overlay on narrow */}
+        {/* Persistent left rail (icon strip + optional panel). Always visible. */}
         {!isNarrow && (
-          <DocumentOutlinePanel
+          <LeftRailTabs
             editorContainerRef={editorContainerRef}
             refreshTrigger={refreshTrigger}
             externalCollapsed={outlineCollapsed}
             onCollapsedChange={setOutlineCollapsed}
+            documentId={docxSourceDocumentId || editingDocumentId || currentDocumentId}
+            companyId={companyId || activeCompanyRole?.companyId}
+            productId={selectedProductId}
+            showSectionNumbers={showSectionNumbers}
+            onShowSectionNumbersChange={onShowSectionNumbersChange}
+            configDisabled={disabled}
+            onIsRecordChange={onIsRecordChange}
           />
         )}
 
@@ -1287,9 +2362,16 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
             onClick={() => setNarrowOutlineOpen(false)}
           >
             <div className="bg-background h-full shadow-xl" onClick={(e) => e.stopPropagation()}>
-              <DocumentOutlinePanel
+              <LeftRailTabs
                 editorContainerRef={editorContainerRef}
                 refreshTrigger={refreshTrigger}
+                documentId={docxSourceDocumentId || editingDocumentId || currentDocumentId}
+                companyId={companyId || activeCompanyRole?.companyId}
+                productId={selectedProductId}
+                showSectionNumbers={showSectionNumbers}
+                onShowSectionNumbersChange={onShowSectionNumbersChange}
+                configDisabled={disabled}
+                onIsRecordChange={onIsRecordChange}
               />
             </div>
             <div className="flex-1 bg-black/30" />
@@ -1298,20 +2380,6 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
 
         {/* Center: Document Editor */}
         <div id="draft-editor-scroll-container" className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/30 relative">
-          {/* Hamburger to reveal the outline — desktop (when collapsed) or narrow */}
-          {((isNarrow) || (!isNarrow && outlineCollapsed)) && (
-            <button
-              className="sticky top-3 left-3 z-20 p-2 rounded-lg bg-background/90 shadow-sm border hover:bg-muted transition-colors"
-              onClick={() => {
-                if (isNarrow) setNarrowOutlineOpen(true);
-                else setOutlineCollapsed(false);
-              }}
-              title="Show document outline"
-              style={{ position: 'sticky', float: 'left', marginLeft: '12px', marginTop: '12px' }}
-            >
-              <AlignJustify className="w-5 h-5 text-muted-foreground" />
-            </button>
-          )}
           <div
             className="max-w-[210mm] mx-auto my-8 bg-background shadow-md rounded-sm min-h-[297mm] p-0"
             style={{
@@ -1351,7 +2419,112 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
             {/* Unified Single Editor */}
             <div ref={editorContainerRef} className="px-8 pb-8">
               {unifiedEditor ? (
-                <EditorContent editor={unifiedEditor} />
+                <>
+                  <EditorContent editor={unifiedEditor} />
+                  <BubbleMenu
+                    editor={unifiedEditor}
+                    shouldShow={({ editor, from, to }) => {
+                      // Only show when there is a non-empty text selection and
+                      // the editor is focused/editable.
+                      if (!editor.isEditable) return false;
+                      if (from === to) return false;
+                      return true;
+                    }}
+                    options={{ placement: 'top', offset: 8 }}
+                    className="flex items-center gap-0.5 rounded-md border bg-background shadow-lg p-1"
+                  >
+                    <Button
+                      variant={unifiedEditor.isActive('bold') ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => unifiedEditor.chain().focus().toggleBold().run()}
+                      className="h-7 w-7 p-0"
+                      title="Bold (Ctrl+B)"
+                    >
+                      <Bold className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant={unifiedEditor.isActive('italic') ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => unifiedEditor.chain().focus().toggleItalic().run()}
+                      className="h-7 w-7 p-0"
+                      title="Italic (Ctrl+I)"
+                    >
+                      <Italic className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant={unifiedEditor.isActive('strike') ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => unifiedEditor.chain().focus().toggleStrike().run()}
+                      className="h-7 w-7 p-0"
+                      title="Strikethrough"
+                    >
+                      <Strikethrough className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant={unifiedEditor.isActive('link') ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={openLinkDialog}
+                      className="h-7 w-7 p-0"
+                      title="Insert link (Ctrl+K)"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Separator orientation="vertical" className="h-5 mx-1" />
+                    <Button
+                      variant={unifiedEditor.isActive('heading', { level: 1 }) ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => unifiedEditor.chain().focus().toggleHeading({ level: 1 }).run()}
+                      className="h-7 w-7 p-0"
+                      title="Heading 1"
+                    >
+                      <Heading1 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant={unifiedEditor.isActive('heading', { level: 2 }) ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => unifiedEditor.chain().focus().toggleHeading({ level: 2 }).run()}
+                      className="h-7 w-7 p-0"
+                      title="Heading 2"
+                    >
+                      <Heading2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant={unifiedEditor.isActive('heading', { level: 3 }) ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => unifiedEditor.chain().focus().toggleHeading({ level: 3 }).run()}
+                      className="h-7 w-7 p-0"
+                      title="Heading 3"
+                    >
+                      <Heading3 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Separator orientation="vertical" className="h-5 mx-1" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        handleOpenInlineAIEdit(rect);
+                      }}
+                      className="h-7 px-2 gap-1 text-primary hover:bg-primary/10"
+                      title="Edit with AI"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span className="text-xs font-medium">Edit</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onMouseDown={(e) => { e.preventDefault(); handleAddSelectionToChat(); }}
+                      className="h-7 px-2 gap-1"
+                      title="Add to AI chat"
+                    >
+                      <MessageSquarePlus className="w-3.5 h-3.5" />
+                      <span className="text-xs font-medium">Add to Chat</span>
+                    </Button>
+                  </BubbleMenu>
+                </>
               ) : (
                 <div className="text-center py-12">
                   <FileText className="w-16 h-16 mx-auto mb-4 opacity-50 text-gray-500" />
@@ -1361,6 +2534,63 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                   </p>
                 </div>
               )}
+              {mentionOpen && (
+                <EditorMentionPopup
+                  sections={mentionSections}
+                  selectableItems={selectableItems}
+                  query={mentionQuery}
+                  highlight={mentionHighlight}
+                  coords={mentionCoords}
+                  onHover={setMentionHighlight}
+                  onSelect={insertMentionAtRange}
+                />
+              )}
+              <DocMentionHoverCard
+                data={docHover}
+                onMouseEnter={cancelHoverClose}
+                onMouseLeave={scheduleHoverClose}
+                onOpen={navigateToDoc}
+              />
+              <PersonMentionHoverCard
+                data={personHover}
+                onMouseEnter={cancelHoverClose}
+                onMouseLeave={scheduleHoverClose}
+              />
+              <LinkHoverCard
+                data={linkHover}
+                onMouseEnter={cancelHoverClose}
+                onMouseLeave={scheduleHoverClose}
+                onEdit={(href) => {
+                  const editor = editorInstanceRef.current;
+                  const el = linkHoverElementRef.current;
+                  if (editor && el) {
+                    const pos = posInsideLink(editor, el);
+                    if (pos !== null) {
+                      editor.chain().focus().setTextSelection(pos).extendMarkRange('link').run();
+                    }
+                  }
+                  setLinkHover(null);
+                  setLinkDialogUrl(href);
+                  setLinkDialogText('');
+                  setLinkDialogMode('edit');
+                  setLinkDialogOpen(true);
+                }}
+                onRemove={() => {
+                  const editor = editorInstanceRef.current;
+                  const el = linkHoverElementRef.current;
+                  setLinkHover(null);
+                  if (!editor || !el) return;
+                  const pos = posInsideLink(editor, el);
+                  if (pos === null) return;
+                  editor
+                    .chain()
+                    .focus()
+                    .setTextSelection(pos)
+                    .extendMarkRange('link')
+                    .unsetLink()
+                    .run();
+                }}
+              />
             </div>
 
             {/* Professional SOP Footer */}
@@ -1491,7 +2721,43 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
         companyId={companyId}
         productId={selectedProductId}
         onContentUpdate={onContentUpdate}
+        onBack={() => setShowEmptyStateModal(true)}
       />
+
+      {/* Empty-state chooser shown when opening a draft with no content */}
+      <DraftEmptyStateModal
+        open={showEmptyStateModal}
+        onOpenChange={setShowEmptyStateModal}
+        onGenerateManually={() => setShowEmptyStateModal(false)}
+        onAutoFillByAI={handleEmptyStateAutoFill}
+        onCopyFromSOP={handleEmptyStateCopyFromSOP}
+      />
+
+      {/* SOP picker for Copy-from-SOP flow */}
+      <SOPPickerModal
+        open={showSopPickerModal}
+        onOpenChange={setShowSopPickerModal}
+        onSelect={handleSOPSelected}
+        onBack={() => {
+          setShowSopPickerModal(false);
+          setShowEmptyStateModal(true);
+        }}
+      />
+
+      {/* Inline "Edit with AI" popover anchored to the current selection */}
+      {inlineAIEdit && unifiedEditor && (
+        <InlineAIEditPopover
+          editor={unifiedEditor}
+          selectedText={inlineAIEdit.text}
+          selectedHTML={inlineAIEdit.html}
+          selectionFrom={inlineAIEdit.from}
+          selectionTo={inlineAIEdit.to}
+          anchorRect={inlineAIEdit.anchorRect}
+          sectionTitle={template?.name}
+          companyId={companyId || activeCompanyRole?.companyId}
+          onClose={() => setInlineAIEdit(null)}
+        />
+      )}
 
       {/* AI Document Validation Dialog */}
       <AIDocumentValidationDialog
@@ -1502,6 +2768,55 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
         companyName={activeCompanyRole?.companyName}
         onContentUpdate={onContentUpdate}
       />
+
+      {/* Insert / edit hyperlink */}
+      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{linkDialogMode === 'edit' ? 'Edit link' : 'Insert link'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {linkDialogMode === 'create' && !linkDialogText && (
+              <div className="space-y-1">
+                <Label htmlFor="link-text" className="text-xs text-muted-foreground">Display text (optional)</Label>
+                <Input
+                  id="link-text"
+                  placeholder="Text to show"
+                  value={linkDialogText}
+                  onChange={(e) => setLinkDialogText(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label htmlFor="link-url" className="text-xs text-muted-foreground">URL</Label>
+              <Input
+                id="link-url"
+                autoFocus
+                placeholder="https://example.com"
+                value={linkDialogUrl}
+                onChange={(e) => setLinkDialogUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyLinkFromDialog();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            {linkDialogMode === 'edit' && (
+              <Button variant="ghost" onClick={removeLink} className="text-destructive mr-auto">
+                Remove link
+              </Button>
+            )}
+            <Button variant="ghost" onClick={() => setLinkDialogOpen(false)}>Cancel</Button>
+            <Button onClick={applyLinkFromDialog} disabled={!linkDialogUrl.trim()}>
+              {linkDialogMode === 'edit' ? 'Save' : 'Apply'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

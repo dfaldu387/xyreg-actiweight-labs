@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -164,13 +165,16 @@ export function HazardAIFillPanel({
       });
 
       if (error) throw error;
+      if (data?.error === 'NO_CREDITS') { showNoCreditDialog(); return; }
       if (!data?.success) throw new Error(data?.error || "AI generation failed");
 
       setSuggestion(data.suggestion);
       setIsExpanded(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error("[HazardAIFillPanel] Error:", err);
-      toast.error("Failed to generate AI suggestions. Check your API key in Settings.");
+      if (err?.message !== 'NO_CREDITS') {
+        toast.error("Failed to generate AI suggestions. Check your API key in Settings.");
+      }
     } finally {
       setIsLoading(false);
     }

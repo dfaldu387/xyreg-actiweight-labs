@@ -49,11 +49,20 @@ export function RightPanel({
   className,
   disableSopMentions = false,
 }: RightPanelProps) {
-  // Shift global floating buttons (Prof. XyReg bot, Report-a-bug) left while this panel is mounted.
+  // Register this panel as an open right rail so page content (not global floating
+  // widgets) can respect its width. Floating widgets stay pinned to the bottom-right.
   useRegisterRightRail();
 
   const storageKey = useMemo(() => `xyreg.rightPanel.activeTab.${documentId ?? 'default'}`, [documentId]);
   const [activeTab, setActiveTab] = useState<RightPanelTab>('ai');
+
+  // Bridge: bubble menu "Add to Chat" dispatches xyreg:open-ai-panel so we
+  // switch to the AI tab even if the user was previously on Team/Comments.
+  useEffect(() => {
+    const handler = () => setActiveTab('ai');
+    window.addEventListener('xyreg:open-ai-panel', handler);
+    return () => window.removeEventListener('xyreg:open-ai-panel', handler);
+  }, []);
 
   // Resizable width: persisted, clamped to [280, 720].
   const widthStorageKey = 'xyreg.rightPanel.width';
@@ -70,8 +79,8 @@ export function RightPanel({
     try { localStorage.setItem(widthStorageKey, String(width)); } catch { /* ignore */ }
   }, [width]);
 
-  // Publish current rail width as a CSS var so global floating widgets
-  // (Prof. XyReg bot, Report-a-bug) can shift to clear the panel regardless of resize.
+  // Publish current rail width as a CSS var so page content can reserve space for
+  // the panel. Global floating widgets intentionally do NOT consume this variable.
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty('--xy-right-rail-width', `${width}px`);

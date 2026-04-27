@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -103,9 +103,49 @@ export function ClassificationTab({
   const [searchParams] = useSearchParams();
   const [pendingChange, setPendingChange] = useState<{ field: string; value: any } | null>(null);
   
-  // Check if in genesis or gap-analysis flow for visual highlighting
+  // Check if in a true guided flow for visual highlighting.
+  // NOTE: gap-analysis deep-links are NOT a guided flow — only the actual
+  // deep-link target gets the temporary amber pulse from the highlight effect.
   const returnTo = searchParams.get('returnTo');
-  const isGenesisFlow = returnTo === 'genesis' || returnTo === 'gap-analysis';
+  const isGenesisFlow = returnTo === 'genesis' || returnTo === 'venture-blueprint' || returnTo === 'investor-share';
+
+  // Deep-link highlight: poll for the target section (it may render after async
+  // product/device data lands), then scroll into view + strong amber pulse for 4s.
+  const highlight = searchParams.get('highlight');
+  useEffect(() => {
+    if (!highlight) return;
+    let cancelled = false;
+    let removeTimer: number | undefined;
+    const start = Date.now();
+    const tryHighlight = () => {
+      if (cancelled) return;
+      const el = document.getElementById(highlight);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add(
+          'ring-4', 'ring-amber-500', 'ring-offset-4',
+          'bg-amber-50', 'dark:bg-amber-950/30',
+          'rounded-lg', 'transition-all', 'duration-500'
+        );
+        removeTimer = window.setTimeout(() => {
+          el.classList.remove(
+            'ring-4', 'ring-amber-500', 'ring-offset-4',
+            'bg-amber-50', 'dark:bg-amber-950/30'
+          );
+        }, 4000);
+        return;
+      }
+      if (Date.now() - start < 2000) {
+        window.setTimeout(tryHighlight, 100);
+      }
+    };
+    const startTimer = window.setTimeout(tryHighlight, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startTimer);
+      if (removeTimer) window.clearTimeout(removeTimer);
+    };
+  }, [highlight]);
   
   // Completion states for highlighting
   const hasPrimaryRegulatoryType = Boolean(primaryRegulatoryType?.trim());
@@ -437,7 +477,7 @@ export function ClassificationTab({
       )}
 
       {/* Anatomical Location - Critical for classification */}
-      <div>
+      <div id="anatomical-location-section">
         <div className="flex items-center">
           <Label className="text-sm font-medium">{lang('deviceBasics.classification.anatomicalLocationLabel')}</Label>
           {renderScopeAndGov('classification_anatomicalLocation', rawKeyTechnologyCharacteristics?.anatomicalLocation)}

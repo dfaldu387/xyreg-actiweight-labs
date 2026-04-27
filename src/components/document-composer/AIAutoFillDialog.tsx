@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { X, BookOpen, ChevronDown, Eye, Circle, Shield } from 'lucide-react';
+import { X, BookOpen, ChevronDown, Eye, Circle, Shield, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,9 @@ import { DocumentTemplate } from '@/types/documentComposer';
 import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
 import { ReferenceDocumentService } from '@/services/referenceDocumentService';
 import { fetchFullAIContext, type AIContextSources } from '@/services/aiContextAggregatorService';
+import { extractTextFromBlob } from '@/utils/gapChecklistTextExtractor';
+import { useApiKeyStatus } from '@/hooks/useCompanyApiKeys';
+import { AlertTriangle } from 'lucide-react';
 
 /** Standards that should always be pre-checked */
 const ALWAYS_PRECHECK = ['ISO 13485', 'ISO 14971', 'IEC 62366'];
@@ -24,6 +28,7 @@ interface AIAutoFillDialogProps {
   companyId?: string;
   productId?: string;
   onContentUpdate: (contentId: string, newContent: string) => void;
+  onBack?: () => void;
 }
 
 type SectionStatus = 'pending' | 'generating' | 'done' | 'error';
@@ -45,6 +50,7 @@ export function AIAutoFillDialog({
   companyId,
   productId,
   onContentUpdate,
+  onBack,
 }: AIAutoFillDialogProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [sections, setSections] = useState<SectionState[]>(() => buildSections(template));
@@ -59,6 +65,11 @@ export function AIAutoFillDialog({
   const [contextSources, setContextSources] = useState<AIContextSources | null>(null);
   const isMountedRef = useRef(true);
   const { documents: refDocuments } = useReferenceDocuments(companyId);
+  const { googleVertexAvailable, isLoading: isKeyStatusLoading } = useApiKeyStatus(companyId || '');
+
+  // Cache extracted text per reference doc id so we don't re-parse on retries
+  const extractedTextCacheRef = useRef<Map<string, string>>(new Map());
+  const [refDocStatus, setRefDocStatus] = useState<Record<string, { state: 'idle' | 'extracting' | 'ready' | 'error'; info?: string }>>({});
 
   const isAborted = () => !isMountedRef.current || !!abortControllerRef.current?.signal.aborted;
 
@@ -201,24 +212,52 @@ export function AIAutoFillDialog({
     if (selectedRefDocIds.length === 0) return '';
     const selectedDocs = refDocuments.filter((d) => selectedRefDocIds.includes(d.id));
     const textParts: string[] = [];
+    const PER_DOC_CHAR_CAP = 60000;
     for (const doc of selectedDocs) {
       if (isAborted()) return '';
+      const cached = extractedTextCacheRef.current.get(doc.id);
+      if (cached) {
+        textParts.push(`[${doc.file_name} — extracted text]\n${cached}`);
+        continue;
+      }
       try {
         const ext = doc.file_name.split('.').pop()?.toLowerCase() || '';
         if (['txt', 'md', 'csv', 'json', 'xml', 'html'].includes(ext)) {
+          setRefDocStatus((prev) => ({ ...prev, [doc.id]: { state: 'extracting' } }));
           const url = await ReferenceDocumentService.getDownloadUrl(doc.file_path);
           if (isAborted()) return '';
           const resp = await fetch(url);
           if (resp.ok) {
             const text = await resp.text();
             if (isAborted()) return '';
-            textParts.push(`[${doc.file_name}]\n${text}`);
+            const truncated = text.slice(0, PER_DOC_CHAR_CAP);
+            extractedTextCacheRef.current.set(doc.id, truncated);
+            setRefDocStatus((prev) => ({ ...prev, [doc.id]: { state: 'ready', info: `${truncated.length.toLocaleString()} chars` } }));
+            textParts.push(`[${doc.file_name} — extracted text]\n${truncated}`);
+          }
+        } else if (['pdf', 'docx', 'doc', 'xlsx', 'xls'].includes(ext)) {
+          setRefDocStatus((prev) => ({ ...prev, [doc.id]: { state: 'extracting' } }));
+          const blob = await ReferenceDocumentService.downloadAsBlob(doc.file_path);
+          if (isAborted()) return '';
+          const fullText = await extractTextFromBlob(blob, doc.file_name);
+          if (isAborted()) return '';
+          const truncated = (fullText || '').slice(0, PER_DOC_CHAR_CAP);
+          if (truncated.trim().length === 0) {
+            setRefDocStatus((prev) => ({ ...prev, [doc.id]: { state: 'error', info: 'No text extracted' } }));
+            textParts.push(`[${doc.file_name}] (No text could be extracted)`);
+          } else {
+            extractedTextCacheRef.current.set(doc.id, truncated);
+            setRefDocStatus((prev) => ({ ...prev, [doc.id]: { state: 'ready', info: `${truncated.length.toLocaleString()} chars` } }));
+            textParts.push(`[${doc.file_name} — extracted text]\n${truncated}`);
           }
         } else {
-          textParts.push(`[${doc.file_name}] (Binary file - ${doc.file_type || ext} - metadata only)`);
+          setRefDocStatus((prev) => ({ ...prev, [doc.id]: { state: 'error', info: 'Unsupported format' } }));
+          textParts.push(`[${doc.file_name}] (Unsupported file type — ${doc.file_type || ext} — not sent to AI)`);
         }
-      } catch (e) {
-        textParts.push(`[${doc.file_name}] (Could not fetch content)`);
+      } catch (e: any) {
+        console.warn(`Failed to extract text from ${doc.file_name}:`, e);
+        setRefDocStatus((prev) => ({ ...prev, [doc.id]: { state: 'error', info: 'Extraction failed' } }));
+        textParts.push(`[${doc.file_name}] (Extraction failed: ${e?.message || 'unknown error'})`);
       }
     }
     return textParts.join('\n\n');
@@ -267,6 +306,7 @@ export function AIAutoFillDialog({
             prompt,
             sectionTitle: section.title,
             currentContent: '',
+            companyId: companyId || undefined,
             referenceContext: referenceContext || undefined,
           },
         }).then((res) => {
@@ -281,6 +321,11 @@ export function AIAutoFillDialog({
       const { data, error } = result;
 
       if (isAborted()) return 'aborted';
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return 'no_credits';
+      }
 
       if (error || !data?.success || !data?.content) {
         throw new Error(data?.error || 'Failed to generate content');
@@ -339,9 +384,11 @@ export function AIAutoFillDialog({
 
     let successCount = 0;
     let errorCount = 0;
+    let noCredits = false;
 
     for (const section of toGenerate) {
       const result = await generateSection(section, fullReferenceContext);
+      if (result === 'no_credits') { noCredits = true; break; }
       if (result === 'aborted') break;
       if (result === 'done') successCount++;
       else errorCount++;
@@ -352,7 +399,9 @@ export function AIAutoFillDialog({
     safelySetCurrentGeneratingTitle('');
     abortControllerRef.current = null;
 
-    if (stopped) {
+    if (noCredits) {
+      // Dialog already shown, no toast needed
+    } else if (stopped) {
       if (successCount > 0) safelySetDoneState(true);
       toast.info(successCount > 0
         ? `Generation stopped — ${successCount} section${successCount > 1 ? 's' : ''} completed successfully.`
@@ -402,9 +451,11 @@ export function AIAutoFillDialog({
 
     let successCount = 0;
     let errorCount = 0;
+    let noCredits = false;
 
     for (const section of failedSections) {
       const result = await generateSection(section, fullReferenceContext);
+      if (result === 'no_credits') { noCredits = true; break; }
       if (result === 'aborted') break;
       if (result === 'done') successCount++;
       else errorCount++;
@@ -415,7 +466,9 @@ export function AIAutoFillDialog({
     safelySetCurrentGeneratingTitle('');
     abortControllerRef.current = null;
 
-    if (stopped) {
+    if (noCredits) {
+      // Dialog already shown
+    } else if (stopped) {
       if (successCount > 0) safelySetDoneState(true);
       toast.info(successCount > 0
         ? `Retry stopped — ${successCount} section${successCount > 1 ? 's' : ''} completed successfully.`
@@ -471,6 +524,12 @@ export function AIAutoFillDialog({
     onOpenChange(false);
   };
 
+  const handleBack = () => {
+    abortControllerRef.current?.abort();
+    onOpenChange(false);
+    onBack?.();
+  };
+
   const handleDialogOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       handleClose();
@@ -494,6 +553,16 @@ export function AIAutoFillDialog({
           {/* Header */}
           <div className="flex flex-col space-y-1.5 text-left mb-4">
             <DialogPrimitive.Title className="text-lg font-semibold leading-none tracking-tight flex items-center gap-2">
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  aria-label="Back"
+                  className="h-7 w-7 -ml-1 inline-flex items-center justify-center rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+              )}
               <Sparkles className="w-5 h-5 text-blue-600" />
               AI Auto-Fill All Sections
             </DialogPrimitive.Title>
@@ -508,6 +577,19 @@ export function AIAutoFillDialog({
           </DialogPrimitive.Close>
 
           <div className="space-y-4">
+            {/* Vertex AI not configured alert */}
+            {!isKeyStatusLoading && !googleVertexAvailable && (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-3 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Google Vertex AI not configured</p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                    Auto-Fill requires a Google Vertex AI service account key. Please ask your administrator to add a <strong>google_vertex</strong> key in Settings &gt; API Keys.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* AI Input Sources Indicator */}
             <div className="rounded-lg border bg-muted/30 p-3">
               <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
@@ -671,6 +753,23 @@ export function AIAutoFillDialog({
                         disabled={isGenerating}
                       />
                       <span className="truncate flex-1">{doc.file_name}</span>
+                      {refDocStatus[doc.id] && selectedRefDocIds.includes(doc.id) && (
+                        <span
+                          className={
+                            refDocStatus[doc.id].state === 'ready'
+                              ? 'text-[10px] text-green-600 dark:text-green-400 shrink-0'
+                              : refDocStatus[doc.id].state === 'extracting'
+                              ? 'text-[10px] text-muted-foreground shrink-0 animate-pulse'
+                              : refDocStatus[doc.id].state === 'error'
+                              ? 'text-[10px] text-destructive shrink-0'
+                              : 'text-[10px] text-muted-foreground shrink-0'
+                          }
+                        >
+                          {refDocStatus[doc.id].state === 'extracting' && 'Extracting…'}
+                          {refDocStatus[doc.id].state === 'ready' && (refDocStatus[doc.id].info || 'Ready')}
+                          {refDocStatus[doc.id].state === 'error' && (refDocStatus[doc.id].info || 'Failed')}
+                        </span>
+                      )}
                       {doc.tags && doc.tags.length > 0 && (
                         <div className="flex gap-1">
                           {doc.tags.slice(0, 2).map((tag) => (
@@ -890,7 +989,7 @@ export function AIAutoFillDialog({
                 ) : (
                   <Button
                     onClick={handleGenerate}
-                    disabled={selectedCount === 0}
+                    disabled={selectedCount === 0 || !googleVertexAvailable}
                     className="bg-blue-600 hover:bg-blue-700"
                   >
                     <Wand2 className="w-4 h-4 mr-2" />

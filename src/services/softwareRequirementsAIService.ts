@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 export interface SoftwareRequirementSuggestion {
   description: string;
@@ -62,6 +63,11 @@ export class SoftwareRequirementsAIService {
       if (error) {
         console.error('[SoftwareRequirementsAIService] Error calling edge function:', error);
         throw error;
+      }
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        throw new Error('NO_CREDITS');
       }
 
       if (!data?.success) {

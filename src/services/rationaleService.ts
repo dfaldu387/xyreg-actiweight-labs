@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 import type {
   ProcessValidationRationale,
   SupplierCriticalityRationale,
@@ -39,6 +40,11 @@ export async function generateRationale(
   if (error) {
     console.error('Error generating rationale:', error);
     throw new Error(error.message || 'Failed to generate rationale');
+  }
+
+  if (data?.error === 'NO_CREDITS') {
+    showNoCreditDialog();
+    throw new Error('NO_CREDITS');
   }
 
   if (!data?.success) {

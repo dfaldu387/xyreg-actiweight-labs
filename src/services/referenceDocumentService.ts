@@ -121,4 +121,15 @@ export class ReferenceDocumentService {
     if (error) throw error;
     return data.signedUrl;
   }
+
+  /**
+   * Download a reference document and return it as a Blob for client-side parsing.
+   */
+  static async downloadAsBlob(filePath: string): Promise<Blob> {
+    const { data, error } = await supabase.storage
+      .from('reference-documents')
+      .download(filePath);
+    if (error) throw error;
+    return data;
+  }
 }

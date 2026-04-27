@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 import { Search, Clock, FileText, ExternalLink, Brain, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,6 +79,11 @@ export function ReportSearchDialog({ open, onOpenChange, companyId, userId }: Re
 
       if (error) {
         throw new Error(error.message || 'Search failed');
+      }
+
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return;
       }
 
       setResult(data);

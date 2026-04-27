@@ -32,6 +32,8 @@ import { toast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/hooks/useTranslation';
+import { Toggle } from '@/components/ui/toggle';
+import { GapNAJustification } from './GapNAJustification';
 
 interface GapItemProps {
   item: GapAnalysisItem;
@@ -92,6 +94,13 @@ export function GapItem({ item, onStatusChange, onReviewerAssign, companyId, pro
     }
   });
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Remember the last non-N/A status so toggling N/A off restores it.
+  const previousNonNAStatusRef = useRef<string>(
+    safeItemStatus && mapGapStatusToUI(safeItemStatus) !== 'N/A'
+      ? mapGapStatusToUI(safeItemStatus)
+      : 'Open'
+  );
 
   // Calculate derived values safely
   const today = new Date().toISOString().split('T')[0];
@@ -171,6 +180,11 @@ export function GapItem({ item, onStatusChange, onReviewerAssign, companyId, pro
     setDisplayStatus(value);
     setIsUpdatingStatus(true);
     userSelectedStatusRef.current = value; // PERMANENT LOCK - prevents ALL updates from uiStatus
+
+    // Remember the last non-N/A status so the N/A toggle can restore it.
+    if (value !== 'N/A') {
+      previousNonNAStatusRef.current = value;
+    }
 
     // Update database (non-blocking)
     // The lock will be cleared when useEffect detects uiStatus matches userSelectedStatusRef
@@ -569,6 +583,23 @@ export function GapItem({ item, onStatusChange, onReviewerAssign, companyId, pro
                         <SelectItem value="N/A">{lang('gapAnalysis.gapItem.statusNA')}</SelectItem>
                       </SelectContent>
                     </Select>
+                    <Toggle
+                      size="sm"
+                      pressed={displayStatus === 'N/A'}
+                      disabled={isUpdatingStatus || disabled}
+                      onPressedChange={(pressed) => {
+                        if (pressed) {
+                          handleStatusChange('N/A');
+                        } else {
+                          handleStatusChange(previousNonNAStatusRef.current || 'Open');
+                        }
+                      }}
+                      aria-label="Mark as not applicable"
+                      className="h-10 px-2 text-xs data-[state=on]:bg-gray-200 data-[state=on]:text-gray-800 border border-border"
+                    >
+                      <X className="h-3.5 w-3.5 mr-1" />
+                      {displayStatus === 'N/A' ? 'N/A' : 'Mark N/A'}
+                    </Toggle>
                     {dueDate && (
                       <Button
                         variant="ghost"
@@ -616,6 +647,16 @@ export function GapItem({ item, onStatusChange, onReviewerAssign, companyId, pro
                 </Badge>
               )}
             </div>
+
+            {/* N/A Justification — required when item is marked N/A */}
+            {displayStatus === 'N/A' && (
+              <GapNAJustification
+                itemId={safeItemId}
+                initialReason={(item as any).automatic_na_reason ?? ''}
+                isAutoExcluded={Boolean((item as any).is_auto_excluded)}
+                disabled={disabled}
+              />
+            )}
 
             {/* Content Grid - Simplified for consistency */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

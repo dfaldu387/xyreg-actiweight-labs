@@ -109,3 +109,96 @@ export const TIER_C_MANUAL: readonly string[] = [
   'SOP-047', // Clinical Investigation (study-specific)
   'SOP-049', // Software as Medical Device (SaMD, architecture-specific)
 ] as const;
+
+export type SopTier = 'A' | 'B' | 'C';
+
+/**
+ * Parse a SOP identifier (e.g. "SOP-002") from a free-form document name like
+ * "SOP-002 Document Control" or "sop 002 — Document Control". Returns the
+ * canonical "SOP-NNN" form, or null if no match is found.
+ */
+export function parseSopNumber(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const match = name.match(/SOP[-_\s]*(\d{1,3})/i);
+  if (!match) return null;
+  const padded = match[1].padStart(3, '0');
+  return `SOP-${padded}`;
+}
+
+const TIER_A_SET = new Set(TIER_A_AUTO_SEED.map((s) => s.sop));
+const TIER_B_SET = new Set(TIER_B_CONDITIONAL.map((s) => s.sop));
+const TIER_C_SET = new Set(TIER_C_MANUAL);
+
+/**
+ * Resolve which tier a SOP belongs to. Accepts either the canonical
+ * "SOP-NNN" identifier or a full document name; returns null for documents
+ * that aren't part of the 51-SOP Xyreg library.
+ */
+export function getSopTier(input: string | null | undefined): SopTier | null {
+  const sop = parseSopNumber(input);
+  if (!sop) return null;
+  if (TIER_A_SET.has(sop)) return 'A';
+  if (TIER_B_SET.has(sop)) return 'B';
+  if (TIER_C_SET.has(sop)) return 'C';
+  return null;
+}
+
+/**
+ * Map of canonical SOP key (e.g. "SOP-001") → functional sub-prefix code
+ * (QA / DE / RM / CL / RA / MF / SC) per Xyreg numbering convention
+ * `TYPE-SUBPREFIX-NUMBER` (e.g. "SOP-QA-001"). Display layer only — internal
+ * keys remain the legacy two-part `SOP-NNN` form to avoid breaking ~160
+ * existing references across training, gap analysis, seeder idempotency, etc.
+ * See `mem://features/documents/numbering/functional-sub-prefixes`.
+ */
+export const SOP_FUNCTIONAL_SUBPREFIX: Readonly<Record<string, string>> = {
+  // QA — Quality Assurance
+  'SOP-001': 'QA', 'SOP-002': 'QA', 'SOP-003': 'QA', 'SOP-004': 'QA',
+  'SOP-021': 'QA', 'SOP-022': 'QA', 'SOP-023': 'QA', 'SOP-024': 'QA',
+  'SOP-025': 'QA', 'SOP-028': 'QA', 'SOP-031': 'QA', 'SOP-032': 'QA',
+  'SOP-033': 'QA', 'SOP-042': 'QA', 'SOP-050': 'QA',
+  // DE — Design / Engineering
+  'SOP-005': 'DE', 'SOP-006': 'DE', 'SOP-007': 'DE', 'SOP-008': 'DE',
+  'SOP-009': 'DE', 'SOP-011': 'DE', 'SOP-012': 'DE', 'SOP-019': 'DE',
+  'SOP-026': 'DE', 'SOP-027': 'DE', 'SOP-029': 'DE', 'SOP-045': 'DE',
+  'SOP-049': 'DE',
+  // RM — Risk Management
+  'SOP-015': 'RM',
+  // CL — Clinical
+  'SOP-014': 'CL', 'SOP-047': 'CL', 'SOP-048': 'CL',
+  // RA — Regulatory Affairs
+  'SOP-013': 'RA', 'SOP-034': 'RA', 'SOP-035': 'RA', 'SOP-036': 'RA',
+  'SOP-037': 'RA', 'SOP-038': 'RA', 'SOP-044': 'RA', 'SOP-046': 'RA',
+  // MF — Manufacturing
+  'SOP-010': 'MF', 'SOP-017': 'MF', 'SOP-018': 'MF', 'SOP-020': 'MF',
+  'SOP-039': 'MF', 'SOP-040': 'MF', 'SOP-041': 'MF', 'SOP-051': 'MF',
+  // SC — Supply Chain
+  'SOP-016': 'SC', 'SOP-030': 'SC', 'SOP-043': 'SC',
+};
+
+/**
+ * Convert a canonical SOP key (e.g. "SOP-016") into the three-part Xyreg
+ * display form ("SOP-SC-016"). Falls back to the original input if the SOP
+ * is unmapped (custom additions).
+ */
+export function formatSopDisplayId(sopKey: string): string {
+  const sub = SOP_FUNCTIONAL_SUBPREFIX[sopKey];
+  if (!sub) return sopKey;
+  const num = sopKey.replace(/^SOP-/i, '');
+  return `SOP-${sub}-${num}`;
+}
+
+/**
+ * Rewrite a full document name (e.g. "SOP-016 Generic supplier evaluation…")
+ * to use the three-part display ID ("SOP-SC-016 Generic supplier evaluation…").
+ * Non-SOP names pass through untouched.
+ */
+export function formatSopDisplayName(name: string | null | undefined): string {
+  if (!name) return '';
+  const sopKey = parseSopNumber(name);
+  if (!sopKey) return name;
+  const displayId = formatSopDisplayId(sopKey);
+  if (displayId === sopKey) return name;
+  // Replace the leading SOP-NNN token (case-insensitive, allow separators).
+  return name.replace(/SOP[-_\s]*\d{1,3}/i, displayId);
+}

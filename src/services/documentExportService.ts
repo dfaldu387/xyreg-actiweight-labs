@@ -257,6 +257,22 @@ export class DocumentExportService {
             h1, h2, h3 { color: #333; }
             .section { margin-bottom: 20px; }
             .content-block { margin-bottom: 10px; }
+            /* Doc/user mentions render as plain underlined text in print. */
+            .xyreg-doc-mention, span[data-doc-mention],
+            .xyreg-person-mention, span[data-person-mention] {
+              display: inline;
+              background: transparent;
+              color: inherit;
+              padding: 0;
+              border-radius: 0;
+              font-weight: inherit;
+              text-decoration: underline;
+            }
+            .xyreg-doc-mention::before, span[data-doc-mention]::before,
+            .xyreg-person-mention::before, span[data-person-mention]::before {
+              content: none;
+              display: none;
+            }
           </style>
         </head>
         <body>

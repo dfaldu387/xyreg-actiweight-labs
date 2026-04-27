@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 export interface DocumentSummary {
   summary: string;
@@ -215,6 +216,10 @@ export function useDocumentAI(companyId: string): UseDocumentAIReturn {
 
       if (error) throw error;
 
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return null;
+      }
       if (!data.success) {
         throw new Error(data.error || 'Failed to generate summary');
       }
@@ -268,6 +273,7 @@ export function useDocumentAI(companyId: string): UseDocumentAIReturn {
 
       if (error) throw error;
 
+      if (data?.error === 'NO_CREDITS') { showNoCreditDialog(); return null; }
       if (!data.success) {
         throw new Error(data.error || 'Failed to extract key points');
       }
@@ -335,6 +341,7 @@ export function useDocumentAI(companyId: string): UseDocumentAIReturn {
 
       if (error) throw error;
 
+      if (data?.error === 'NO_CREDITS') { showNoCreditDialog(); return null; }
       if (!data.success) {
         throw new Error(data.error || 'Failed to get answer');
       }
@@ -394,6 +401,7 @@ export function useDocumentAI(companyId: string): UseDocumentAIReturn {
 
       if (error) throw error;
 
+      if (data?.error === 'NO_CREDITS') { showNoCreditDialog(); return null; }
       if (!data.success) {
         throw new Error(data.error || 'Failed to generate content');
       }

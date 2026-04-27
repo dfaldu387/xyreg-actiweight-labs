@@ -522,9 +522,11 @@ export function StatementOfUseTab({
           }
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI suggestion error:', error);
-      toast.error('Failed to generate AI suggestion. Please try again.');
+      if (error?.message !== 'NO_CREDITS') {
+        toast.error('Failed to generate AI suggestion. Please try again.');
+      }
     } finally {
       effectiveSetAiLoading(fieldKey, false);
     }

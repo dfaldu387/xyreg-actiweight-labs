@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentTemplate } from '@/types/documentComposer';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 export interface ValidationFinding {
   id: string;
@@ -69,6 +70,11 @@ export class DocumentValidationService {
 
     if (error) {
       throw new Error(error.message || 'Validation failed');
+    }
+
+    if (data?.error === 'NO_CREDITS') {
+      showNoCreditDialog();
+      throw new Error('NO_CREDITS');
     }
 
     const rawFindings = data?.findings || [];
@@ -204,6 +210,11 @@ export class DocumentValidationService {
 
     if (error) {
       throw new Error(error.message || 'Bulk validation failed');
+    }
+
+    if (data?.error === 'NO_CREDITS') {
+      showNoCreditDialog();
+      throw new Error('NO_CREDITS');
     }
 
     const rawFindings = data?.findings || [];

@@ -29,6 +29,7 @@ import { UserNeedsService } from "@/services/userNeedsService";
 import { hazardsService } from "@/services/hazardsService";
 import { toast as sonnerToast } from "sonner";
 import { AIRequirementUserNeedSuggestions } from "./AIRequirementUserNeedSuggestions";
+import { AIRequirementHazardSuggestions } from "./AIRequirementHazardSuggestions";
 import type { RequirementSpecification, UpdateRequirementSpecificationData } from "./types";
 import type { UserNeed } from "../user-needs/types";
 import type { Hazard } from "../risk-management/types";
@@ -221,7 +222,7 @@ export function EditRequirementForm({
           name="traces_to"
           render={({ field }) => (
             <FormItem>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between gap-2">
                 <FormLabel>Traces to User Need(s)</FormLabel>
                 <AIRequirementUserNeedSuggestions
                   requirementDescription={currentDescription}
@@ -238,6 +239,11 @@ export function EditRequirementForm({
                   onUserNeedCreated={handleAIUserNeedCreated}
                 />
               </div>
+              {!loadingUserNeeds && currentTracesTo.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No user need linked yet. Click <span className="font-medium">Suggest with AI</span> to find an existing match or draft a new one from this requirement.
+                </p>
+              )}
               <FormControl>
                 {loadingUserNeeds ? (
                   <div className="h-10 flex items-center px-3 py-2 border rounded-md bg-muted">
@@ -283,7 +289,7 @@ export function EditRequirementForm({
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[100] bg-popover" align="start">
                         <Command>
                           <CommandInput placeholder="Search user needs..." />
                           <CommandList>
@@ -330,18 +336,41 @@ export function EditRequirementForm({
             <FormItem>
               <div className="flex items-center justify-between">
                 <FormLabel>Linked Risks</FormLabel>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={handleCreateNewHazard}
-                  disabled={isCreatingDraftHazard}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  {isCreatingDraftHazard ? 'Creating...' : 'Create New Hazard'}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <AIRequirementHazardSuggestions
+                    requirementDescription={form.watch('description') || ''}
+                    requirementType={requirement.requirement_id?.startsWith('SWR') ? 'software' : requirement.requirement_id?.startsWith('HWR') ? 'hardware' : 'system'}
+                    productId={productId}
+                    companyId={companyId}
+                    productName={productName}
+                    existingHazards={hazards.map(h => ({ id: h.id, hazard_id: h.hazard_id, description: h.description }))}
+                    selectedIds={field.value}
+                    onSelect={(id) => {
+                      if (!field.value.includes(id)) field.onChange([...field.value, id]);
+                    }}
+                    onHazardCreated={() => {
+                      hazardsService.getHazardsByProduct(productId).then(setHazards).catch(console.error);
+                      queryClient.invalidateQueries({ queryKey: ['hazards', productId] });
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleCreateNewHazard}
+                    disabled={isCreatingDraftHazard}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    {isCreatingDraftHazard ? 'Creating...' : 'Create New Hazard'}
+                  </Button>
+                </div>
               </div>
+              {!loadingHazards && field.value.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No risk linked yet. Click <span className="font-medium">Suggest with AI</span> to find a matching hazard or draft a new one from this requirement.
+                </p>
+              )}
               <FormControl>
                 {loadingHazards ? (
                   <div className="h-10 flex items-center px-3 py-2 border rounded-md bg-muted">

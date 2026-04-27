@@ -28,6 +28,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import type { UserNeed, UpdateUserNeedRequest } from "./types";
 import { CATEGORY_PREFIX_MAP as categoryMap } from "./types";
 import { supabase } from "@/integrations/supabase/client";
+import { AIUserNeedHazardSuggestions } from "./AIUserNeedHazardSuggestions";
 
 const formSchema = z.object({
   description: z.string().min(1, "User need description is required"),
@@ -189,7 +190,17 @@ export function EditUserNeedForm({
         </div>
 
         <div>
-          <FormLabel>Related Risks</FormLabel>
+          <div className="flex items-center justify-between">
+            <FormLabel>Related Risks</FormLabel>
+            <AIUserNeedHazardSuggestions
+              userNeedId={userNeed.user_need_id}
+              userNeedDescription={form.watch('description') || userNeed.description}
+              productId={userNeed.product_id}
+              companyId={userNeed.company_id}
+              linkedReqIds={linkedReqIds}
+              relatedHazardIds={relatedRisks.map((h) => h.hazard_id)}
+            />
+          </div>
           <div className="mt-1.5 min-h-[36px] flex flex-wrap gap-1 items-center rounded-md border border-input bg-muted/50 px-3 py-2">
             {relatedRisks.length === 0 ? (
               <span className="text-sm text-muted-foreground">—</span>

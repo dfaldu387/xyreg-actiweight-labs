@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { AIContextSourcesPanel } from '@/components/product/ai-assistant/AIContextSourcesPanel';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Sparkles, Info, Check } from 'lucide-react';
+import { Loader2, Sparkles, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTranslation } from '@/hooks/useTranslation';
+import { EditableSuggestionCard } from '@/components/product/ai-assistant/EditableSuggestionCard';
 import {
   UserNeedsAIService,
   type UserNeedSuggestion,
@@ -28,7 +26,7 @@ interface UserNeedsSuggestionsProps {
   productId: string;
   companyId: string;
   productData: any;
-  onAddUserNeed: (data: { description: string; status: 'Met' | 'Not Met'; category?: string }) => Promise<void>;
+  onAddUserNeed: (data: { description: string; status: 'Met' | 'Not Met'; category?: string; user_edited?: boolean }) => Promise<void>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   isLoading: boolean;
@@ -134,7 +132,8 @@ export function UserNeedsSuggestions({
       } else {
         throw new Error(response.error || 'Failed to generate suggestions');
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message === 'NO_CREDITS') return;
       const errorMessage = err instanceof Error ? err.message : 'Failed to generate AI suggestions';
       setError(errorMessage);
     } finally {
@@ -150,7 +149,8 @@ export function UserNeedsSuggestions({
         await onAddUserNeed({
           description: suggestion.description,
           status: 'Not Met',
-          category: suggestion.category || 'General'
+          category: suggestion.category || 'General',
+          user_edited: (suggestion as any).user_edited === true,
         });
       }
       
@@ -163,10 +163,14 @@ export function UserNeedsSuggestions({
     }
   };
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.9) return 'text-green-600 dark:text-green-400';
-    if (confidence >= 0.8) return 'text-yellow-600 dark:text-yellow-400';
-    return 'text-red-600 dark:text-red-400';
+  const handleEditSave = (index: number, values: Record<string, string>) => {
+    setSuggestions(prev =>
+      prev.map((s, i) =>
+        i === index
+          ? { ...s, description: values.description ?? s.description, category: values.category ?? s.category, user_edited: true } as any
+          : s
+      )
+    );
   };
 
   const isLoading = externalLoading || isGenerating;
@@ -257,58 +261,35 @@ export function UserNeedsSuggestions({
 
               <div className="grid gap-3">
                 {suggestions.map((suggestion, index) => (
-                  <Card
+                  <EditableSuggestionCard
                     key={index}
-                    className={`cursor-pointer transition-all hover:shadow-md ${
-                      selectedSuggestions.has(index) ? 'ring-2 ring-primary' : ''
-                    }`}
-                    onClick={() => handleSuggestionToggle(index)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-start gap-3">
-                        <Checkbox
-                          checked={selectedSuggestions.has(index)}
-                          onChange={() => handleSuggestionToggle(index)}
-                          className="mt-1"
-                        />
-                        <div className="flex-1 space-y-2">
-                           <div className="flex items-start justify-between gap-2">
-                             <div className="flex-1">
-                               <p className="text-sm font-medium leading-relaxed">
-                                 {suggestion.description}
-                               </p>
-                               {suggestion.category && (
-                                 <Badge variant="outline" className="mt-1 text-xs">
-                                   {suggestion.category}
-                                 </Badge>
-                               )}
-                             </div>
-                             <div className="flex items-center gap-2 flex-shrink-0">
-                               <TooltipProvider>
-                                 <Tooltip>
-                                   <TooltipTrigger>
-                                     <div className={`text-xs font-medium ${getConfidenceColor(suggestion.confidence)}`}>
-                                       {Math.round(suggestion.confidence * 100)}%
-                                     </div>
-                                   </TooltipTrigger>
-                                   <TooltipContent>
-                                     <p>{lang('userNeeds.suggestions.confidenceScore')}</p>
-                                   </TooltipContent>
-                                 </Tooltip>
-                               </TooltipProvider>
-                             </div>
-                           </div>
-                          
-                          <div className="flex items-start gap-1">
-                            <Info className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                            <p className="text-xs text-muted-foreground leading-relaxed">
-                              {suggestion.rationale}
-                            </p>
-                          </div>
-                        </div>
+                    selected={selectedSuggestions.has(index)}
+                    onToggle={() => handleSuggestionToggle(index)}
+                    confidence={suggestion.confidence}
+                    edited={(suggestion as any).user_edited === true}
+                    rationale={suggestion.rationale}
+                    readOnly={
+                      <div>
+                        <p className="text-sm font-medium leading-relaxed">{suggestion.description}</p>
+                        {suggestion.category && (
+                          <Badge variant="outline" className="mt-1 text-xs">
+                            {suggestion.category}
+                          </Badge>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
+                    }
+                    fields={[
+                      { key: 'description', label: 'Description', value: suggestion.description, type: 'textarea' },
+                      {
+                        key: 'category',
+                        label: 'Category',
+                        value: suggestion.category || 'General',
+                        type: 'select',
+                        options: categories.filter(c => c.value !== 'all').map(c => ({ value: c.value, label: c.label })),
+                      },
+                    ]}
+                    onSave={(values) => handleEditSave(index, values)}
+                  />
                 ))}
               </div>
             </>

@@ -73,6 +73,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { usePlanMenuAccess } from "@/hooks/usePlanMenuAccess";
 import { useCompanyInfo } from "@/hooks/useCompanyInfo";
 import { useInvestorProfile } from "@/hooks/useInvestorProfile";
+import { AiTokenUsageBadge } from "@/components/layout/AiTokenUsageBadge";
 // import { AdvancedSettingsDialog } from "@/components/layout/AdvancedSettingsDialog";
 import { ReturnToGenesisButton } from "@/components/funnel/ReturnToGenesisButton";
 import { FullPageLoader } from "@/components/ui/loading-spinner";
@@ -441,6 +442,7 @@ export default function AppLayout() {
 
   const UserNav = ({ includeCompanyLinks = true }: { includeCompanyLinks?: boolean }) => {
     const { lang } = useTranslation();
+    const userNavLocation = useLocation();
     const { planName: primaryPlanName, isLoading: isPlanLoading, isMasterPlanUser } = usePlanMenuAccess();
     const { activeCompanyRole } = useCompanyRole();
     const { effectiveRole } = useEffectiveUserRole();
@@ -571,6 +573,7 @@ export default function AppLayout() {
               </div>
             </div>
           </DropdownMenuLabel>
+          {/* AI Credits badge removed from dropdown — shown on Usage tab instead */}
           <DropdownMenuSeparator />
           {includeCompanyLinks && company && (
             <>

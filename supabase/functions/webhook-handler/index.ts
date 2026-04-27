@@ -419,7 +419,7 @@ serve(async (req) => {
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
-        const invoiceSubscriptionId = typeof invoice.subscription === 'string'
+        let invoiceSubscriptionId = typeof invoice.subscription === 'string'
           ? invoice.subscription
           : invoice.subscription?.id;
 
@@ -429,7 +429,7 @@ serve(async (req) => {
         const invCustomerId = typeof invoice.customer === 'string' ? invoice.customer : invoice.customer?.id;
         const { data: invUserSub } = await supabaseClient
           .from('user_subscriptions')
-          .select('user_id')
+          .select('user_id, stripe_subscription_id')
           .eq('stripe_customer_id', invCustomerId)
           .single();
 
@@ -443,6 +443,12 @@ serve(async (req) => {
             .single();
           invUserId = userByEmail?.id;
           logStep("User found by email fallback", { email: invoice.customer_email, userId: invUserId });
+        }
+
+        // Fallback: if subscriptionId missing from invoice, get it from user_subscriptions
+        if (!invoiceSubscriptionId && invUserSub?.stripe_subscription_id) {
+          invoiceSubscriptionId = invUserSub.stripe_subscription_id;
+          logStep("SubscriptionId fallback from DB", { subscriptionId: invoiceSubscriptionId });
         }
 
         // Find company_id for this user
@@ -487,42 +493,69 @@ serve(async (req) => {
           logStep("Could not find user for invoice", { customerId: invCustomerId, email: invoice.customer_email });
         }
 
-        // ── Update expires_at in new_pricing_company_plans on renewal ──
-        if (invoiceSubscriptionId) {
-          const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-          if (stripeKey) {
-            const stripeClient = new Stripe(stripeKey, { apiVersion: "2024-11-20.acacia" });
-            const fullSub = await stripeClient.subscriptions.retrieve(invoiceSubscriptionId);
+        // ── Update expires_at and next billing date on payment success ──
+        const stripeKeyForInvoice = Deno.env.get("STRIPE_SECRET_KEY");
+        if (stripeKeyForInvoice && invoiceSubscriptionId) {
+          const stripeClient = new Stripe(stripeKeyForInvoice, { apiVersion: "2024-11-20.acacia" });
+          const fullSub = await stripeClient.subscriptions.retrieve(invoiceSubscriptionId);
 
-            if (fullSub.current_period_end) {
-              const newExpiresAt = new Date(fullSub.current_period_end * 1000).toISOString();
+          // Update current_period_end (next billing date) in user_subscriptions
+          if (invUserId && fullSub.current_period_end) {
+            const subUpdateData: any = {
+              current_period_end: new Date(fullSub.current_period_end * 1000).toISOString(),
+              status: fullSub.status,
+              updated_at: new Date().toISOString(),
+            };
+            if (fullSub.current_period_start) {
+              subUpdateData.current_period_start = new Date(fullSub.current_period_start * 1000).toISOString();
+            }
 
-              // Find company_id from subscription metadata or fallback to user lookup
-              let targetCompanyId = fullSub.metadata?.company_id || fullSub.metadata?.companyId || invCompanyId;
+            const { error: subUpdateError } = await supabaseClient
+              .from('user_subscriptions')
+              .update(subUpdateData)
+              .eq('user_id', invUserId);
 
-              if (targetCompanyId) {
-                const { error: pricingUpdateError } = await supabaseClient
-                  .from('new_pricing_company_plans')
-                  .update({
-                    expires_at: newExpiresAt,
-                    status: 'active',
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq('company_id', targetCompanyId);
-
-                if (pricingUpdateError) {
-                  logStep("Error updating expires_at", { error: pricingUpdateError });
-                } else {
-                  logStep("Renewed expires_at on payment success", {
-                    companyId: targetCompanyId,
-                    newExpiresAt,
-                  });
-                }
-              } else {
-                logStep("No company_id found to update expires_at", { userId: invUserId });
-              }
+            if (subUpdateError) {
+              logStep("Error updating user_subscriptions billing dates", { error: subUpdateError });
+            } else {
+              logStep("Updated next billing date in user_subscriptions", {
+                userId: invUserId,
+                currentPeriodEnd: subUpdateData.current_period_end,
+              });
             }
           }
+
+          // Update expires_at in new_pricing_company_plans
+          if (fullSub.current_period_end) {
+            const newExpiresAt = new Date(fullSub.current_period_end * 1000).toISOString();
+
+            // Find company_id from subscription metadata or fallback to user lookup
+            const targetCompanyId = fullSub.metadata?.company_id || fullSub.metadata?.companyId || invCompanyId;
+
+            if (targetCompanyId) {
+              const { error: pricingUpdateError } = await supabaseClient
+                .from('new_pricing_company_plans')
+                .update({
+                  expires_at: newExpiresAt,
+                  status: 'active',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('company_id', targetCompanyId);
+
+              if (pricingUpdateError) {
+                logStep("Error updating expires_at", { error: pricingUpdateError });
+              } else {
+                logStep("Renewed expires_at on payment success", {
+                  companyId: targetCompanyId,
+                  newExpiresAt,
+                });
+              }
+            } else {
+              logStep("No company_id found to update expires_at", { userId: invUserId });
+            }
+          }
+        } else {
+          logStep("Cannot update billing dates", { hasStripeKey: !!stripeKeyForInvoice, hasSubscriptionId: !!invoiceSubscriptionId });
         }
         break;
       }

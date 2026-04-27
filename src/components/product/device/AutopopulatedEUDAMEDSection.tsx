@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EnhancedProductMarket } from '@/utils/enhancedMarketRiskClassMapping';
+import { CONFORMITY_ROUTES } from '@/utils/conformityRouteUtils';
 
 interface AutopopulatedEUDAMEDSectionProps {
   // Auto-populated fields
@@ -380,12 +381,9 @@ export function AutopopulatedEUDAMEDSection({
                 <SelectValue placeholder="Select conformity route" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Annex IX (QMS + TD)">Annex IX (QMS + TD)</SelectItem>
-                <SelectItem value="Annex X (Type Examination)">Annex X (Type Examination)</SelectItem>
-                <SelectItem value="Annex XI Part A (Production QA)">Annex XI Part A (Production QA)</SelectItem>
-                <SelectItem value="Annex XI Part B (Product Verification)">Annex XI Part B (Product Verification)</SelectItem>
-                <SelectItem value="Annex XIII (Custom-made)">Annex XIII (Custom-made)</SelectItem>
-                <SelectItem value="Self-Declaration (Annex IV)">Self-Declaration (Annex IV)</SelectItem>
+                {CONFORMITY_ROUTES.map((route) => (
+                  <SelectItem key={route.value} value={route.value}>{route.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             {isAutopopulated(conformityAssessmentRoute, euConformityRoute) && (

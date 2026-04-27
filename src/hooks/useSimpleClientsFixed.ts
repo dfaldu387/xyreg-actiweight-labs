@@ -34,99 +34,42 @@ export function useSimpleClientsFixed() {
   };
 
   const fetchClients = async (): Promise<SimpleClient[]> => {
-    const startTime = performance.now();
-    const timings: { [key: string]: number } = {};
-    
     try {
-      // Get companies based on DevMode - OPTIMIZED: Single query with join
-      const companiesStart = performance.now();
-      
-      const { data: companies, error: companiesError } = await supabase
-        .from('companies')
-        .select(`
-          id, 
-          name, 
-          country, 
-          srn,
-          user_company_access!inner(user_id)
-        `)
-        .eq('is_archived', false)
-        .eq('user_company_access.user_id', session?.user.id);
-      
-      const companiesEnd = performance.now();
-      timings.companies = companiesEnd - companiesStart;
-      
+      // PARALLEL: Fetch companies and their products simultaneously
+      const [companiesResult, productsResult] = await Promise.all([
+        supabase
+          .from('companies')
+          .select(`
+            id,
+            name,
+            country,
+            srn,
+            user_company_access!inner(user_id)
+          `)
+          .eq('is_archived', false)
+          .eq('user_company_access.user_id', session?.user.id),
+        supabase
+          .from('products')
+          .select(`
+            id, name, company_id, status, progress,
+            companies!inner(
+              user_company_access!inner(user_id)
+            )
+          `)
+          .eq('is_archived', false)
+          .eq('companies.is_archived', false)
+          .eq('companies.user_company_access.user_id', session?.user.id)
+          .order('inserted_at', { ascending: false })
+          .limit(1000)
+      ]);
+
+      const { data: companies, error: companiesError } = companiesResult;
+      const { data: products, error: productsError } = productsResult;
+
       if (companiesError) throw companiesError;
       if (!companies || companies.length === 0) return [];
 
-      // OPTIMIZED: Single query for all products instead of pagination loop
-      const productsStart = performance.now();
-      const companyIds = companies.map(c => c.id);
-      const { data: products, error: productsError } = await supabase
-        .from('products')
-        .select('id, name, company_id, status, progress')
-        .in('company_id', companyIds)
-        .eq('is_archived', false)
-        .order('inserted_at', { ascending: false })
-        .limit(1000); // Reasonable limit for performance
-
-      const productsEnd = performance.now();
-      timings.products = productsEnd - productsStart;
-    
-      // OPTIMIZED: Batch EUDAMED calls and add timeout protection
-      const eudamedStart = performance.now();
-      
-      const eudamedPromises = companies
-        .filter(c => c.srn?.trim() || c.name?.trim())
-        .map(async (c) => {
-          const srn = c.srn?.trim();
-          const companyName = c.name?.trim();
-          
-          try {
-            // Use Promise.race to add timeout protection
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('EUDAMED timeout')), 5000)
-            );
-            
-            const eudamedPromise = Promise.all([
-              srn ? supabase.rpc('count_eudamed_devices_by_srn', { p_srn: srn }) : Promise.resolve({ data: null }),
-              companyName ? supabase.rpc('count_eudamed_company_devices', { company_identifier: companyName }) : Promise.resolve({ data: null })
-            ]);
-            
-            const [srnResult, nameResult] = await Promise.race([eudamedPromise, timeoutPromise]) as any[];
-            
-            return {
-              companyId: c.id,
-              srn: srn,
-              srnCount: srnResult?.data || 0,
-              nameCount: nameResult?.data || 0
-            };
-          } catch (e) {
-            return {
-              companyId: c.id,
-              srn: srn,
-              srnCount: 0,
-              nameCount: 0
-            };
-          }
-        });
-
-      const eudamedResults = await Promise.allSettled(eudamedPromises);
-      const eudamedCounts = new Map();
-      
-      eudamedResults.forEach((result) => {
-        if (result.status === 'fulfilled' && result.value) {
-          const { companyId, srn, srnCount, nameCount } = result.value;
-          if (srn) eudamedCounts.set(`srn:${srn}`, srnCount);
-          eudamedCounts.set(`name:${companyId}`, nameCount);
-        }
-      });
-      
-      const eudamedEnd = performance.now();
-      timings.eudamed = eudamedEnd - eudamedStart;
-    
       // Build product index by company_id
-      const processingStart = performance.now();
       
       const productsByCompany = new Map<string, SimpleProduct[]>();
       (products || []).forEach(p => {
@@ -175,16 +118,6 @@ export function useSimpleClientsFixed() {
           status = "Needs Attention";
         }
 
-        // Use the new eudamedCounts map
-        let eudamedTotal = 0;
-        const srnInGroup = group.companies.find(c => c.srn && c.srn.trim())?.srn?.trim();
-        if (srnInGroup) {
-          eudamedTotal = eudamedCounts.get(`srn:${srnInGroup}`) || 0;
-        }
-        if (!eudamedTotal) {
-          eudamedTotal = Math.max(0, ...group.companies.map(c => eudamedCounts.get(`name:${c.id}`) || 0));
-        }
-
         return {
           id: primary.id,
           name: primary.name, // No fallback needed since we filter out companies without names
@@ -197,8 +130,6 @@ export function useSimpleClientsFixed() {
         };
       });
       
-      const processingEnd = performance.now();
-      timings.processing = processingEnd - processingStart;
       return clients;
       
     } catch (error) {

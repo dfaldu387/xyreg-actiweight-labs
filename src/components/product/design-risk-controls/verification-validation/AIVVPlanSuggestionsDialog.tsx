@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 import { useQuery } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -91,10 +92,15 @@ export function AIVVPlanSuggestionsDialog({
       });
 
       if (fnError) throw new Error(fnError.message || 'Edge function error');
+      if (data?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        return;
+      }
       if (!data?.success || !data?.plan) throw new Error(data?.error || 'No plan returned');
 
       setGeneratedPlan(data.plan);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message === 'NO_CREDITS') return;
       setError(err instanceof Error ? err.message : 'Failed to generate V&V plan');
     } finally {
       setIsGenerating(false);
@@ -118,7 +124,7 @@ export function AIVVPlanSuggestionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-xl max-h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
@@ -132,7 +138,7 @@ export function AIVVPlanSuggestionsDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 overflow-y-auto">
           {/* Shared AI Context Sources Panel */}
           <AIContextSourcesPanel
             productId={productId}

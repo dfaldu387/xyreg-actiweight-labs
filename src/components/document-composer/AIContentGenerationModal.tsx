@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
 import { ReferenceDocumentService } from '@/services/referenceDocumentService';
+import { extractTextFromBlob } from '@/utils/gapChecklistTextExtractor';
 import { useAdvisoryContext } from '@/hooks/useAdvisoryContext';
 import { useDocumentNumberingContext } from '@/hooks/useDocumentNumberingContext';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -237,6 +238,7 @@ export function AIContentGenerationModal({
       if (selectedRefDocIds.length > 0) {
         const selectedDocs = refDocuments.filter((d) => selectedRefDocIds.includes(d.id));
         const textParts: string[] = [];
+        const PER_DOC_CHAR_CAP = 60000;
         for (const doc of selectedDocs) {
           try {
             const ext = doc.file_name.split('.').pop()?.toLowerCase() || '';
@@ -245,15 +247,24 @@ export function AIContentGenerationModal({
               const resp = await fetch(url);
               if (resp.ok) {
                 const text = await resp.text();
-                textParts.push(`[${doc.file_name}]\n${text}`);
+                textParts.push(`[${doc.file_name} — extracted text]\n${text.slice(0, PER_DOC_CHAR_CAP)}`);
+              }
+            } else if (['pdf', 'docx', 'doc', 'xlsx', 'xls'].includes(ext)) {
+              // Real extraction via PDF.js / mammoth / xlsx (with edge-function fallback for PDFs)
+              const blob = await ReferenceDocumentService.downloadAsBlob(doc.file_path);
+              const fullText = await extractTextFromBlob(blob, doc.file_name);
+              const truncated = (fullText || '').slice(0, PER_DOC_CHAR_CAP);
+              if (truncated.trim().length > 0) {
+                textParts.push(`[${doc.file_name} — extracted text]\n${truncated}`);
+              } else {
+                textParts.push(`[${doc.file_name}] (No text could be extracted)`);
               }
             } else {
-              // For binary files, include metadata only
-              textParts.push(`[${doc.file_name}] (Binary file - ${doc.file_type || ext} - metadata only)`);
+              textParts.push(`[${doc.file_name}] (Unsupported file type — not sent to AI)`);
             }
           } catch (e) {
             console.warn(`Failed to fetch reference doc ${doc.file_name}:`, e);
-            textParts.push(`[${doc.file_name}] (Could not fetch content)`);
+            textParts.push(`[${doc.file_name}] (Extraction failed: ${(e as any)?.message || 'unknown error'})`);
           }
         }
         referenceContext = textParts.join('\n\n');
@@ -312,10 +323,12 @@ export function AIContentGenerationModal({
         }
       }, 20); // 20ms delay for smooth streaming
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('[AIContentGenerationModal] Error generating AI content:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to generate AI content';
-      toast.error(errorMessage);
+      if (error?.message !== 'NO_CREDITS') {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to generate AI content';
+        toast.error(errorMessage);
+      }
       setIsGenerating(false);
       setShowStreaming(false);
     }
@@ -470,7 +483,7 @@ export function AIContentGenerationModal({
               </h3>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs text-muted-foreground">
-                  Select documents to ground AI output in your company's actual content (text-based files: .txt, .md, .csv, .json, .xml, .html)
+                  Select documents to ground AI output in your company's actual content. PDF, DOCX, XLSX and text files are parsed automatically.
                 </p>
                 <Button
                   variant="ghost"

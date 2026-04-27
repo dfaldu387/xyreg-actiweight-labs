@@ -54,7 +54,9 @@ export function SoftwareClassificationSection({
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get('returnTo');
   const section = searchParams.get('section');
-  const isInGenesisFlow = returnTo === 'genesis' || returnTo === 'venture-blueprint' || returnTo === 'investor-share' || returnTo === 'gap-analysis' || section === 'architecture';
+  // NOTE: gap-analysis is NOT a guided flow — only true onboarding/share flows
+  // should paint completion borders. Deep-links handle their own amber pulse.
+  const isInGenesisFlow = returnTo === 'genesis' || returnTo === 'venture-blueprint' || returnTo === 'investor-share' || section === 'architecture';
 
   return (
     <div className={isInGenesisFlow ? `p-3 rounded-lg transition-colors ${isComplete ? 'border-2 border-emerald-500 bg-emerald-50/30' : 'border-2 border-amber-400 bg-amber-50/30'}` : ''}>

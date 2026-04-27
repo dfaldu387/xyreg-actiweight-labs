@@ -18,9 +18,8 @@ export {
   defaultColumns,
   defaultTaskTypes,
   registerScaleUnit,
-} from '@svar-ui/gantt-store';
-
-export { registerEditorItem } from '@svar-ui/react-editor';
+  registerEditorItem,
+} from '@svar-ui/react-gantt';
 
 export {
   Gantt,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Accordion,
   AccordionContent,
@@ -158,8 +159,8 @@ const PLAN_LIMITS: Record<string, Partial<UsageData>> = {
 const ADD_ON_PRICING = {
   extraDevice: { price: 150, name: "Extra Device", description: "Add another device to your subscription" },
   extraModule: { price: 100, name: "Extra Module Slot", description: "Unlock an additional module slot" },
-  aiBooster: { price: 50, credits: 1000, name: "AI Booster Pack", description: "1,000 additional AI credits" },
-  genesisAiBooster: { price: 49, credits: 500, name: "Genesis AI Pack", description: "500 AI credits for Genesis users" },
+  aiBooster: { price: 20, credits: 500, name: "AI Booster Pack", description: "500 additional AI credits — consumed per AI generation" },
+  genesisAiBooster: { price: 20, credits: 500, name: "Genesis AI Pack", description: "500 AI credits — consumed per AI generation" },
 };
 
 // Available modules configuration
@@ -242,6 +243,7 @@ export default function ProfilePage() {
 
   // New pricing system state
   const [newPricingPlan, setNewPricingPlan] = useState<(NewPricingCompanyPlan & { plan: NewPricingPlan }) | null>(null);
+  const [planDataLoaded, setPlanDataLoaded] = useState(false);
 
   // Add-ons state
   const [addOnCart, setAddOnCart] = useState<{
@@ -321,6 +323,34 @@ export default function ProfilePage() {
     fetchCompanyId();
   }, [user, companyName]);
 
+  // Handle Stripe redirect params for booster pack purchase outcome
+  const boosterToastShown = useRef(false);
+  useEffect(() => {
+    const boosterParam = searchParams.get("booster");
+    if (!boosterParam || boosterToastShown.current) return;
+    boosterToastShown.current = true;
+
+    // Remove the param from the URL immediately
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("booster");
+    setSearchParams(nextParams, { replace: true });
+
+    setAddOnCart({ extraDevices: 0, extraModules: 0, aiBoosterPacks: 0 });
+
+    if (boosterParam === "success") {
+      toast.success("AI Booster Pack purchased!", {
+        description: "Your AI credits have been added to your account. It may take a few seconds to reflect.",
+        duration: 6000,
+      });
+    } else if (boosterParam === "cancelled") {
+      toast.info("Purchase cancelled", {
+        description: "Your AI Booster Pack purchase was cancelled. No charge was made.",
+        duration: 4000,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   // Fetch subscription data function (extracted for reuse)
   const fetchSubscriptionData = async (showLoading = true) => {
     if (!user) return;
@@ -351,9 +381,11 @@ export default function ProfilePage() {
         try {
           const newPlan = await newPricingService.getCompanyPlan(companyId);
           setNewPricingPlan(newPlan);
+          setPlanDataLoaded(true);
           console.log('[ProfilePage] New pricing plan:', newPlan);
         } catch (newPlanError) {
           console.error("Error fetching new pricing plan:", newPlanError);
+          setPlanDataLoaded(true);
         }
       }
 
@@ -419,13 +451,11 @@ export default function ProfilePage() {
           sessions.forEach((session: any) => {
             const metadata = session.metadata;
             if (metadata) {
-              // Sum up all purchased add-ons
+              // Sum up purchased add-ons from old checkout sessions
               totalDevices += parseInt(metadata.extraDevices) || 0;
               totalModules += parseInt(metadata.extraModules) || 0;
-              // AI booster packs give 500 or 1000 credits each
-              const aiPacks = parseInt(metadata.aiBoosterPacks) || 0;
-              const creditsPerPack = metadata.tier === "genesis" ? 500 : 1000;
-              totalAiCredits += aiPacks * creditsPerPack;
+              // AI credits are now tracked in new_pricing_company_plans.ai_booster_packs
+              // (updated by webhook), so we don't count them from checkout sessions
             }
           });
 
@@ -446,7 +476,7 @@ export default function ProfilePage() {
   // Fetch usage data
   useEffect(() => {
     const fetchUsageData = async () => {
-      if (!user || !companyId) return;
+      if (!user || !companyId || !planDataLoaded) return;
 
       try {
         // Get current plan - first check new pricing, then fallback
@@ -467,6 +497,32 @@ export default function ProfilePage() {
 
         const planLimits = PLAN_LIMITS[planKey];
 
+        // Enterprise plan: auto-select all modules
+        if (planKey === "enterprise") {
+          setActiveModules(AVAILABLE_MODULES.map(m => m.id));
+        }
+
+        // Override limits from DB if new pricing plan exists
+        let dbDeviceLimit: number | null = null;
+        let dbModuleLimit: number | null = null;
+        let dbAiCreditLimit: number | null = null;
+        // Extra add-ons from company plan record (set by super admin)
+        let companyExtraDevices = 0;
+        let companyExtraModules = 0;
+        let companyExtraAiCredits = 0;
+        if (newPricingPlan) {
+          if (newPricingPlan.plan) {
+            dbDeviceLimit = newPricingPlan.plan.included_devices;
+            dbModuleLimit = newPricingPlan.plan.included_module_slots;
+            dbAiCreditLimit = newPricingPlan.plan.included_ai_credits;
+            console.log('[ProfilePage] DB plan limits:', { dbDeviceLimit, dbModuleLimit, dbAiCreditLimit });
+          }
+          console.log('[ProfilePage] Company extras:', { extra_devices: newPricingPlan.extra_devices, extra_module_slots: newPricingPlan.extra_module_slots, ai_booster_packs: newPricingPlan.ai_booster_packs });
+          companyExtraDevices = newPricingPlan.extra_devices || 0;
+          companyExtraModules = newPricingPlan.extra_module_slots || 0;
+          companyExtraAiCredits = newPricingPlan.ai_booster_packs || 0;
+        }
+
         // Fetch devices/products count
         const { count: devicesCount } = await supabase
           .from("products")
@@ -485,14 +541,21 @@ export default function ProfilePage() {
           .select("*", { count: "exact", head: true })
           .eq("company_id", companyId);
 
-        // Fetch AI credits used (if ai_credits table exists)
+        // Fetch AI credits used (1 credit = 1 API call)
         let aiCreditsUsed = 0;
-        // ai_credits table may not exist yet, skip query for now
+        const now = new Date();
+        const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const { data: aiRows } = await supabase
+          .from('ai_token_usage')
+          .select('id')
+          .eq('company_id', companyId)
+          .gte('created_at', firstOfMonth.toISOString());
+        aiCreditsUsed = (aiRows || []).length;
 
         setUsage({
           devices: {
             used: devicesCount || 0,
-            limit: (planLimits?.devices?.limit || 1) + purchasedAddOns.extraDevices
+            limit: (dbDeviceLimit ?? planLimits?.devices?.limit ?? 1) + companyExtraDevices + purchasedAddOns.extraDevices
           },
           teamMembers: {
             used: teamCount || 0,
@@ -500,14 +563,14 @@ export default function ProfilePage() {
           },
           aiCredits: {
             used: aiCreditsUsed,
-            limit: (planLimits?.aiCredits?.limit || 0) + purchasedAddOns.aiCredits
+            limit: (dbAiCreditLimit ?? planLimits?.aiCredits?.limit ?? 0) + companyExtraAiCredits + purchasedAddOns.aiCredits
           },
           moduleSlots: {
-            used: activeModules.length, // Track active modules
-            limit: (planLimits?.moduleSlots?.limit || 0) + purchasedAddOns.extraModules
+            used: activeModules.length,
+            limit: (dbModuleLimit ?? planLimits?.moduleSlots?.limit ?? 0) + companyExtraModules + purchasedAddOns.extraModules
           },
           storage: {
-            used: 0, // Would need to calculate from file sizes
+            used: 0,
             limit: planLimits?.storage?.limit || 500
           },
           documents: {
@@ -521,7 +584,8 @@ export default function ProfilePage() {
     };
 
     fetchUsageData();
-  }, [user, companyId, subscription, newPricingPlan, purchasedAddOns, activeModules]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, planDataLoaded]);
 
   // Fetch payment method from Stripe
   useEffect(() => {
@@ -871,23 +935,39 @@ export default function ProfilePage() {
 
     setAddOnPurchaseLoading(true);
     try {
-      const currentTier = getCurrentPlanTier();
-      const totalPrice = calculateAddOnTotal();
+      if (!companyId) {
+        toast.error("No company found.");
+        return;
+      }
 
-      // Create checkout for add-ons only (no base plan)
-      await StripeService.handlePlanPurchase({
-        planId: `${currentTier}_addons_only`,
-        name: `${currentTier.charAt(0).toUpperCase() + currentTier.slice(1)} Add-ons`,
-        price: `€${totalPrice}`,
-        tier: currentTier,
-        extraDevices: addOnCart.extraDevices,
-        extraModules: addOnCart.extraModules,
-        aiBoosterPacks: addOnCart.aiBoosterPacks,
-        // Don't pass stripePriceId - we only want add-ons, not the base plan
-      }, companyId || undefined);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
 
-      // Reset cart after purchase
-      setAddOnCart({ extraDevices: 0, extraModules: 0, aiBoosterPacks: 0 });
+      const boosterPriceId = import.meta.env.VITE_STRIPE_PRICE_CORE_AI_BOOSTER;
+      if (!boosterPriceId) {
+        toast.error("AI Booster Pack not configured. Please contact support.");
+        return;
+      }
+
+      // Call Edge Function to create Stripe Checkout with customer ID
+      const { data, error } = await supabase.functions.invoke("create-booster-checkout", {
+        body: {
+          companyId,
+          priceId: boosterPriceId,
+          quantity: addOnCart.aiBoosterPacks,
+          companyName: window.location.pathname.split("/company/")[1]?.split("/")[0] || "",
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!error && data?.url) {
+        window.open(data.url, "_blank");
+        setAddOnCart({ extraDevices: 0, extraModules: 0, aiBoosterPacks: 0 });
+      } else {
+        toast.error(data?.error || "Failed to create checkout. Please contact support.");
+      }
     } catch (error: any) {
       console.error("Error purchasing add-ons:", error);
       toast.error(error.message || "Failed to process add-on purchase");
@@ -1795,9 +1875,9 @@ export default function ProfilePage() {
                       </div>
                       <div className="text-left">
                         <h4 className="font-semibold">Devices</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {usage?.devices.used || 0} / {(usage?.devices.limit || 1) + addOnCart.extraDevices} slots used
-                        </p>
+                        {!usage ? <Skeleton className="h-4 w-28 mt-1" /> : <p className="text-sm text-muted-foreground">
+                          {usage.devices.used} / {usage.devices.limit + addOnCart.extraDevices} slots used
+                        </p>}
                       </div>
                       {purchasedAddOns.extraDevices > 0 && (
                         <Badge variant="secondary" className="bg-green-100 text-green-700 ml-2">
@@ -1833,9 +1913,9 @@ export default function ProfilePage() {
                       </div>
                       <div className="text-left">
                         <h4 className="font-semibold">AI Credits</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {usage?.aiCredits.used || 0} / {(usage?.aiCredits.limit || 0) + addOnCart.aiBoosterPacks * (getCurrentPlanTier() === "genesis" ? 500 : 1000)} credits used
-                        </p>
+                        {!usage ? <Skeleton className="h-4 w-28 mt-1" /> : <p className="text-sm text-muted-foreground">
+                          {Math.max(0, (usage.aiCredits.limit + addOnCart.aiBoosterPacks * 500) - usage.aiCredits.used)} credits left
+                        </p>}
                       </div>
                       {purchasedAddOns.aiCredits > 0 && (
                         <Badge variant="secondary" className="bg-green-100 text-green-700 ml-2">
@@ -1844,7 +1924,7 @@ export default function ProfilePage() {
                       )}
                       {addOnCart.aiBoosterPacks > 0 && (
                         <Badge variant="secondary" className="bg-purple-100 text-purple-700 ml-2">
-                          +{addOnCart.aiBoosterPacks * (getCurrentPlanTier() === "genesis" ? 500 : 1000)} in cart
+                          +{addOnCart.aiBoosterPacks * (500)} in cart
                         </Badge>
                       )}
                     </div>
@@ -1852,11 +1932,11 @@ export default function ProfilePage() {
                   <AccordionContent>
                     <div className="pt-4">
                       <Progress
-                        value={((usage?.aiCredits.used || 0) / ((usage?.aiCredits.limit || 1) + addOnCart.aiBoosterPacks * (getCurrentPlanTier() === "genesis" ? 500 : 1000))) * 100}
+                        value={((usage?.aiCredits.used || 0) / ((usage?.aiCredits.limit || 1) + addOnCart.aiBoosterPacks * (500))) * 100}
                         className="h-3 mb-2"
                       />
                       <p className="text-sm text-muted-foreground">
-                        Credits for AI document generation
+                        Credits are consumed per AI generation
                       </p>
                     </div>
                   </AccordionContent>
@@ -1871,9 +1951,9 @@ export default function ProfilePage() {
                       </div>
                       <div className="text-left">
                         <h4 className="font-semibold">Module Slots</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {activeModules.length} / {(usage?.moduleSlots?.limit || 3) + addOnCart.extraModules} slots used
-                        </p>
+                        {!usage ? <Skeleton className="h-4 w-28 mt-1" /> : <p className="text-sm text-muted-foreground">
+                          {activeModules.length} / {usage.moduleSlots.limit + addOnCart.extraModules} slots used
+                        </p>}
                       </div>
                       {purchasedAddOns.extraModules > 0 && (
                         <Badge variant="secondary" className="bg-green-100 text-green-700 ml-2">
@@ -1981,7 +2061,7 @@ export default function ProfilePage() {
                     <div>
                       <h4 className="font-semibold text-purple-800 dark:text-purple-200">AI Credits</h4>
                       <p className="text-xs text-purple-600 dark:text-purple-400">
-                        {getCurrentPlanTier() === "genesis" ? "500 credits" : "1,000 credits"}
+                        500 credits
                       </p>
                     </div>
                   </div>
@@ -1995,8 +2075,8 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Quick Extra Device - Core only */}
-                {getCurrentPlanTier() !== "genesis" && (
+                {/* Quick Extra Device - Core only (not for enterprise) */}
+                {getCurrentPlanTier() !== "genesis" && getCurrentPlanTier() !== "enterprise" && (
                   <div className="p-4 rounded-lg border bg-gradient-to-br from-cyan-50 to-cyan-100 dark:from-cyan-900/20 dark:to-cyan-800/20 border-cyan-200 dark:border-cyan-800">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-full bg-cyan-500 flex items-center justify-center">
@@ -2020,8 +2100,8 @@ export default function ProfilePage() {
                   </div>
                 )}
 
-                {/* Quick Extra Module - Core only */}
-                {getCurrentPlanTier() !== "genesis" && (
+                {/* Quick Extra Module - Core only (not for enterprise) */}
+                {getCurrentPlanTier() !== "genesis" && getCurrentPlanTier() !== "enterprise" && (
                   <div className="p-4 rounded-lg border bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 border-amber-200 dark:border-amber-800">
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
@@ -2045,8 +2125,38 @@ export default function ProfilePage() {
                   </div>
                 )}
 
+                {/* Plan info loading skeleton */}
+                {!planDataLoaded && (
+                  <div className="p-4 rounded-lg border col-span-2">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="w-10 h-10 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-3 w-64" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Enterprise Custom Plan Info */}
+                {planDataLoaded && getCurrentPlanTier() === "enterprise" && (
+                  <div className="p-4 rounded-lg border bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 border-amber-200 dark:border-amber-800 col-span-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
+                        <Crown className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-amber-800 dark:text-amber-200">Enterprise Plan — Custom</h4>
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Custom allocation of devices, modules, and dedicated support included
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Genesis Upgrade Prompt */}
-                {getCurrentPlanTier() === "genesis" && (
+                {planDataLoaded && getCurrentPlanTier() === "genesis" && (
                   <div className="p-4 rounded-lg border bg-gradient-to-br from-cyan-50 to-cyan-100 dark:from-cyan-900/20 dark:to-cyan-800/20 border-cyan-200 dark:border-cyan-800 col-span-2">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-cyan-500 flex items-center justify-center">
@@ -2080,8 +2190,8 @@ export default function ProfilePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Extra Devices */}
-              {getCurrentPlanTier() !== "genesis" && (
+              {/* Extra Devices - not for genesis or enterprise */}
+              {getCurrentPlanTier() !== "genesis" && getCurrentPlanTier() !== "enterprise" && (
                 <div className="flex items-center justify-between p-4 rounded-lg border">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-lg bg-cyan-100 dark:bg-cyan-900 flex items-center justify-center">
@@ -2114,8 +2224,8 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              {/* Extra Module Slots */}
-              {getCurrentPlanTier() !== "genesis" && (
+              {/* Extra Module Slots - not for genesis or enterprise */}
+              {getCurrentPlanTier() !== "genesis" && getCurrentPlanTier() !== "enterprise" && (
                 <div className="flex items-center justify-between p-4 rounded-lg border">
                   <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-lg bg-amber-100 dark:bg-amber-900 flex items-center justify-center">
