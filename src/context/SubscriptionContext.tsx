@@ -205,24 +205,24 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
         if (uuidRegex.test(decodedName)) {
           companyIdPromise = Promise.resolve(decodedName);
         } else {
-          companyIdPromise = supabase
+          companyIdPromise = Promise.resolve(supabase
             .from('companies')
             .select('id')
             .eq('name', decodedName)
             .limit(1)
             .single()
-            .then(({ data }) => data?.id || null);
+            .then(({ data }) => data?.id || null));
         }
       } else if (urlProductId && location.pathname.includes('/product/')) {
-        companyIdPromise = supabase
+        companyIdPromise = Promise.resolve(supabase
           .from('products')
           .select('company_id')
           .eq('id', urlProductId)
           .single()
-          .then(({ data }) => data?.company_id || null);
+          .then(({ data }) => data?.company_id || null));
       } else {
         // Fallback: get primary company (or any company) from user_company_access
-        companyIdPromise = supabase
+        companyIdPromise = Promise.resolve(supabase
           .from('user_company_access')
           .select('company_id, is_primary')
           .eq('user_id', userId)
@@ -230,7 +230,7 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
           .order('created_at', { ascending: false })
           .limit(1)
           .single()
-          .then(({ data }) => data?.company_id || null);
+          .then(({ data }) => data?.company_id || null));
       }
 
       // Run subscription query and company resolution in PARALLEL

@@ -37,6 +37,8 @@ import { DocumentValidationService, UnresolvedReferenceSource } from '@/services
 import { DocxCommentSidebar } from '@/components/review/DocxCommentSidebar';
 import { DocxCommentHighlighter } from '@/components/review/DocxCommentHighlighter';
 import { useDocxComments } from '@/hooks/useDocxComments';
+import { formatSopDisplayName } from '@/constants/sopAutoSeedTiers';
+import { splitDocPrefix } from '@/utils/templateNameUtils';
 
 // OnlyOffice constants
 const SUPABASE_URL = "https://wzzkbmmgxxrfhhxggrcl.supabase.co";
@@ -1108,16 +1110,50 @@ export function DocumentDraftDrawer({
               </IconButton>
             </Tooltip>
           )}
-          <Typography variant="h6" noWrap>
-            {activeView === 'review'
-              ? `Review & Approve — ${documentName}`
-              : activeView === 'completed'
-                ? `Completed — ${documentName}`
-                : showAdvancedEditor
-                  ? `Advanced Editor — ${documentName}`
-                  : `${existingDraftId ? 'Edit Draft' : 'Create Draft'} — ${documentName}`
-            }
-          </Typography>
+          {(() => {
+            const actionLabel =
+              activeView === 'review'
+                ? 'Review & Approve'
+                : activeView === 'completed'
+                  ? 'Completed'
+                  : showAdvancedEditor
+                    ? 'Advanced Editor'
+                    : existingDraftId
+                      ? 'Edit Draft'
+                      : 'Create Draft';
+            // Apply functional sub-prefix display (e.g. SOP-014 → SOP-CL-014)
+            // and split the prefix from the title so the prefix can render
+            // smaller/monospaced instead of inflating to h6 size.
+            const displayName = formatSopDisplayName(documentName);
+            const { prefix, title } = splitDocPrefix(displayName);
+            return (
+              <Typography
+                variant="h6"
+                noWrap
+                component="div"
+                sx={{ display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0 }}
+              >
+                <span>{actionLabel} —</span>
+                {prefix && (
+                  <span
+                    style={{
+                      fontFamily:
+                        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                      fontSize: '0.7em',
+                      color: 'var(--mui-palette-text-secondary, rgba(0,0,0,0.6))',
+                      fontWeight: 400,
+                      letterSpacing: '0.02em',
+                    }}
+                  >
+                    {prefix}
+                  </span>
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {title}
+                </span>
+              </Typography>
+            );
+          })()}
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           {!showAdvancedEditor && (() => {

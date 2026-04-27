@@ -234,13 +234,17 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
     try {
       const { data, error } = await supabase
         .from('document_studio_templates')
-        .select('id, name, type')
+        .select('id, template_id, name, type')
         .eq('company_id', companyId)
         .eq('name', template.name)
         .maybeSingle();
       if (error) throw error;
       if (data) {
-        setDraftDrawerDoc({ id: data.id, name: data.name, type: (data as any).type || template.document_type || 'Template' });
+        // The drawer loads drafts via the linked CI/template id, NOT the
+        // studio row's own primary key. Falling back to the studio row id
+        // makes the drawer open in a blank "Create Draft" state.
+        const drawerId = (data as any).template_id || data.id;
+        setDraftDrawerDoc({ id: drawerId, name: data.name, type: (data as any).type || template.document_type || 'Template' });
       } else {
         setEditDialogOpen(true);
       }
@@ -258,7 +262,7 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
       const sopKeyMatch = name.match(/SOP-\d{3}/i);
       let query = supabase
         .from('document_studio_templates')
-        .select('id, name, type')
+        .select('id, template_id, name, type')
         .eq('company_id', companyId);
       query = sopKeyMatch
         ? query.ilike('name', `${sopKeyMatch[0]}%`)
@@ -266,7 +270,11 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
       const { data, error } = await query.limit(1).maybeSingle();
       if (error) throw error;
       if (data) {
-        setDraftDrawerDoc({ id: data.id, name: data.name, type: (data as any).type || 'SOP' });
+        // Pass the CI/template id so DocumentDraftDrawer can resolve the
+        // existing seeded draft via DocumentStudioPersistenceService
+        // (which queries by template_id, not the studio row id).
+        const drawerId = (data as any).template_id || data.id;
+        setDraftDrawerDoc({ id: drawerId, name: data.name, type: (data as any).type || 'SOP' });
       } else {
         toast({
           title: lang('common.error'),

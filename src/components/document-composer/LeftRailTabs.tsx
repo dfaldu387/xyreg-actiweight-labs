@@ -41,41 +41,56 @@ export function LeftRailTabs({
     setActiveTab('outline');
   }, [documentId]);
 
-  // When collapsed externally, hide the entire rail (parent handles the reveal button)
-  if (externalCollapsed) return null;
+  const collapsed = !!externalCollapsed;
+
+  const handleIconClick = (tab: Tab) => {
+    if (collapsed) {
+      // Re-open onto the requested tab
+      setActiveTab(tab);
+      onCollapsedChange?.(false);
+      return;
+    }
+    if (tab === activeTab) {
+      // Same icon clicked while open → collapse
+      onCollapsedChange?.(true);
+      return;
+    }
+    // Different tab → just switch
+    setActiveTab(tab);
+  };
 
   return (
     <div className="flex shrink-0 h-full">
       {/* Vertical icon strip — always visible */}
       <div className="flex flex-col items-center gap-1 w-10 border-r bg-muted/30 py-2">
         <button
-          onClick={() => setActiveTab('outline')}
+          onClick={() => handleIconClick('outline')}
           className={cn(
             'p-1.5 rounded-md transition-colors',
-            activeTab === 'outline'
+            !collapsed && activeTab === 'outline'
               ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
           )}
-          title="Table of contents"
+          title={!collapsed && activeTab === 'outline' ? 'Hide table of contents' : 'Show table of contents'}
         >
           <List className="w-4 h-4" />
         </button>
         <button
-          onClick={() => setActiveTab('configure')}
+          onClick={() => handleIconClick('configure')}
           className={cn(
             'p-1.5 rounded-md transition-colors',
-            activeTab === 'configure'
+            !collapsed && activeTab === 'configure'
               ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
           )}
-          title="Configure document"
+          title={!collapsed && activeTab === 'configure' ? 'Hide configure panel' : 'Configure document'}
         >
           <Settings2 className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Active panel */}
-      {activeTab === 'outline' ? (
+      {/* Active panel — hidden when collapsed, but icon strip stays visible */}
+      {collapsed ? null : activeTab === 'outline' ? (
         <DocumentOutlinePanel
           editorContainerRef={editorContainerRef}
           refreshTrigger={refreshTrigger}

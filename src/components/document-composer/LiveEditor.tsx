@@ -394,6 +394,7 @@ function renumberSubHeadings(html: string, sectionNum: number): string {
 }
 
 function mergeSectionsToHtml(sections: any[], companyName: string, numbered: boolean = false): string {
+  // helper hoisted via function declaration below
   if (!sections || sections.length === 0) return '<p></p>';
 
   return [...sections]
@@ -407,6 +408,15 @@ function mergeSectionsToHtml(sections: any[], companyName: string, numbered: boo
       const contentItems = (Array.isArray(section.content) ? section.content : [])
         .map((item: any) => {
           if (item.type === 'heading') return `<h3>${item.content}</h3>`;
+          if (item.type === 'table') {
+            const raw = (item.content || '').trim();
+            if (!raw) return '';
+            // Pre-rendered HTML tables pass through untouched.
+            if (raw.startsWith('<table')) return raw;
+            // If there are no pipes, fall through to paragraph handling so we
+            // don't break free-text content that was mis-tagged as 'table'.
+            if (raw.includes('|')) return pipeTableToHtml(raw);
+          }
           let processed = item.content || '';
           // Skip empty/placeholder content
           if (!processed.trim() || processed === '[AI_PROMPT_NEEDED]') return '';
@@ -441,6 +451,58 @@ function mergeSectionsToHtml(sections: any[], companyName: string, numbered: boo
       return sectionHeading + contentHtml;
     })
     .join('');
+}
+
+/**
+ * Convert a pipe-delimited table (markdown-style, no separator row required)
+ * into a clean HTML <table> with <thead>/<tbody>. Used to render seeded
+ * "Revision History" content (and similar) as actual editable tables.
+ */
+function pipeTableToHtml(raw: string): string {
+  const escape = (s: string) =>
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const isSeparatorRow = (cells: string[]) =>
+    cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c.trim()));
+
+  const splitRow = (line: string): string[] => {
+    // Trim leading/trailing pipes so "| a | b |" => ["a", "b"].
+    const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+    return trimmed.split('|').map((c) => c.trim());
+  };
+
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return '';
+
+  const rows = lines.map(splitRow).filter((r) => !isSeparatorRow(r));
+  if (rows.length === 0) return '';
+
+  const colCount = Math.max(...rows.map((r) => r.length));
+  const pad = (r: string[]) =>
+    r.length < colCount ? [...r, ...Array(colCount - r.length).fill('')] : r;
+
+  const [headerCells, ...bodyRows] = rows.map(pad);
+  const thead = `<thead><tr>${headerCells
+    .map((c) => `<th>${escape(c) || '&nbsp;'}</th>`)
+    .join('')}</tr></thead>`;
+  const tbody =
+    bodyRows.length > 0
+      ? `<tbody>${bodyRows
+          .map(
+            (row) =>
+              `<tr>${row.map((c) => `<td>${escape(c) || '&nbsp;'}</td>`).join('')}</tr>`,
+          )
+          .join('')}</tbody>`
+      : '';
+
+  return `<table>${thead}${tbody}</table>`;
 }
 
 /**
@@ -2628,11 +2690,10 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
           <button
             type="button"
             onClick={() => setRightPanelOpen(true)}
-            className="absolute top-3 right-5 z-20 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border bg-background shadow-sm hover:bg-muted transition-colors"
+            className="absolute top-3 right-5 z-20 p-1.5 rounded-md border bg-background shadow-sm hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
             title="Show side panel (AI Assistant, User Chat, Comments)"
           >
-            <PanelRight className="w-4 h-4 text-muted-foreground" />
-            <span className="text-xs font-medium text-foreground">Show panel</span>
+            <PanelRight className="w-4 h-4" />
           </button>
         )}
 

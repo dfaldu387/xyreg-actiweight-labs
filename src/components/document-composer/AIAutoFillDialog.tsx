@@ -264,7 +264,7 @@ export function AIAutoFillDialog({
   };
 
   // Shared helper to generate a single section
-  const generateSection = async (section: SectionState, referenceContext: string): Promise<'done' | 'error' | 'aborted'> => {
+  const generateSection = async (section: SectionState, referenceContext: string): Promise<'done' | 'error' | 'aborted' | 'no_credits'> => {
     // Check if already aborted before starting
     if (isAborted()) return 'aborted';
 

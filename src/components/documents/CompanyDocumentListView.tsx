@@ -25,6 +25,7 @@ import { useDocumentAuthors } from "@/hooks/useDocumentAuthors";
 import { useCompanyDateFormat } from "@/hooks/useCompanyDateFormat";
 import { useNavigate } from "react-router-dom";
 import { useCompanyRole } from "@/context/CompanyRoleContext";
+import { formatSopDisplayId, formatSopDisplayName } from '@/constants/sopAutoSeedTiers';
 
 // URL param keys for table state
 const TABLE_URL_PARAMS = {
@@ -147,7 +148,7 @@ export function CompanyDocumentListView({
   // Initialize pagination from URL params
   const [pagination, setPaginationState] = React.useState(() => {
     const page = parseInt(searchParams.get(TABLE_URL_PARAMS.PAGE) || '1', 10) - 1; // URL is 1-indexed
-    const pageSize = parseInt(searchParams.get(TABLE_URL_PARAMS.PAGE_SIZE) || '10', 10);
+    const pageSize = parseInt(searchParams.get(TABLE_URL_PARAMS.PAGE_SIZE) || '20', 10);
     return { pageIndex: Math.max(0, page), pageSize };
   });
 
@@ -193,7 +194,7 @@ export function CompanyDocumentListView({
     const urlSortCol = searchParams.get(TABLE_URL_PARAMS.SORT_COLUMN);
     const urlSortDir = searchParams.get(TABLE_URL_PARAMS.SORT_DIRECTION);
     const urlPage = parseInt(searchParams.get(TABLE_URL_PARAMS.PAGE) || '1', 10) - 1;
-    const urlPageSize = parseInt(searchParams.get(TABLE_URL_PARAMS.PAGE_SIZE) || '10', 10);
+    const urlPageSize = parseInt(searchParams.get(TABLE_URL_PARAMS.PAGE_SIZE) || '20', 10);
 
     // Update sorting if changed
     const newSorting: SortingState = urlSortCol
@@ -249,7 +250,7 @@ export function CompanyDocumentListView({
       // Update URL params (URL is 1-indexed for page)
       updateUrlParams({
         [TABLE_URL_PARAMS.PAGE]: newPagination.pageIndex > 0 ? String(newPagination.pageIndex + 1) : null,
-        [TABLE_URL_PARAMS.PAGE_SIZE]: newPagination.pageSize !== 10 ? String(newPagination.pageSize) : null,
+        [TABLE_URL_PARAMS.PAGE_SIZE]: newPagination.pageSize !== 20 ? String(newPagination.pageSize) : null,
       });
 
       return newPagination;
@@ -286,7 +287,11 @@ export function CompanyDocumentListView({
       accessorFn: (row) => {
         const docNumber = row.document_number;
         const name = row.name;
-        return docNumber ? `${docNumber} ${name}` : name;
+        // Apply functional sub-prefix display (e.g. SOP-014 → SOP-CL-014)
+        if (docNumber) {
+          return `${formatSopDisplayId(docNumber)} ${name}`;
+        }
+        return formatSopDisplayName(name);
       },
       id: "name",
       header: ({ column }) => {
@@ -309,7 +314,14 @@ export function CompanyDocumentListView({
         if (docNumber && cleanName.startsWith(docNumber)) {
           cleanName = cleanName.slice(docNumber.length).replace(/^\s+/, '');
         }
-        const displayName = docNumber ? `${docNumber} ${cleanName}` : cleanName;
+        // Apply functional sub-prefix display: prefix as SOP-CL-014, and
+        // when the prefix lives inside `name` (no document_number column),
+        // rewrite the whole string so the title shows the canonical form.
+        const displayDocNumber = docNumber ? formatSopDisplayId(docNumber) : null;
+        const displayCleanName = docNumber ? cleanName : formatSopDisplayName(cleanName);
+        const displayName = displayDocNumber
+          ? `${displayDocNumber} ${displayCleanName}`
+          : displayCleanName;
         return (
           <TooltipProvider>
             <Tooltip>
@@ -318,10 +330,10 @@ export function CompanyDocumentListView({
                   className={`font-medium max-w-[240px] truncate block ${onCreateInStudio ? 'cursor-pointer hover:underline text-primary' : 'cursor-default'}`}
                   onClick={onCreateInStudio ? (e) => { e.stopPropagation(); onCreateInStudio(doc); } : undefined}
                 >
-                  {docNumber && (
-                    <span className="text-muted-foreground font-mono text-xs mr-1.5">{docNumber}</span>
+                  {displayDocNumber && (
+                    <span className="text-muted-foreground font-mono text-xs mr-1.5">{displayDocNumber}</span>
                   )}
-                  {cleanName}
+                  {displayCleanName}
                 </span>
               </TooltipTrigger>
               <TooltipContent>
