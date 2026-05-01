@@ -39,6 +39,27 @@ import { Button } from '../ui/button';
 import { cn } from '@/lib/utils';
 import { useAdvancedSettings } from '@/context/AdvancedSettingsContext';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useCustomerFeatureFlags } from '@/hooks/useCustomerFeatureFlag';
+
+const filterByFeatureFlags = (items: MenuItem[], flags: Record<string, boolean> | undefined): MenuItem[] => {
+  return items.map(item => {
+    // Filter children first
+    if (item.children && item.children.length > 0) {
+      const filteredChildren = item.children.filter(child => {
+        if (!child.featureFlag) return true;
+        if (!flags) return true; // Default ON if flags not loaded
+        return flags[child.featureFlag] !== false;
+      });
+      return { ...item, children: filteredChildren };
+    }
+    // Check the item itself
+    if (item.featureFlag) {
+      if (!flags) return item; // Default ON
+      if (flags[item.featureFlag] === false) return null;
+    }
+    return item;
+  }).filter((item): item is MenuItem => item !== null);
+};
 
 interface L2ContextualBarProps {
   activeModule: string | null;
@@ -69,6 +90,7 @@ export function L2ContextualBar({
   const { companyName: urlCompanyName } = useParams<{ companyName: string }>();
   const { lang } = useTranslation();
   const { hasAccess: hasDeviceModuleAccess, isLoading: isDeviceModuleLoading } = useDeviceModuleAccess(currentProductId || null);
+  const customerFeatureFlags = useCustomerFeatureFlags();
 
   // Get company name from URL params or session storage (for product pages)
   const getCompanyNameForUpgrade = (): string => {
@@ -1654,6 +1676,9 @@ export function L2ContextualBar({
           });
         }
       }
+
+      // Apply customer feature flag filtering
+      filteredMenuItems = filterByFeatureFlags(filteredMenuItems, customerFeatureFlags);
 
       items.push(...filteredMenuItems);
     }

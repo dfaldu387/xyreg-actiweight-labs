@@ -6,6 +6,7 @@
  */
 
 import React, { useMemo, useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ReactFlow,
   useNodesState,
@@ -114,16 +115,16 @@ const LAYOUT_CONFIG = {
   trackSpacing: 200,
   startX: 160,            // Enough left padding so track labels + nodes are fully visible
   startY: 80,
-  // Device box centered between rung 1 and rung 5
-  deviceBoxX: 480,        // Centered between Foundation and Feedback columns
-  deviceBoxWidth: 180,
-  deviceBoxHeight: 160,
+  // Device box centered between rung 1 and rung 5 — landscape orientation
+  deviceBoxX: 440,        // Centered between Foundation (x≈260) and Feedback (x≈1100) column centers
+  deviceBoxWidth: 480,    // Doubled width — landscape card reads as a central band
+  deviceBoxHeight: 55,    // Halved — slim horizontal drill-down strip
   trackLabelX: 10,        // Track labels on left
   trackY: {
     // Vertical spacing so cards never overlap
     regulatory: 70,
-    engineering: 310,
-    management: 550,
+    engineering: 340,
+    management: 640,
   },
 };
 
@@ -169,11 +170,14 @@ function createNodes(
     });
   });
 
-  // Add Device Engine label in center
+  // Add Device Engine label centered above the merged Design Control / Device Engine unit
   nodes.push({
     id: 'device-engine-label',
     type: 'default',
-    position: { x: LAYOUT_CONFIG.deviceBoxX - 10, y: 10 },
+    position: {
+      x: LAYOUT_CONFIG.deviceBoxX + LAYOUT_CONFIG.deviceBoxWidth / 2 - 70,
+      y: 10,
+    },
     data: { label: 'DEVICE ENGINE' },
     style: {
       background: 'transparent',
@@ -221,42 +225,60 @@ function createNodes(
     });
   });
 
-  // Add Device Black Box in the center - represents the Device Engine (Rungs 2-4)
-  // Square shape, no connection handles
-  const boxSize = LAYOUT_CONFIG.deviceBoxHeight;
-  const boxCenterY = (LAYOUT_CONFIG.trackY.regulatory + LAYOUT_CONFIG.trackY.management) / 2 - boxSize / 2 + 40;
-  
+  // ─── DEVICE ENGINE — light, integrated drill-down panel ───────────────────
+  // Visual model: Design Control card (rendered later from pulse data) sits
+  // *flush on top* of this slim panel. Together they read as one component:
+  //   ┌─ Design Control (ENG · ISO 7.3 · 8 SOPs) ─┐  ← header
+  //   ├──────────────────────────────────────────┤
+  //   │  🧬  Device Engine · Rungs 2-4           │  ← body
+  //   │  [ → View in Product ]                   │
+  //   └──────────────────────────────────────────┘
+  const boxWidth = LAYOUT_CONFIG.deviceBoxWidth;
+  const boxHeight = LAYOUT_CONFIG.deviceBoxHeight;
+  // The Design Control card + Device Engine drill-down panel form a single
+  // merged unit. We center this unit vertically on the midpoint between the
+  // REG row (yellow flow above) and the ENG row (red flow below) so both
+  // governance arcs visibly wrap *around* the central §7.3 column.
+  const designControlHeight = 110;
+  // Anchor the Design Control card so its vertical center aligns with the
+  // ENG row (red flow). The Device Engine panel sits flush beneath.
+  const designControlY =
+    LAYOUT_CONFIG.trackY.engineering - designControlHeight / 2;
+  const boxCenterY = designControlY + designControlHeight + 8;
+
   nodes.push({
     id: 'device-black-box',
     type: 'default',
     position: { x: LAYOUT_CONFIG.deviceBoxX, y: boxCenterY },
     data: { label: '' },
     style: {
-      background: 'linear-gradient(145deg, hsl(215, 30%, 20%), hsl(215, 35%, 12%))',
-      border: '2px solid hsl(215, 40%, 30%)',
-      borderRadius: '16px',
+      background: 'hsl(var(--card))',
+      border: '1px solid hsl(var(--border))',
+      borderTop: '1px dashed hsl(var(--border))', // visually merges with Design Control above
+      borderRadius: '12px',
       padding: '0',
-      width: boxSize,
-      height: boxSize,
-      boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255,255,255,0.05)',
+      width: boxWidth,
+      height: boxHeight,
+      boxShadow: '0 2px 8px hsl(var(--foreground) / 0.04)',
     },
     className: 'no-handles',
     draggable: false,
     selectable: false,
   });
 
-  // Add content label inside the device box - centered
+  // Horizontal layout: 🧬 icon on left, label centered, CTA on right.
+  // 🧬 icon — left side
   nodes.push({
     id: 'device-box-content',
     type: 'default',
-    position: { x: LAYOUT_CONFIG.deviceBoxX + boxSize / 2 - 24, y: boxCenterY + 30 },
+    position: { x: LAYOUT_CONFIG.deviceBoxX + 14, y: boxCenterY + 12 },
     data: { label: '🧬' },
     style: {
       background: 'transparent',
       border: 'none',
-      fontSize: '48px',
-      textAlign: 'center' as const,
-      width: 48,
+      fontSize: '22px',
+      textAlign: 'left' as const,
+      width: 30,
       padding: 0,
       pointerEvents: 'none' as const,
     },
@@ -265,19 +287,21 @@ function createNodes(
     selectable: false,
   });
 
+  // Label — center
   nodes.push({
     id: 'device-box-label',
     type: 'default',
-    position: { x: LAYOUT_CONFIG.deviceBoxX + 15, y: boxCenterY + 95 },
-    data: { label: 'Device Processes' },
+    position: { x: LAYOUT_CONFIG.deviceBoxX + 60, y: boxCenterY + 18 },
+    data: { label: 'Device Engine · Rungs 2–4' },
     style: {
       background: 'transparent',
       border: 'none',
-      color: 'hsl(215, 20%, 70%)',
-      fontSize: '12px',
+      color: 'hsl(var(--muted-foreground))',
+      fontSize: '11px',
       fontWeight: '600',
-      textAlign: 'center' as const,
-      width: boxSize - 30,
+      letterSpacing: '0.02em',
+      textAlign: 'left' as const,
+      width: boxWidth - 230,
       padding: 0,
       pointerEvents: 'none' as const,
     },
@@ -286,48 +310,25 @@ function createNodes(
     selectable: false,
   });
 
-  nodes.push({
-    id: 'device-box-sublabel',
-    type: 'default',
-    position: { x: LAYOUT_CONFIG.deviceBoxX + 15, y: boxCenterY + 115 },
-    data: { label: 'Rungs 2-4' },
-    style: {
-      background: 'transparent',
-      border: 'none',
-      color: 'hsl(215, 15%, 50%)',
-      fontSize: '9px',
-      fontWeight: '500',
-      letterSpacing: '0.1em',
-      textTransform: 'uppercase' as const,
-      textAlign: 'center' as const,
-      width: boxSize - 30,
-      padding: 0,
-      pointerEvents: 'none' as const,
-    },
-    className: 'no-handles',
-    draggable: false,
-    selectable: false,
-  });
-
-  // Clickable "View in Product" button
+  // CTA — right side
   nodes.push({
     id: 'device-box-hint',
     type: 'default',
-    position: { x: LAYOUT_CONFIG.deviceBoxX + 15, y: boxCenterY + 145 },
-    data: { 
+    position: { x: LAYOUT_CONFIG.deviceBoxX + boxWidth - 150, y: boxCenterY + 12 },
+    data: {
       label: '→ View in Product',
       onClick: onViewInProduct,
     },
     style: {
-      background: 'hsla(215, 30%, 40%, 0.5)',
-      border: '1px solid hsla(215, 30%, 50%, 0.4)',
+      background: 'hsl(var(--primary) / 0.08)',
+      border: '1px solid hsl(var(--primary) / 0.25)',
       borderRadius: '6px',
-      color: 'hsl(215, 20%, 85%)',
-      fontSize: '9px',
+      color: 'hsl(var(--primary))',
+      fontSize: '10px',
       fontWeight: '600',
       textAlign: 'center' as const,
-      width: boxSize - 30,
-      padding: '4px 8px',
+      width: 135,
+      padding: '5px 8px',
       cursor: 'pointer',
     },
     className: 'no-handles nodrag nopan',
@@ -342,10 +343,22 @@ function createNodes(
     const config = HELIX_NODE_CONFIGS.find(c => c.id === pulse.nodeId);
     if (!config) return;
 
-    // Map rung to x position (rung 1 = 0 [left], rung 5 = 2 [right of device box])
-    const xOffset = config.rung === 1 ? 0 : 2;
-    const x = LAYOUT_CONFIG.startX + xOffset * LAYOUT_CONFIG.rungSpacing;
-    const y = LAYOUT_CONFIG.trackY[config.track];
+    // Design Control is the enterprise umbrella for the Device Engine —
+    // position it directly *under* the Device Engine box (centered column).
+    let x: number;
+    let y: number;
+    if (pulse.nodeId === 'design-control') {
+      // Card now spans the full 480px width of the merged unit
+      x = LAYOUT_CONFIG.deviceBoxX;
+      // Center it in the gap between the REG and ENG flow rows so both
+      // arcs wrap around it (matches the merged-unit anchor above).
+      y = designControlY;
+    } else {
+      // Map rung to x position (rung 1 = 0 [left], rung 5 = 2 [right of device box])
+      const xOffset = config.rung === 1 ? 0 : 2;
+      x = LAYOUT_CONFIG.startX + xOffset * LAYOUT_CONFIG.rungSpacing;
+      y = LAYOUT_CONFIG.trackY[config.track];
+    }
 
     nodes.push({
       id: pulse.nodeId,
@@ -432,9 +445,25 @@ function createEdges(pulseData: HelixPulseData[]): Edge[] {
   });
 
   // Horizontal connections between rungs (simplified for company view)
+  // Each edge declares which handles to use so the line routes *around* the
+  // central Device Engine column instead of slicing through it:
+  //   • REG flow goes along the TOP (top→top handles) — governance → market
+  //   • ENG flow goes along the BOTTOM (bottom→bottom handles) — resourcing → CAPA
   const horizontalConnections = [
-    { from: 'mgmt-resp', to: 'pms', track: 'regulatory' },
-    { from: 'resource-strategy', to: 'capa-loop', track: 'engineering' },
+    {
+      from: 'mgmt-resp',
+      to: 'pms',
+      track: 'regulatory',
+      detour: 'above' as const,
+      label: 'REG flow · governance → market',
+    },
+    {
+      from: 'resource-strategy',
+      to: 'capa-loop',
+      track: 'engineering',
+      detour: 'below' as const,
+      label: 'ENG flow · training → CAPA',
+    },
   ];
 
   horizontalConnections.forEach(({ from, to, track }) => {
@@ -455,19 +484,27 @@ function createEdges(pulseData: HelixPulseData[]): Edge[] {
 
     const trackColor = TRACK_COLORS[track as keyof typeof TRACK_COLORS].primary;
 
+    const strokeColor =
+      edgeStatus === 'blocked' ? STATUS_COLORS.critical.primary :
+      edgeStatus === 'active' ? STATUS_COLORS.active.primary :
+      'hsl(215, 20%, 60%)';
+
+    const conn = horizontalConnections.find(h => h.from === from && h.to === to);
     edges.push({
       id: `${from}-${to}`,
       source: from,
       target: to,
       type: 'helixFlow',
-      data: { status: edgeStatus },
+      label: conn?.label,
+      data: {
+        status: edgeStatus,
+        detour: conn?.detour,
+      },
       markerEnd: {
         type: MarkerType.ArrowClosed,
         width: 10,
         height: 10,
-        color: edgeStatus === 'blocked' ? STATUS_COLORS.critical.primary :
-               edgeStatus === 'active' ? STATUS_COLORS.active.primary : 
-               'hsl(215, 20%, 60%)',
+        color: strokeColor,
       },
     });
   });
@@ -500,15 +537,32 @@ function CompanyHelixMapInner({
   onViewInProduct
 }: CompanyHelixMapProps) {
   const { data, isLoading, refetch } = useHelixPulseStatus(companyId);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedNodeId = searchParams.get('foundationNode');
+  const isDrawerOpen = !!selectedNodeId;
+
+  const setSelectedNodeId = useCallback((nodeId: string | null) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (nodeId) next.set('foundationNode', nodeId);
+        else next.delete('foundationNode');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
+  const setIsDrawerOpen = useCallback((open: boolean) => {
+    if (!open) setSelectedNodeId(null);
+  }, [setSelectedNodeId]);
+
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
   const handleNodeClick = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
-    setIsDrawerOpen(true);
     onNodeClick?.(nodeId, nodeId);
-  }, [onNodeClick]);
+  }, [onNodeClick, setSelectedNodeId]);
 
   const handleRBRClick = useCallback((_rbrType: string) => {
     // RBR click handled via node drawer
@@ -618,9 +672,9 @@ function CompanyHelixMapInner({
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={{ padding: 0.08 }}
+          fitViewOptions={{ padding: 0.18 }}
           proOptions={{ hideAttribution: true }}
-          minZoom={0.4}
+          minZoom={0.3}
           maxZoom={1}
           nodesDraggable={false}
           nodesConnectable={false}

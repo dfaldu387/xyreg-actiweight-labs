@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -17,19 +18,21 @@ import {
   Database,
   Info,
   BookOpen,
-  Settings2,
   Loader2,
-  Link2,
 } from 'lucide-react';
+import { getNodeProcessDefault } from '@/data/nodeProcessDefaults';
 import type { RBRPulseStatus } from '@/hooks/useRBRPulseStatus';
 import { EscalateToCAPA } from './EscalateToCAPA';
 import { HELIX_NODE_CONFIGS } from '@/config/helixNodeConfig';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { ISO13485ClausePopover } from './ISO13485ClausePopover';
 import { CAPAAggregationPanel } from '@/components/capa/CAPAAggregationPanel';
 import { useCAPACompanyAggregation } from '@/hooks/useCAPAAggregation';
-import { NodeInternalProcessPopover } from './NodeInternalProcessPopover';
-import { useQmsNodeData } from '@/hooks/useQmsNodeProcess';
+import { NodeProcessCard } from './NodeProcessCard';
+import { type SOPRequirementStatus } from '@/hooks/useQmsNodeProcess';
+import { type SOPRecommendation } from '@/data/nodeSOPRecommendations';
+import { formatSopDisplayId } from '@/constants/sopAutoSeedTiers';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { NodeItemsListDialog } from './NodeItemsListDialog';
 import { useTranslation } from '@/hooks/useTranslation';
 
@@ -331,11 +334,55 @@ export function RBRNodeDetailDrawer({
   onEscalated,
 }: RBRNodeDetailDrawerProps) {
   const { lang } = useTranslation();
-  const [processPopoverOpen, setProcessPopoverOpen] = useState(false);
   const [itemsDialogState, setItemsDialogState] = useState<{
     isOpen: boolean;
     variant: 'pending' | 'approved';
   }>({ isOpen: false, variant: 'pending' });
+
+  // Resizable drawer width — persisted to localStorage. Default broadened from
+  // the cramped w-96 (384px) to 560px so the 6-block Process Card breathes.
+  const MIN_WIDTH = 420;
+  const MAX_WIDTH = 1100;
+  const DEFAULT_WIDTH = 560;
+  const [drawerWidth, setDrawerWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return DEFAULT_WIDTH;
+    const stored = parseInt(window.localStorage.getItem('rbr-node-drawer-width') || '', 10);
+    return Number.isFinite(stored) && stored >= MIN_WIDTH && stored <= MAX_WIDTH
+      ? stored
+      : DEFAULT_WIDTH;
+  });
+  const isResizingRef = useRef(false);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const next = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, window.innerWidth - e.clientX));
+      setDrawerWidth(next);
+    };
+    const onUp = () => {
+      if (!isResizingRef.current) return;
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try {
+        window.localStorage.setItem('rbr-node-drawer-width', String(drawerWidth));
+      } catch {/* ignore */}
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [drawerWidth, isOpen]);
   
   // Determine if this is a company-level CAPA node (shows aggregation)
   const isCompanyCAPANode = pulse?.nodeId === 'capa-loop';
@@ -343,9 +390,53 @@ export function RBRNodeDetailDrawer({
   // Fetch aggregation data for company CAPA node
   const aggregation = useCAPACompanyAggregation(isCompanyCAPANode ? companyId : undefined);
   
-  // Fetch internal process and SOP data for this node
-  const nodeProcessData = useQmsNodeData(companyId, pulse?.nodeId);
-  
+  const { companyName } = useParams<{ companyName?: string }>();
+
+  // In-place document drawer (View existing or Create new SOP). Mirrors the
+  // pattern used in NodeSOPRequirementsDialog so users stay on the dashboard.
+  const [sopDrawerDoc, setSopDrawerDoc] = useState<{
+    id: string;
+    name: string;
+    type: string;
+    isNew?: boolean;
+  } | null>(null);
+
+  const handleSopRowClick = async (
+    sop: SOPRecommendation,
+    status: SOPRequirementStatus | undefined,
+  ) => {
+    if (status?.documentId) {
+      try {
+        const { data, error } = await supabase
+          .from('phase_assigned_document_template')
+          .select('id, name, document_type')
+          .eq('id', status.documentId)
+          .maybeSingle();
+        if (error || !data) {
+          toast.error('Could not load document');
+          return;
+        }
+        setSopDrawerDoc({
+          id: data.id,
+          name: data.name || 'Document',
+          type: data.document_type || 'SOP',
+        });
+      } catch {
+        toast.error('Could not load document');
+      }
+      return;
+    }
+    // Missing — open a fresh, unsaved drawer with the canonical title.
+    const displayId = formatSopDisplayId(sop.sopNumber);
+    const title = status?.documentName || sop.clauseDescription || sop.sopNumber;
+    setSopDrawerDoc({
+      id: crypto.randomUUID(),
+      name: `${displayId} ${title}`.trim(),
+      type: 'SOP',
+      isNew: true,
+    });
+  };
+
   if (!pulse) return null;
 
   const config = statusConfig[pulse.status];
@@ -358,23 +449,36 @@ export function RBRNodeDetailDrawer({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — sits below the global app header (top-16) so Help / language /
+          notifications / avatar in the header remain clickable. */}
       <div 
         className={cn(
-          'fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300',
+          'fixed left-0 right-0 bottom-0 top-16 bg-black/60 backdrop-blur-sm z-30 transition-opacity duration-300',
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         )}
         onClick={onClose}
       />
 
-      {/* Drawer */}
+      {/* Drawer — also offset by top-16 to leave the global header uncovered. */}
       <div className={cn(
-        'fixed right-0 top-0 bottom-0 w-96 max-w-full z-50',
+        'fixed right-0 top-16 bottom-0 max-w-full z-40',
         'bg-white backdrop-blur-xl border-l border-gray-200',
         'shadow-[-20px_0_60px_-15px_rgba(0,0,0,0.15)]',
         'transform transition-transform duration-300 ease-out',
         isOpen ? 'translate-x-0' : 'translate-x-full'
-      )}>
+      )}
+      style={{ width: drawerWidth }}
+      >
+        {/* Drag handle to resize the drawer width. */}
+        <div
+          onMouseDown={handleResizeStart}
+          className="absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 cursor-col-resize group z-10"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize panel"
+        >
+          <div className="h-full w-px mx-auto bg-transparent group-hover:bg-purple-400 transition-colors" />
+        </div>
         {/* Header */}
         <div className={cn(
           'flex items-start justify-between p-6 border-b',
@@ -407,129 +511,109 @@ export function RBRNodeDetailDrawer({
               </span>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-gray-400 hover:text-gray-600"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-gray-400 hover:text-gray-600"
+              onClick={onClose}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <ScrollArea className="h-[calc(100%-180px)]">
           <div className="p-6 space-y-6">
-            {/* QMS Reference - with clickable clause help */}
-            <ISO13485ClausePopover 
-              clauseRef={pulse.isoClause} 
-              nodeLabel={pulse.label}
-            >
-              <div className="flex items-center gap-3 p-4 rounded-lg bg-purple-50 border border-purple-200 cursor-pointer hover:bg-purple-100 transition-colors group">
-                <Shield className="h-5 w-5 text-purple-600" />
-                <div className="flex-1">
-                  <p className="text-xs text-gray-500">{lang('deviceProcessEngine.isoClauseReference')}</p>
-                  <p className="text-sm font-mono font-medium text-gray-900">
-                    {lang('deviceProcessEngine.clause')} {pulse.isoClause}
-                  </p>
-                </div>
-                <BookOpen className="h-4 w-4 text-purple-400 group-hover:text-purple-600 transition-colors" />
+            {/* QMS Reference — unified inline help popover */}
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-purple-50 border border-purple-200">
+              <Shield className="h-5 w-5 text-purple-600" />
+              <div className="flex-1">
+                <p className="text-xs text-gray-500">{lang('deviceProcessEngine.isoClauseReference')}</p>
+                <p className="text-sm font-mono font-medium text-gray-900">
+                  {lang('deviceProcessEngine.clause')} {pulse.isoClause}
+                </p>
               </div>
-            </ISO13485ClausePopover>
+            </div>
 
             {/* Internal Process & SOP Section */}
-            <div className="p-4 rounded-lg border border-border bg-muted/30 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Settings2 className="h-4 w-4 text-purple-600" />
-                  <span className="text-sm font-semibold text-foreground">{lang('deviceProcessEngine.internalProcessSOP')}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1.5"
-                  onClick={() => setProcessPopoverOpen(true)}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  {lang('deviceProcessEngine.view')}
-                </Button>
-              </div>
-              
-              {/* Process preview */}
-              {nodeProcessData.isLoading ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {lang('deviceProcessEngine.loading')}
-                </div>
-              ) : nodeProcessData.process?.process_description ? (
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  {nodeProcessData.process.process_description}
-                </p>
-              ) : (
-                <p className="text-xs text-muted-foreground italic">
-                  {lang('deviceProcessEngine.noProcessDescription')}
-                </p>
-              )}
-              
-              {/* Linked SOPs preview */}
-              {nodeProcessData.sops.length > 0 && (
-                <div className="flex items-center gap-2 pt-1 border-t border-border">
-                  <Link2 className="h-3.5 w-3.5 text-purple-500" />
-                  <span className="text-xs text-muted-foreground">
-                    {lang('deviceProcessEngine.sopsLinked').replace('{count}', String(nodeProcessData.sops.length))}
-                  </span>
-                  {nodeProcessData.sops.some(s => s.document?.status?.toLowerCase() === 'approved') && (
-                    <Badge variant="outline" className="h-5 text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      {lang('deviceProcessEngine.approved')}
-                    </Badge>
+            {pulse.nodeId && (
+              <NodeProcessCard
+                companyId={companyId}
+                nodeId={pulse.nodeId}
+                nodeLabel={pulse.label}
+                isoClause={pulse.isoClause}
+                pulse={pulse}
+                onSopRowClick={handleSopRowClick}
+              />
+            )}
+            {/* Workflow Activity — items currently flowing through this node's process.
+                NOT the same as SOP approvals (those live in the Controls block above). */}
+            {(() => {
+              const dataSource = NODE_DATA_SOURCES[pulse.nodeId];
+              const progressField = dataSource?.fields.find(f => f.name === 'Progress' || f.name.startsWith('Total'));
+              const subtitle = progressField?.source ?? 'Items currently tracked under this process';
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-gray-900">Workflow Activity</span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5 truncate">{subtitle}</p>
+                    </div>
+                    {pulse.count > 0 && (
+                      <span className="text-sm font-medium text-gray-900 flex-shrink-0">
+                        {pulse.approvedCount} / {pulse.count}
+                      </span>
+                    )}
+                  </div>
+
+                  {pulse.count === 0 ? (
+                    <div className="rounded-md border border-dashed border-gray-200 bg-gray-50/50 px-3 py-4 text-center">
+                      <p className="text-xs text-gray-500">
+                        No items have entered this process yet.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <Progress value={progressPercent} className="h-2 bg-gray-100" />
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>{pulse.pendingCount} awaiting approval</span>
+                        <span>{Math.round(progressPercent)}% complete</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="p-3 rounded-lg bg-muted border border-border text-center">
+                          <p className="text-2xl font-bold text-foreground">{pulse.count}</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total items</p>
+                        </div>
+                        <div
+                          className={cn(
+                            "p-3 rounded-lg bg-amber-50 border border-amber-200 text-center transition-all",
+                            pulse.pendingCount > 0 && "cursor-pointer hover:bg-amber-100 hover:border-amber-300 hover:shadow-sm"
+                          )}
+                          onClick={() => pulse.pendingCount > 0 && setItemsDialogState({ isOpen: true, variant: 'pending' })}
+                        >
+                          <p className="text-2xl font-bold text-amber-600">{pulse.pendingCount}</p>
+                          <p className="text-[10px] text-amber-600 uppercase tracking-wider">Awaiting approval</p>
+                        </div>
+                        <div
+                          className={cn(
+                            "p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-center transition-all",
+                            pulse.approvedCount > 0 && "cursor-pointer hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm"
+                          )}
+                          onClick={() => pulse.approvedCount > 0 && setItemsDialogState({ isOpen: true, variant: 'approved' })}
+                        >
+                          <p className="text-2xl font-bold text-emerald-600">{pulse.approvedCount}</p>
+                          <p className="text-[10px] text-emerald-600 uppercase tracking-wider">Approved</p>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
-              )}
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-500">{lang('deviceProcessEngine.approvalProgress')}</span>
-                <span className="font-medium text-gray-900">
-                  {pulse.approvedCount} / {pulse.count}
-                </span>
-              </div>
-              <Progress 
-                value={progressPercent} 
-                className="h-2 bg-gray-100"
-              />
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>{pulse.pendingCount} {lang('deviceProcessEngine.pending').toLowerCase()}</span>
-                <span>{Math.round(progressPercent)}% {lang('deviceProcessEngine.complete')}</span>
-              </div>
-            </div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="p-3 rounded-lg bg-muted border border-border text-center">
-                <p className="text-2xl font-bold text-foreground">{pulse.count}</p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{lang('deviceProcessEngine.total')}</p>
-              </div>
-              <div
-                className={cn(
-                  "p-3 rounded-lg bg-amber-50 border border-amber-200 text-center transition-all",
-                  pulse.pendingCount > 0 && "cursor-pointer hover:bg-amber-100 hover:border-amber-300 hover:shadow-sm"
-                )}
-                onClick={() => pulse.pendingCount > 0 && setItemsDialogState({ isOpen: true, variant: 'pending' })}
-              >
-                <p className="text-2xl font-bold text-amber-600">{pulse.pendingCount}</p>
-                <p className="text-[10px] text-amber-600 uppercase tracking-wider">{lang('deviceProcessEngine.pending')}</p>
-              </div>
-              <div
-                className={cn(
-                  "p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-center transition-all",
-                  pulse.approvedCount > 0 && "cursor-pointer hover:bg-emerald-100 hover:border-emerald-300 hover:shadow-sm"
-                )}
-                onClick={() => pulse.approvedCount > 0 && setItemsDialogState({ isOpen: true, variant: 'approved' })}
-              >
-                <p className="text-2xl font-bold text-emerald-600">{pulse.approvedCount}</p>
-                <p className="text-[10px] text-emerald-600 uppercase tracking-wider">{lang('deviceProcessEngine.approved')}</p>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Company CAPA Aggregation Panel - Only for company-level capa-loop node */}
             {isCompanyCAPANode && (
@@ -736,16 +820,6 @@ export function RBRNodeDetailDrawer({
         </div>
       </div>
 
-      {/* Internal Process Popover */}
-      {companyId && pulse?.nodeId && (
-        <NodeInternalProcessPopover
-          isOpen={processPopoverOpen}
-          onClose={() => setProcessPopoverOpen(false)}
-          nodeId={pulse.nodeId}
-          companyId={companyId}
-        />
-      )}
-
       {/* Items List Dialog */}
       <NodeItemsListDialog
         isOpen={itemsDialogState.isOpen}
@@ -754,6 +828,26 @@ export function RBRNodeDetailDrawer({
         items={itemsDialogState.variant === 'pending' ? (pulse.pendingItems || []) : (pulse.approvedItems || [])}
         variant={itemsDialogState.variant}
       />
+
+      {/* In-place document drawer for SOP rows — opens alongside this panel. */}
+      {sopDrawerDoc && (
+        <DocumentDraftDrawer
+          open={true}
+          onOpenChange={(o) => {
+            if (!o) setSopDrawerDoc(null);
+          }}
+          documentId={sopDrawerDoc.id}
+          documentName={sopDrawerDoc.name}
+          documentType={sopDrawerDoc.type}
+          companyId={companyId}
+          companyName={companyName}
+          isNewUnsavedDocument={sopDrawerDoc.isNew}
+          onDocumentSaved={() => setSopDrawerDoc(null)}
+          onDocumentCreated={() => setSopDrawerDoc(null)}
+          disableSopMentions
+        />
+      )}
+
     </>
   );
 }

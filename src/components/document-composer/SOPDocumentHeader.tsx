@@ -3,6 +3,7 @@ import { DocumentControl } from '@/types/documentComposer';
 import { format } from 'date-fns';
 import { useDocumentAuthors, AuthorOption } from '@/hooks/useDocumentAuthors';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { formatSopDisplayName, formatSopDisplayId } from '@/constants/sopAutoSeedTiers';
 
 interface SOPDocumentHeaderProps {
   documentControl?: DocumentControl;
@@ -15,6 +16,7 @@ interface SOPDocumentHeaderProps {
   recordId?: string;
   nextReviewDate?: string;
   documentNumber?: string;
+  changeControlRef?: string;
 }
 
 
@@ -56,12 +58,28 @@ function UserSelect({
   );
 }
 
-export function SOPDocumentHeader({ documentControl, companyName, className = '', companyId, companyLogoUrl, onFieldChange, isRecord = false, recordId, nextReviewDate, documentNumber }: SOPDocumentHeaderProps) {
+export function SOPDocumentHeader({ documentControl, companyName, className = '', companyId, companyLogoUrl, onFieldChange, isRecord = false, recordId, nextReviewDate, documentNumber, changeControlRef }: SOPDocumentHeaderProps) {
   const { authors } = useDocumentAuthors(companyId || '');
 
   if (!documentControl) {
     return null;
   }
+
+  // Resolve the document number with three fallbacks so the header is never
+  // blank when the underlying CI metadata hasn't been populated yet:
+  //   1. explicit `documentNumber` prop (from CI metadata),
+  //   2. `documentControl.sopNumber` (set by upstream renderers),
+  //   3. parsed from the document title (e.g. "SOP-007 Design Outputs").
+  // Then apply the functional sub-prefix (SOP-007 → SOP-DE-007) for SOPs
+  // so the header matches the title bar.
+  const titleMatch = (documentControl.documentTitle || '').match(/^([A-Z]{2,6}-(?:[A-Z]{2,4}-)?\d{1,4})\b/);
+  const rawNumber =
+    documentNumber ||
+    documentControl.sopNumber ||
+    (titleMatch ? titleMatch[1] : '');
+  // formatSopDisplayId only knows about canonical "SOP-NNN" keys; for an
+  // already-prefixed value or a non-SOP doc it returns the input unchanged.
+  const displayNumber = rawNumber ? formatSopDisplayId(rawNumber) : '';
 
   return (
     <div className={`bg-white border-2 border-gray-300 mb-6 ${className}`}>
@@ -83,10 +101,9 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
           <div className="text-right text-sm">
             <div className="font-semibold">{isRecord ? 'Record' : 'Document Control'}</div>
             <div>{isRecord ? 'Record ID' : (() => {
-              const dn = documentNumber || documentControl.sopNumber || '';
-              const prefix = dn.split('-')[0];
+              const prefix = displayNumber.split('-')[0];
               return prefix ? `${prefix} Number` : 'Document Number';
-            })()}: {isRecord ? (recordId || 'Not set') : (documentNumber || documentControl.sopNumber || 'Not set')}</div>
+            })()}: {isRecord ? (recordId || 'Not set') : (displayNumber || 'Not set')}</div>
           </div>
         </div>
       </div>
@@ -94,7 +111,9 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
       {/* Document title */}
       <div className="p-4 text-center border-b border-gray-300">
         <h1 className="text-xl font-bold text-gray-800">
-          {documentNumber ? `${documentNumber} ${(documentControl.documentTitle || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '')}` : (documentControl.documentTitle || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, '')}
+          {displayNumber
+            ? `${displayNumber} ${(documentControl.documentTitle || '').replace(/^[A-Z]{2,6}-(?:[A-Z]{2,4}-)?\d{1,4}\s+/, '')}`
+            : (documentControl.documentTitle || '').replace(/^[A-Z]{2,6}-(?:[A-Z]{2,4}-)?\d{1,4}\s+/, '')}
         </h1>
       </div>
 
@@ -229,6 +248,20 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
                       placeholder="Select document owner..."
                       onSelect={(name) => onFieldChange?.('documentOwner', name)}
                     />
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <td className="border border-gray-300 bg-gray-50 px-3 py-2 font-semibold">
+                  Change Control Ref.:
+                </td>
+                <td className="border border-gray-300 px-3 py-2" colSpan={3}>
+                  {changeControlRef ? (
+                    <span className="font-mono text-xs">{changeControlRef}</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">
+                      Not linked — set in the side panel for revision traceability
+                    </span>
                   )}
                 </td>
               </tr>

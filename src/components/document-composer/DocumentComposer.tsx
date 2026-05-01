@@ -80,6 +80,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
   const [recordId, setRecordId] = useState<string | null>(null);
   const [nextReviewDate, setNextReviewDate] = useState<string | null>(null);
   const [documentNumber, setDocumentNumber] = useState<string | null>(null);
+  const [changeControlRef, setChangeControlRef] = useState<string | null>(null);
   const [showAddDocumentDialog, setShowAddDocumentDialog] = useState(false);
   const [showCIDocumentSearch, setShowCIDocumentSearch] = useState(false);
   const [ciDocuments, setCIDocuments] = useState<any[]>([]);
@@ -208,8 +209,8 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
 
         if (result.success && result.data) {
           const defaultDocControl = {
-            sopNumber: (result.data as any).document_number || result.data.name?.match(/^[A-Z]{2,6}-\d{3}/)?.[0] || '',
-            documentTitle: (result.data.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, ''),
+            sopNumber: (result.data as any).document_number || result.data.name?.match(/^[A-Z]{2,6}(?:-[A-Z]{1,4})?-\d{3,}/)?.[0] || '',
+            documentTitle: (result.data.name || '').replace(/^[A-Z]{2,6}(?:-[A-Z]{1,4})?-\d{3,}\s+/, ''),
             version: 'v1.0',
             effectiveDate: new Date(),
             documentOwner: '',
@@ -313,8 +314,8 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
           type: resolvedType,
           sections,
         documentControl: {
-            sopNumber: docName?.match(/^[A-Z]{2,6}-\d{3}/)?.[0] || '',
-            documentTitle: (docName || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, ''),
+            sopNumber: docName?.match(/^[A-Z]{2,6}(?:-[A-Z]{1,4})?-\d{3,}/)?.[0] || '',
+            documentTitle: (docName || '').replace(/^[A-Z]{2,6}(?:-[A-Z]{1,4})?-\d{3,}\s+/, ''),
             version: 'v1.0',
             status: 'Draft',
             effectiveDate: new Date(),
@@ -670,8 +671,8 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
   const handleEditDocument = (document: DocumentStudioData) => {
     // Convert to template format and load in stepper
     const defaultDocControl = {
-      sopNumber: (document as any).document_number || document.name?.match(/^[A-Z]{2,6}-\d{3}/)?.[0] || '',
-      documentTitle: (document.name || '').replace(/^[A-Z]{2,6}-\d{3}\s+/, ''),
+      sopNumber: (document as any).document_number || document.name?.match(/^[A-Z]{2,6}(?:-[A-Z]{1,4})?-\d{3,}/)?.[0] || '',
+      documentTitle: (document.name || '').replace(/^[A-Z]{2,6}(?:-[A-Z]{1,4})?-\d{3,}\s+/, ''),
       version: 'v1.0',
       effectiveDate: new Date(),
       documentOwner: '',
@@ -1234,6 +1235,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
               onRecordIdChange={setRecordId}
               onNextReviewDateChange={setNextReviewDate}
               onDocumentNumberChange={setDocumentNumber}
+              onChangeControlRefChange={setChangeControlRef}
               showSectionNumbers={(generatedTemplate || template)?.formatOptions?.showSectionNumbers}
               onShowSectionNumbersChange={(show) => {
                 const currentTemplate = generatedTemplate || template;
@@ -1343,6 +1345,7 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
                         recordId={recordId || undefined}
                         nextReviewDate={nextReviewDate || undefined}
                         documentNumber={documentNumber || undefined}
+                        changeControlRef={changeControlRef || undefined}
                         onIsRecordChange={setIsRecord}
                         showSectionNumbers={(generatedTemplate || template)?.formatOptions?.showSectionNumbers}
                         onShowSectionNumbersChange={(show) => {

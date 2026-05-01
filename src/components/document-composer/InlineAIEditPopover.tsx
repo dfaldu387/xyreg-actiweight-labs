@@ -4,6 +4,7 @@ import { Loader2, Check, X as XIcon, ArrowUp, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { markdownToHtml } from '@/utils/markdownToHtml';
+import { fetchFullAIContext } from '@/services/aiContextAggregatorService';
 import { toast } from 'sonner';
 
 interface InlineAIEditPopoverProps {
@@ -15,6 +16,10 @@ interface InlineAIEditPopoverProps {
   anchorRect: { top: number; left: number; bottom: number; right: number };
   sectionTitle?: string;
   companyId?: string;
+  /** Scope of the document being edited — 'product' means the AI should ground on the active device. */
+  scope?: 'company' | 'product';
+  /** The active device id when scope is 'product'. */
+  productId?: string;
   onClose: () => void;
 }
 
@@ -31,6 +36,8 @@ export function InlineAIEditPopover({
   anchorRect,
   sectionTitle,
   companyId,
+  scope,
+  productId,
   onClose,
 }: InlineAIEditPopoverProps) {
   const [prompt, setPrompt] = useState('');
@@ -40,6 +47,10 @@ export function InlineAIEditPopover({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Prefetch the active device's context when the popover opens so the AI
+  // grounds the edit on the right device. The promise is awaited at submit
+  // time — if the user types fast the request just waits a beat.
+  const deviceContextPromiseRef = useRef<Promise<string> | null>(null);
 
   // Position below the selection, clamped to the viewport. anchorRect comes
   // from editor.view.coordsAtPos(), which returns viewport-relative coords —
@@ -57,6 +68,23 @@ export function InlineAIEditPopover({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    // Always fetch context so company name/country is available even in
+    // company-scoped docs. The aggregator no-ops on missing ids, so passing
+    // an undefined productId in company scope just yields company-only context.
+    const effectiveProductId = scope === 'product' ? productId : undefined;
+    if (!companyId && !effectiveProductId) {
+      deviceContextPromiseRef.current = Promise.resolve('');
+      return;
+    }
+    deviceContextPromiseRef.current = fetchFullAIContext(effectiveProductId, companyId)
+      .then((res) => res.text)
+      .catch((err) => {
+        console.warn('[InlineAIEditPopover] context fetch failed', err);
+        return '';
+      });
+  }, [scope, productId, companyId]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -108,6 +136,7 @@ export function InlineAIEditPopover({
     setErrorMessage(null);
     abortRef.current = new AbortController();
     try {
+      const referenceContext = (await deviceContextPromiseRef.current) || undefined;
       const { data, error } = await supabase.functions.invoke('ai-content-generator', {
         body: {
           prompt: trimmed,
@@ -115,6 +144,7 @@ export function InlineAIEditPopover({
           currentContent: selectedHTML || selectedText,
           mode: 'edit',
           companyId,
+          referenceContext,
         },
       });
       if (error) throw error;

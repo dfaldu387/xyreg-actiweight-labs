@@ -8,9 +8,13 @@
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { create, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 import { trackTokenUsage, extractGeminiDetailedUsage, logAiTokenUsage, checkAiCredits } from "../_shared/token-tracking.ts";
 
 declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
+
+interface UserNeed { user_need_id: string; description: string; }
+interface ServiceAccount { type: string; project_id: string; private_key_id: string; private_key: string; client_email: string; client_id: string; auth_uri: string; token_uri: string; client_x509_cert_url: string; }
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,23 +23,10 @@ const corsHeaders = {
 };
 
 const MODEL = "gemini-2.5-flash";
-const ENCRYPTION_KEY = "medtech-api-key-2024";
 
-function decryptApiKey(encryptedKey: string): string {
-  if (encryptedKey.startsWith("AIza")) return encryptedKey;
-  try {
-    const base64Decoded = atob(encryptedKey);
-    return Array.from(base64Decoded)
-      .map((char, index) =>
-        String.fromCharCode(char.charCodeAt(0) ^ ENCRYPTION_KEY.charCodeAt(index % ENCRYPTION_KEY.length))
-      )
-      .join("");
-  } catch {
-    return encryptedKey;
-  }
-}
-
-interface UserNeed { user_need_id: string; description: string; }
+function normalizeToJson(input: string): string { let s = input.trim(); if (s.startsWith('"') && s.endsWith('"')) { try { s = JSON.parse(s); } catch { /* */ } } if (typeof s !== "string") return s; s = s.trim().replace(/;+\s*$/, ""); s = s.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":'); s = s.replace(/,(\s*[}\]])/g, "$1"); return s; }
+function tryParseServiceAccount(key: string): ServiceAccount | null { try { const n = normalizeToJson(key); const p = typeof n === "string" ? JSON.parse(n) : n; if (p?.type === "service_account" && p.private_key && p.client_email && p.project_id) return p as ServiceAccount; return null; } catch { return null; } }
+async function getAccessTokenFromServiceAccount(sa: ServiceAccount): Promise<string> { const pk = sa.private_key.replace(/-----BEGIN PRIVATE KEY-----/g,"").replace(/-----END PRIVATE KEY-----/g,"").replace(/\n/g,"").trim(); const kb = Uint8Array.from(atob(pk),(c)=>c.charCodeAt(0)); const ck = await crypto.subtle.importKey("pkcs8",kb,{name:"RSASSA-PKCS1-v1_5",hash:"SHA-256"},false,["sign"]); const now = getNumericDate(new Date()); const jwt = await create({alg:"RS256",typ:"JWT"},{iss:sa.client_email,sub:sa.client_email,aud:sa.token_uri,iat:now,exp:now+3600,scope:"https://www.googleapis.com/auth/cloud-platform"},ck); const tr = await fetch(sa.token_uri,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({grant_type:"urn:ietf:params:oauth:grant-type:jwt-bearer",assertion:jwt})}); if(!tr.ok){const t=await tr.text();throw new Error(`Token exchange failed: ${tr.status} - ${t}`);} const td=await tr.json(); if(!td.access_token)throw new Error("No access token"); return td.access_token; }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -74,27 +65,19 @@ serve(async (req) => {
       userId = user?.id;
     }
 
-    // --- Resolve Gemini API key ---
-    let geminiApiKey = "";
-    if (companyId) {
-      const { data: keyRecord } = await supabase
-        .from("company_api_keys")
-        .select("encrypted_key")
-        .eq("company_id", companyId)
-        .eq("key_type", "gemini")
-        .maybeSingle();
-      if (keyRecord?.encrypted_key) {
-        geminiApiKey = decryptApiKey(keyRecord.encrypted_key);
-      }
-    }
-    if (!geminiApiKey) {
-      geminiApiKey = Deno.env.get("GEMINI_API_KEY") || "";
-    }
-    if (!geminiApiKey) {
-      return new Response(JSON.stringify({ success: false, error: "No Gemini API key configured. Add one in Settings > API Keys." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${geminiApiKey}`;
-    console.log("[ai-system-requirements-generator] Using Gemini direct API");
+    // --- Resolve Google Vertex AI credential ---
+    let decryptedKey = "";
+    if (companyId) { const { data: kr } = await supabase.from("company_api_keys").select("encrypted_key").eq("company_id", companyId).eq("key_type", "google_vertex").maybeSingle(); if (kr?.encrypted_key) decryptedKey = kr.encrypted_key; }
+    if (!decryptedKey) { const ek = Deno.env.get("GOOGLE_VERTEX_API_KEY") || ""; if (ek) decryptedKey = ek; }
+    if (!decryptedKey) return new Response(JSON.stringify({ success: false, error: "No Google Vertex AI credential configured." }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    decryptedKey = decryptedKey.trim();
+    const sa = tryParseServiceAccount(decryptedKey);
+    if (!sa) return new Response(JSON.stringify({ success: false, error: "Credential must be a service-account JSON." }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    const accessToken = await getAccessTokenFromServiceAccount(sa);
+    const location = "us-central1";
+    const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${sa.project_id}/locations/${location}/publishers/google/models/${MODEL}:generateContent`;
 
     // --- Build prompt ---
     const hasUserNeeds = userNeeds && userNeeds.length > 0;

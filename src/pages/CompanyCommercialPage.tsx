@@ -22,6 +22,7 @@ import { PORTFOLIO_MENU_ACCESS } from '@/constants/menuAccessKeys';
 import { PlanUpgradeRequired } from '@/components/subscription/PlanUpgradeRequired';
 import { RestrictedFeatureProvider } from '@/contexts/RestrictedFeatureContext';
 import { RestrictedPreviewBanner } from '@/components/subscription/RestrictedPreviewBanner';
+import { useCustomerFeatureFlag } from '@/hooks/useCustomerFeatureFlag';
 
 
 // Tab configuration with menu access keys - labels and descriptions are translated dynamically
@@ -92,13 +93,21 @@ export default function CompanyCommercialPage() {
 
   // Get plan-based menu access
   const { isMenuAccessKeyEnabled, planName, isLoading: isLoadingPlanAccess } = usePlanMenuAccess();
+  const businessCanvasEnabled = useCustomerFeatureFlag('business-canvas');
+  const strategicBlueprintEnabled = useCustomerFeatureFlag('strategic-blueprint');
 
-  // Create translated TAB_CONFIG
-  const TAB_CONFIG = TAB_CONFIG_BASE.map(tab => ({
-    ...tab,
-    label: lang(tab.labelKey),
-    description: lang(tab.descriptionKey)
-  }));
+  // Create translated TAB_CONFIG, filtering out disabled feature-flagged tabs
+  const TAB_CONFIG = TAB_CONFIG_BASE
+    .filter(tab => {
+      if (tab.value === 'business-canvas' && !businessCanvasEnabled) return false;
+      if (tab.value === 'strategic-blueprint' && !strategicBlueprintEnabled) return false;
+      return true;
+    })
+    .map(tab => ({
+      ...tab,
+      label: lang(tab.labelKey),
+      description: lang(tab.descriptionKey)
+    }));
 
   // Handle legacy redirects
   const tabParam = searchParams.get('tab') || 'strategic-blueprint';
@@ -307,13 +316,17 @@ export default function CompanyCommercialPage() {
           </TabsList>
           </div>
 
-          <TabsContent value="strategic-blueprint" className="space-y-6">
-            {renderTabContent('strategic-blueprint', <CompanyVentureBlueprint companyId={companyId} />)}
-          </TabsContent>
+          {strategicBlueprintEnabled && (
+            <TabsContent value="strategic-blueprint" className="space-y-6">
+              {renderTabContent('strategic-blueprint', <CompanyVentureBlueprint companyId={companyId} />)}
+            </TabsContent>
+          )}
 
-          <TabsContent value="business-canvas" className="space-y-6">
-            {renderTabContent('business-canvas', <CompanyBusinessCanvas companyId={companyId} />)}
-          </TabsContent>
+          {businessCanvasEnabled && (
+            <TabsContent value="business-canvas" className="space-y-6">
+              {renderTabContent('business-canvas', <CompanyBusinessCanvas companyId={companyId} />)}
+            </TabsContent>
+          )}
 
           <TabsContent value="feasibility-studies" className="space-y-6">
             {renderTabContent('feasibility-studies', <FeasibilityStudiesPage companyId={companyId} />)}

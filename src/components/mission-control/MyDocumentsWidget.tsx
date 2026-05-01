@@ -10,6 +10,7 @@ import { FileText, Clock, ChevronRight, ChevronDown, Loader2, X, AlertTriangle, 
 import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
+import { useStaleTranslations } from '@/hooks/useStaleTranslations';
 
 interface DocItem {
   id: string;
@@ -242,7 +243,10 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
   const isLoading = draftsLoading || reviewLoading;
   const draftItems = drafts || [];
   const reviewItems = reviewDocs || [];
-  const totalCount = draftItems.length + reviewItems.length;
+  const { data: staleTranslations } = useStaleTranslations(companyId);
+  const staleItems = staleTranslations || [];
+  const visibleStale = isExpanded ? staleItems : staleItems.slice(0, 5);
+  const totalCount = draftItems.length + reviewItems.length + staleItems.length;
   const overdueDocs = reviewItems.filter(d => d.due_date && new Date(d.due_date) < new Date());
 
   const displayStatus = (status: string) => {
@@ -323,6 +327,55 @@ export function MyDocumentsWidget({ companyId, onRemove }: MyDocumentsWidgetProp
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Stale Translations — surfaced first so warnings appear on login */}
+        {staleItems.length > 0 && (
+          <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-700" />
+              <p className="text-xs font-medium uppercase tracking-wide text-amber-800">
+                Translations out of date
+              </p>
+              <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-800 text-[10px]">
+                {staleItems.length}
+              </Badge>
+            </div>
+            <div className="divide-y divide-amber-200">
+              {visibleStale.map(t => (
+                <div
+                  key={t.id}
+                  className="flex items-center justify-between gap-2 py-1.5 cursor-pointer hover:bg-amber-100/60 rounded px-1 -mx-1 transition-colors"
+                  onClick={() => setSelectedDoc({
+                    id: t.id,
+                    name: t.name,
+                    type: t.type,
+                    documentNumber: t.documentNumber,
+                    status: 'In Progress',
+                    updated_at: t.sourceUpdatedAt,
+                    companyName: companyRoles.find(r => r.companyId === t.companyId)?.companyName || '',
+                    companyId: t.companyId,
+                    productId: t.productId,
+                    roles: [],
+                  })}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{t.name}</p>
+                    <div className="flex items-center gap-2 text-xs text-amber-800/80">
+                      <span>{t.documentNumber || t.type}</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        master updated {formatDistanceToNow(new Date(t.sourceUpdatedAt), { addSuffix: true })}
+                      </span>
+                    </div>
+                  </div>
+                  <Badge variant="outline" className="border-amber-300 bg-amber-100 text-amber-800 text-[10px] shrink-0">
+                    {t.languageCode}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* My Documents */}
         {draftItems.length > 0 && (
           <div className="space-y-1">

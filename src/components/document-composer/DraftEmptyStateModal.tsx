@@ -1,6 +1,7 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Pencil, Sparkles, FileText, Copy } from 'lucide-react';
+import { useCustomerFeatureFlag } from '@/hooks/useCustomerFeatureFlag';
 
 interface DraftEmptyStateModalProps {
   open: boolean;
@@ -17,6 +18,7 @@ export function DraftEmptyStateModal({
   onAutoFillByAI,
   onCopyFromSOP,
 }: DraftEmptyStateModalProps) {
+  const aiAutoFillEnabled = useCustomerFeatureFlag('ai-auto-fill');
   const options = [
     {
       key: 'manual',
@@ -26,14 +28,14 @@ export function DraftEmptyStateModal({
       onClick: onGenerateManually,
       iconClass: 'text-primary bg-primary/10',
     },
-    {
+    ...(aiAutoFillEnabled ? [{
       key: 'ai',
       icon: Sparkles,
       title: 'Auto-fill by AI',
       description: 'Let AI draft every section based on your company and product context.',
       onClick: onAutoFillByAI,
       iconClass: 'text-primary bg-primary/10',
-    },
+    }] : []),
     {
       key: 'sop',
       icon: Copy,

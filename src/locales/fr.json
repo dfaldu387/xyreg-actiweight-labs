@@ -5785,7 +5785,8 @@
       "active": "Actif",
       "awaitingResponse": "En attente de réponse",
       "pending": "En attente",
-      "closed": "Fermé"
+      "closed": "Fermé",
+      "archived": "Archivé"
     },
     "results": {
       "threadFound": "{{count}} fil trouvé",
@@ -5815,6 +5816,10 @@
       "noThreads": {
         "title": "Aucun fil de communication",
         "description": "Démarrez une nouvelle communication pour commencer à collaborer avec votre équipe."
+      },
+      "noArchived": {
+        "title": "Aucune communication archivée",
+        "description": "Les fils archivés apparaîtront ici. Ils restent consultables mais en lecture seule."
       }
     },
     "threadCard": {

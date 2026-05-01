@@ -33,8 +33,23 @@ export function useDraftDocumentNavigation(
           type: existing.document_type || 'document',
         });
       } else if (existing?.id) {
-        // Fallback: no onOpenDraft provided, just call onFirstCreate
-        onFirstCreate();
+        // Fallback: no onOpenDraft callback provided. Dispatch the global
+        // open-document event so the DocumentDraftDrawer surfaces the
+        // existing draft instead of incorrectly re-prompting the user to
+        // create a new one (the CI already exists for this templateIdKey).
+        try {
+          window.dispatchEvent(
+            new CustomEvent('xyreg:open-document', {
+              detail: {
+                docId: existing.id,
+                name: existing.name || templateIdKey,
+                type: existing.document_type || 'document',
+              },
+            }),
+          );
+        } catch {
+          onFirstCreate();
+        }
       } else {
         // First time — open the create dialog
         onFirstCreate();

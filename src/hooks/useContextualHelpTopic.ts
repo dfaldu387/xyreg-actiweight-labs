@@ -20,8 +20,10 @@ import {
   Building2,
   Cpu,
   Layers,
+  Clock,
   type LucideIcon
 } from 'lucide-react';
+import { HELIX_NODE_CONFIGS } from '@/config/helixNodeConfig';
 
 export interface HelpTopic {
   key: string;
@@ -356,6 +358,36 @@ const helpTopics: Record<string, HelpTopic> = {
     icon: ClipboardList,
     section: 'Company',
   },
+  'ccr-detail': {
+    key: 'ccr-detail',
+    title: 'Change Control Request (CCR)',
+    icon: ClipboardList,
+    section: 'Company',
+  },
+  'ccr-detail-details': {
+    key: 'ccr-detail-details',
+    title: 'CCR — Details & Approvals',
+    icon: ClipboardList,
+    section: 'Company',
+  },
+  'ccr-detail-impact': {
+    key: 'ccr-detail-impact',
+    title: 'CCR — Impact Assessment',
+    icon: AlertTriangle,
+    section: 'Company',
+  },
+  'ccr-detail-implementation': {
+    key: 'ccr-detail-implementation',
+    title: 'CCR — Implementation',
+    icon: Settings,
+    section: 'Company',
+  },
+  'ccr-detail-history': {
+    key: 'ccr-detail-history',
+    title: 'CCR — State History',
+    icon: Clock,
+    section: 'Company',
+  },
   'company-design-review': {
     key: 'company-design-review',
     title: 'Design Review (Enterprise)',
@@ -676,6 +708,31 @@ const helpTopics: Record<string, HelpTopic> = {
     icon: BookOpen,
   },
 };
+
+// Auto-register a HelpTopic for every QMS Foundation node so the global
+// Help sidebar can surface node-specific help (e.g. "Design Control")
+// when a foundation node drawer is open on the QMS Foundation tab.
+const trackIcon = (track: string | undefined): LucideIcon => {
+  switch (track) {
+    case 'regulatory':
+      return Shield;
+    case 'engineering':
+      return Cpu;
+    case 'management':
+      return Building2;
+    default:
+      return Layers;
+  }
+};
+for (const node of HELIX_NODE_CONFIGS) {
+  const key = `foundation-node-${node.id}`;
+  helpTopics[key] = {
+    key,
+    title: `${node.label} (QMS Foundation)`,
+    icon: trackIcon(node.track),
+    section: 'Company',
+  };
+}
 
 const routeMappings: RouteHelpMapping[] = [
   // Business Case with tab support
@@ -1081,6 +1138,12 @@ export function useContextualHelpTopic(): HelpTopic {
       
       // QMS Foundation tab
       if (dashboardTab === 'qms-foundation') {
+        // If a foundation node drawer is open, prefer node-specific help.
+        const foundationNode = searchParams.get('foundationNode');
+        if (foundationNode) {
+          const nodeTopic = helpTopics[`foundation-node-${foundationNode}`];
+          if (nodeTopic) return nodeTopic;
+        }
         return helpTopics['qms-foundation'];
       }
       
@@ -1120,6 +1183,18 @@ export function useContextualHelpTopic(): HelpTopic {
     // Special-case: Product Gap Analysis detail page
     if (/\/product\/[^/]+\/gap-analysis\/[^/]+/.test(pathname)) {
       return helpTopics['gap-analysis-detail'];
+    }
+
+    // Special-case: Change Control Request detail page
+    if (/\/app\/change-control\/[^/]+/.test(pathname)) {
+      const ccrTab = tab ?? 'details';
+      const ccrTabMap: Record<string, HelpTopic> = {
+        details: helpTopics['ccr-detail-details'],
+        impact: helpTopics['ccr-detail-impact'],
+        implementation: helpTopics['ccr-detail-implementation'],
+        history: helpTopics['ccr-detail-history'],
+      };
+      return ccrTabMap[ccrTab] ?? helpTopics['ccr-detail'];
     }
     
     // Find matching route

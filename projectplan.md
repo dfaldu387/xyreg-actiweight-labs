@@ -1,3 +1,29 @@
+# Project Plan — CCR Create Not Working
+
+## Goal
+Restore the **Create CCR** action so a new change request can be submitted successfully from the Change Control dialog.
+
+## Likely Root Cause
+- The CCR insert currently sends `created_by` from `auth.users.id`, but the `change_control_requests.created_by` column references `profiles.id`.
+- That mismatch can cause the insert to fail even when the dialog fields are filled correctly.
+
+## Todo
+- [x] Confirm the create mutation uses the correct profile-based user ID for `created_by`
+- [x] Apply the smallest possible fix in the CCR create flow only
+- [ ] Verify the dialog closes and the new CCR appears after successful creation
+- [x] Add a short review summary here after implementation
+
+## Review (after implementation)
+- Root cause confirmed from the failing network request: `change_control_requests.created_by` references `profiles.id`, while the create flow was sending the signed-in `auth.users.id` without guaranteeing a matching `profiles` row existed.
+- Implemented the smallest fix in `src/hooks/useChangeControlData.ts` only:
+  - added a helper that fetches the current user,
+  - checks for a matching row in `profiles`,
+  - creates that row via `upsert` when missing,
+  - then uses that resolved `profiles.id` for CCR creation.
+- No UI behavior was changed; this is limited to the CCR create save path.
+
+---
+
 # Project Plan — Genesis Step 5 (Device Type) fixes
 
 ## Goal

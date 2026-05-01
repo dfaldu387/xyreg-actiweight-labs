@@ -21,6 +21,9 @@ export interface SuperAdminTemplate {
   uploaded_by?: string | null;
   scope?: string | null;
   template_category?: string | null;
+  /** Optional link to FPD catalog entry (Foundation/Pathway/Device-specific). */
+  fpd_sop_key?: string | null;
+  fpd_tier?: 'foundation' | 'pathway' | 'device_specific' | null;
 }
 
 export class SuperAdminTemplateManagementService {
@@ -70,6 +73,12 @@ export class SuperAdminTemplateManagementService {
         uploaded_at: new Date().toISOString()
       };
 
+      // Bridge to FPD catalog (optional).
+      if (templateData.fpd_sop_key) {
+        insertData.fpd_sop_key = templateData.fpd_sop_key;
+        insertData.fpd_tier = templateData.fpd_tier ?? null;
+      }
+
       const { data, error } = await supabase
         .from('default_document_templates' as any)
         .insert(insertData)
@@ -105,6 +114,12 @@ export class SuperAdminTemplateManagementService {
       updateData.scope = updates.template_scope === 'company-wide' ? 'company' :
         updates.template_scope === 'product-specific' ? 'product' :
           updates.template_scope ? 'company' : null;
+    }
+
+    // Bridge to FPD catalog (optional). `null` clears the link.
+    if (updates.fpd_sop_key !== undefined) {
+      updateData.fpd_sop_key = updates.fpd_sop_key;
+      updateData.fpd_tier = updates.fpd_tier ?? null;
     }
 
     const { data, error } = await supabase

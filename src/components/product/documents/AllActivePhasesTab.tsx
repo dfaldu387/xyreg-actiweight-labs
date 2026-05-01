@@ -7,7 +7,7 @@ import { Progress } from "@/components/ui/progress";
 import { useBulkOperationProgress } from "@/hooks/useBulkOperationProgress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FileText, Layers, File, Eye, Trash2, Plus, Copy, RefreshCw, CircleCheckBig, Sparkles, BookOpen, CheckSquare, FileEdit, Link, Send, Pencil, MoreHorizontal, Calendar, Users, FolderOpen, UserPlus, CalendarDays, FileDown, Loader2, Settings2, Upload, ShieldCheck } from "lucide-react";
+import { FileText, Layers, File, Eye, Trash2, Plus, Copy, RefreshCw, CircleCheckBig, Sparkles, BookOpen, CheckSquare, FileEdit, Link, Pencil, MoreHorizontal, Calendar, Users, FolderOpen, UserPlus, CalendarDays, FileDown, Loader2, Settings2, Upload, ShieldCheck } from "lucide-react";
 import { ColumnVisibilitySettings, type ColumnDefinition } from '@/components/shared/ColumnVisibilitySettings';
 import { useListColumnPreferences } from '@/hooks/useListColumnPreferences';
 import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
@@ -15,7 +15,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { SendToReviewGroupDialog } from '@/components/documents/SendToReviewGroupDialog';
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/hooks/useTranslation";
 import { DocumentListView } from "./DocumentListView";
@@ -262,7 +261,6 @@ const DocumentCICardComponent = ({
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showCreateConfirm, setShowCreateConfirm] = useState(false);
-  const [showSendReviewDialog, setShowSendReviewDialog] = useState(false);
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const { formatDate } = useCompanyDateFormat(companyId);
@@ -568,19 +566,6 @@ const DocumentCICardComponent = ({
             <Eye className="h-4 w-4" />
           </Button>
         )}
-        {/* Send for Review */}
-        {companyId && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowSendReviewDialog(true)}
-            disabled={isProcessing || disabled}
-            className={`h-8 px-3 ${actionStyles.bg}`}
-            title="Send for Review"
-          >
-            <Send className={`h-4 w-4 ${actionStyles.icon}`} />
-          </Button>
-        )}
         {/* 3-dot menu: Preview PDF, Edit, Delete & Copy */}
         {(onEdit || onDelete || onCopy || companyId) && (
           <DropdownMenu modal={false}>
@@ -693,18 +678,6 @@ const DocumentCICardComponent = ({
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
-  {/* Send for Review Dialog */}
-  {companyId && showSendReviewDialog && (
-    <SendToReviewGroupDialog
-      open={showSendReviewDialog}
-      onOpenChange={setShowSendReviewDialog}
-      documentId={document.id}
-      documentName={document.name}
-      companyId={companyId}
-      productId={productId}
-      existingGroupIds={(document as any).reviewer_group_ids || []}
-    />
-  )}
   </>);
 };
 export function AllActivePhasesTab({

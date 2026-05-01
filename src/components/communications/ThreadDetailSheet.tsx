@@ -10,7 +10,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useThreadMessages, useCommunicationThreads, useTypingIndicator } from '@/hooks/useCommunicationThreads';
 import { getParticipantName, getParticipantInitials } from '@/utils/participantUtils';
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, X, Link as LinkIcon, Archive, UserPlus } from 'lucide-react';
+import { FileText, X, Link as LinkIcon, CheckCircle2, RotateCcw, UserPlus } from 'lucide-react';
 import { InviteParticipantDialog } from './InviteParticipantDialog';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -90,23 +90,37 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
       case 'Active': return 'bg-green-100 text-green-800 border-green-200';
       case 'Awaiting Response': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'Closed': return 'bg-gray-100 text-gray-800 border-gray-200';
-      case 'Archived': return 'bg-orange-100 text-orange-800 border-orange-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  const isArchived = thread.status === 'Archived';
+  const isClosed = thread.status === 'Closed';
 
-  const handleArchive = async () => {
+  const handleClose = async () => {
     const { error } = await supabase
       .from('communication_threads')
-      .update({ status: 'Archived' })
+      .update({ status: 'Closed' })
       .eq('id', thread.id);
     if (error) {
-      toast.error('Failed to archive thread');
+      toast.error('Failed to close thread');
       return;
     }
-    toast.success('Thread archived');
+    toast.success('Thread closed');
+    queryClient.invalidateQueries({ queryKey: ['communication-threads'] });
+    queryClient.invalidateQueries({ queryKey: ['communication-threads-stats'] });
+    onOpenChange(false);
+  };
+
+  const handleReopen = async () => {
+    const { error } = await supabase
+      .from('communication_threads')
+      .update({ status: 'Active' })
+      .eq('id', thread.id);
+    if (error) {
+      toast.error('Failed to reopen thread');
+      return;
+    }
+    toast.success('Thread reopened');
     queryClient.invalidateQueries({ queryKey: ['communication-threads'] });
     queryClient.invalidateQueries({ queryKey: ['communication-threads-stats'] });
     onOpenChange(false);
@@ -128,10 +142,16 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
             <Badge variant="outline" className={getStatusColor(thread.status || 'Active')}>
               {thread.status || 'Active'}
             </Badge>
-            {!isArchived && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={handleArchive}>
-                <Archive className="h-3.5 w-3.5" />
-                Archive
+            {!isClosed && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={handleClose}>
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Close thread
+              </Button>
+            )}
+            {isClosed && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={handleReopen}>
+                <RotateCcw className="h-3.5 w-3.5" />
+                Reopen
               </Button>
             )}
             {thread.related_entity_name && (
@@ -162,7 +182,7 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
                 ? lang('communications.threadPage.participants.countSingular').replace('{{count}}', '1')
                 : lang('communications.threadPage.participants.count').replace('{{count}}', String(participants.length))}
             </span>
-            {!isArchived && (
+            {!isClosed && (
               <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setInviteOpen(true)}>
                 <UserPlus className="h-3.5 w-3.5" />
                 Invite
@@ -207,7 +227,7 @@ export function ThreadDetailSheet({ thread, open, onOpenChange }: ThreadDetailSh
               onSendMessage={handleSendMessage}
               typingUsers={typingUsers}
               onTyping={sendTyping}
-              disabled={isArchived}
+              disabled={isClosed}
             />
           )}
         </div>

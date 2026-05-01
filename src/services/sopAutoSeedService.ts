@@ -26,6 +26,8 @@ import {
   type TierBSop,
 } from '@/constants/sopAutoSeedTiers';
 import { SOP_FULL_CONTENT, sopContentToSections } from '@/data/sopFullContent';
+import { rewriteAllSopTokens } from '@/constants/sopAutoSeedTiers';
+import type { SOPSectionContent } from '@/data/sopContent/types';
 
 export interface SopSeedResult {
   inserted: number;
@@ -69,7 +71,9 @@ function personalizeSections(
       ...block,
       content:
         typeof block.content === 'string'
-          ? block.content.replace(COMPANY_NAME_PLACEHOLDER, companyName)
+          ? rewriteAllSopTokens(
+              block.content.replace(COMPANY_NAME_PLACEHOLDER, companyName),
+            )
           : block.content,
     })),
   }));
@@ -98,27 +102,56 @@ async function seedSopsForCompany(
     return result;
   }
 
-  // Pre-fetch existing SOP CI names to avoid duplicates
+  // Pre-fetch ALL existing SOP CIs for this company so we can detect
+  // duplicates regardless of legacy naming. Older rows may be titled by
+  // canonical name only (e.g. "Quality Management System") with no
+  // "SOP-" prefix, or have a mismatched document_number. We match on
+  // BOTH document_number and normalized name/title to prevent the seeder
+  // from inserting a second copy.
   const { data: existing } = await supabase
     .from('phase_assigned_document_template')
-    .select('name')
+    .select('name, document_number')
     .eq('company_id', companyId)
-    .ilike('name', 'SOP-%');
+    .eq('document_type', 'SOP');
 
-  const existingTitles = new Set(
+  const existingNames = new Set(
     (existing ?? []).map((r) => normalizeTitle(r.name ?? '')),
   );
+  const existingNumbers = new Set(
+    (existing ?? [])
+      .map((r) => (r.document_number ?? '').toUpperCase().trim())
+      .filter(Boolean),
+  );
+
+  // Pre-fetch any super-admin-edited section bodies from the FPD catalog;
+  // these override the hardcoded SOP_FULL_CONTENT for the SOPs being seeded.
+  const catalogOverrides = await fetchCatalogSectionOverrides(sopKeys);
 
   for (const sopKey of sopKeys) {
-    const content = SOP_FULL_CONTENT[sopKey];
-    if (!content) {
+    const baseContent = SOP_FULL_CONTENT[sopKey];
+    if (!baseContent) {
       result.failed++;
       result.errors.push(`${sopKey}: content definition missing`);
       continue;
     }
+    const overrideSections = catalogOverrides.get(sopKey);
+    const content = overrideSections
+      ? { ...baseContent, sections: overrideSections }
+      : baseContent;
 
     const fullName = `${content.sopNumber} ${content.title}`;
-    if (existingTitles.has(normalizeTitle(fullName))) {
+    const canonicalNumber = content.sopNumber.toUpperCase().trim();
+    const canonicalTitle = normalizeTitle(content.title);
+    const fullTitle = normalizeTitle(fullName);
+
+    // Skip if any existing SOP matches by document_number, by full
+    // "SOP-XXX Title" name, or by bare canonical title alone (legacy
+    // rows often store just the title without the SOP- prefix).
+    if (
+      existingNumbers.has(canonicalNumber) ||
+      existingNames.has(fullTitle) ||
+      existingNames.has(canonicalTitle)
+    ) {
       result.skipped++;
       continue;
     }
@@ -132,6 +165,7 @@ async function seedSopsForCompany(
           company_id: companyId,
           phase_id: phaseId,
           document_type: 'SOP',
+          document_number: content.sopNumber,
           document_scope: 'company_document',
           status: 'Draft',
           version: '1.0',
@@ -161,6 +195,7 @@ async function seedSopsForCompany(
         sections: personalized as unknown as Json,
         metadata: {
           sopNumber: content.sopNumber,
+          document_number: content.sopNumber,
           seededFrom: 'tier-a-auto-seed',
           seededAt: new Date().toISOString(),
         } as unknown as Json,
@@ -188,6 +223,39 @@ async function seedSopsForCompany(
 
 function normalizeTitle(s: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Fetch super-admin-edited `default_sections` from the FPD catalog for the
+ * given SOP keys. Returns a map of sopKey -> sections; entries with empty
+ * sections fall through to the hardcoded SOP_FULL_CONTENT library.
+ */
+async function fetchCatalogSectionOverrides(
+  sopKeys: readonly string[],
+): Promise<Map<string, SOPSectionContent[]>> {
+  const overrides = new Map<string, SOPSectionContent[]>();
+  if (sopKeys.length === 0) return overrides;
+  try {
+    const { data, error } = await supabase
+      .from('fpd_sop_catalog' as never)
+      .select('sop_key, default_sections')
+      .in('sop_key', sopKeys as unknown as string[]);
+    if (error) {
+      console.warn('[sopAutoSeed] catalog override fetch failed:', error);
+      return overrides;
+    }
+    for (const row of (data as unknown as Array<{
+      sop_key: string;
+      default_sections: SOPSectionContent[] | null;
+    }>) ?? []) {
+      if (Array.isArray(row.default_sections) && row.default_sections.length > 0) {
+        overrides.set(row.sop_key, row.default_sections);
+      }
+    }
+  } catch (err) {
+    console.warn('[sopAutoSeed] catalog override fetch threw:', err);
+  }
+  return overrides;
 }
 
 /**
@@ -243,16 +311,55 @@ export async function countTierASopsPresent(companyId: string): Promise<number> 
   if (!companyId) return 0;
   const { data, error } = await supabase
     .from('phase_assigned_document_template')
-    .select('name')
+    .select('name, document_number')
     .eq('company_id', companyId)
     .eq('document_type', 'SOP');
 
   if (error || !data) return 0;
   const names = new Set(data.map((r) => normalizeTitle(r.name ?? '')));
+  const numbers = new Set(
+    data
+      .map((r) => (r.document_number ?? '').toUpperCase().trim())
+      .filter(Boolean),
+  );
   let count = 0;
   for (const entry of TIER_A_AUTO_SEED) {
     const c = SOP_FULL_CONTENT[entry.sop];
-    if (c && names.has(normalizeTitle(`${c.sopNumber} ${c.title}`))) count++;
+    if (!c) continue;
+    const num = c.sopNumber.toUpperCase().trim();
+    const full = normalizeTitle(`${c.sopNumber} ${c.title}`);
+    const bare = normalizeTitle(c.title);
+    if (numbers.has(num) || names.has(full) || names.has(bare)) count++;
+  }
+  return count;
+}
+
+/**
+ * Count Tier B (pathway-conditional) SOPs already present for a company.
+ */
+export async function countTierBSopsPresent(companyId: string): Promise<number> {
+  if (!companyId) return 0;
+  const { data, error } = await supabase
+    .from('phase_assigned_document_template')
+    .select('name, document_number')
+    .eq('company_id', companyId)
+    .eq('document_type', 'SOP');
+
+  if (error || !data) return 0;
+  const names = new Set(data.map((r) => normalizeTitle(r.name ?? '')));
+  const numbers = new Set(
+    data
+      .map((r) => (r.document_number ?? '').toUpperCase().trim())
+      .filter(Boolean),
+  );
+  let count = 0;
+  for (const entry of TIER_B_CONDITIONAL) {
+    const c = SOP_FULL_CONTENT[entry.sop];
+    if (!c) continue;
+    const num = c.sopNumber.toUpperCase().trim();
+    const full = normalizeTitle(`${c.sopNumber} ${c.title}`);
+    const bare = normalizeTitle(c.title);
+    if (numbers.has(num) || names.has(full) || names.has(bare)) count++;
   }
   return count;
 }

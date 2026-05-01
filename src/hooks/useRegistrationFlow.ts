@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { CompanyInitializationService } from '@/services/companyInitializationService';
 import { seedTierASopsForCompany } from '@/services/sopAutoSeedService';
+import { eagerSeedCompanyWorkInstructions } from '@/services/eagerSeedCompanyWIsClient';
 import { newPricingService } from '@/services/newPricingService';
 import { createLegacyProducts } from '@/services/legacyProductService';
 import { EudamedDevice } from '@/hooks/useEudamedRegistry';
@@ -869,6 +870,32 @@ export function useRegistrationFlow(options?: RegistrationFlowOptions) {
         }
       } catch (sopError) {
         console.error('[useRegistrationFlow] Tier A SOP auto-seed failed:', sopError);
+      }
+
+      // Eager-seed all global Work Instructions for this company so they
+      // appear in the document list immediately (alongside their SOPs)
+      // rather than being created lazily on first drawer click.
+      try {
+        const wiResult = await eagerSeedCompanyWorkInstructions({ companyId: company.id });
+        console.log(
+          `[useRegistrationFlow] Global WIs — created: ${wiResult.created}, skipped: ${wiResult.skipped}, failed: ${wiResult.failed}`,
+        );
+      } catch (wiError) {
+        console.error('[useRegistrationFlow] Eager WI seed failed:', wiError);
+      }
+
+      // Belt-and-braces: also top-up Tier-B Pathway SOPs (and re-run any
+      // missed pieces) via the unified self-heal. Customer never sees a
+      // "Generate" or "Create" button — every template they need is
+      // already there when they land on the Documents page.
+      try {
+        const { ensureCompanySeedingComplete } = await import('@/services/ensureCompanySeedingService');
+        const ensureResult = await ensureCompanySeedingComplete(company.id, company.name);
+        console.log(
+          `[useRegistrationFlow] Self-heal — A:${ensureResult.tierAInserted} B:${ensureResult.tierBInserted} WI:${ensureResult.wiCreated}`,
+        );
+      } catch (ensureErr) {
+        console.error('[useRegistrationFlow] Self-heal seeding failed:', ensureErr);
       }
 
       // Assign pricing plan (Genesis for free plan)

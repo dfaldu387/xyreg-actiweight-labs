@@ -51,6 +51,7 @@ export const TIER_A_AUTO_SEED: readonly TierASop[] = [
   { sop: 'SOP-006', reason: 'Process-only — defines how design inputs are captured, not what they are' },
   { sop: 'SOP-007', reason: 'Process-only — defines how design outputs are captured' },
   { sop: 'SOP-008', reason: 'Process-only — generic design review procedure' },
+  { sop: 'SOP-009', reason: 'Generic design V&V framework (§7.3.6–7.3.7) — applies to all medical devices' },
   { sop: 'SOP-011', reason: 'Process-only — generic design change control' },
   { sop: 'SOP-012', reason: 'Structure-only — DHF/Technical Documentation index template' },
   { sop: 'SOP-016', reason: 'Generic supplier evaluation & control workflow (§7.4)' },
@@ -77,7 +78,6 @@ export const TIER_A_AUTO_SEED: readonly TierASop[] = [
  * Document Control once the relevant regulatory framework is enabled.
  */
 export const TIER_B_CONDITIONAL: readonly TierBSop[] = [
-  { sop: 'SOP-009', trigger: 'always', reason: 'Design V&V applies to all medical devices' },
   { sop: 'SOP-010', trigger: 'manufacturing', reason: 'Design Transfer requires manufacturing scope' },
   { sop: 'SOP-013', trigger: 'eu_mdr', reason: 'GSPR — EU MDR Annex I' },
   { sop: 'SOP-014', trigger: 'eu_clinical', reason: 'Clinical Evaluation — EU MDR clinical pathway' },
@@ -119,11 +119,64 @@ export type SopTier = 'A' | 'B' | 'C';
  */
 export function parseSopNumber(name: string | null | undefined): string | null {
   if (!name) return null;
-  const match = name.match(/SOP[-_\s]*(\d{1,3})/i);
+  // Tolerate an optional 1–3 letter functional sub-prefix between "SOP" and
+  // the numeric id, so sub-prefixed/translated forms like "SOP-QA-002",
+  // "SOP-QA-002-NO", or "SOP DE 011" all resolve to the canonical
+  // "SOP-NNN" key. See `mem://features/documents/numbering/functional-sub-prefixes`.
+  const match = name.match(/SOP[-_\s]*(?:[A-Za-z]{1,3}[-_\s]+)?(\d{1,3})/i);
   if (!match) return null;
   const padded = match[1].padStart(3, '0');
   return `SOP-${padded}`;
 }
+
+/**
+ * Strip a leading SOP identifier from a document name so we can compare the
+ * remaining title across views. Examples:
+ *   "SOP-DE-005 Design and Development Planning" -> "Design and Development Planning"
+ *   "SOP-005 Design and Development Planning"    -> "Design and Development Planning"
+ *   "Quality Management System"                  -> "Quality Management System"
+ */
+export function stripSopPrefix(name: string | null | undefined): string {
+  if (!name) return '';
+  return name
+    .replace(/^\s*SOP[-_\s]*(?:[A-Za-z]{1,3}[-_\s]*)?\d{1,3}[\s\-\u2014:.]*/i, '')
+    .trim();
+}
+
+/**
+ * Canonical sort key shared by the Template Library and the Company Documents
+ * list so both views produce the same order. SOPs come first, ordered by
+ * their numeric id (SOP-005 before SOP-011), then non-SOP documents
+ * alphabetically by title.
+ */
+export function getSopSortKey(name: string | null | undefined): {
+  bucket: 0 | 1;
+  numeric: number;
+  title: string;
+} {
+  const sopKey = parseSopNumber(name);
+  const title = stripSopPrefix(name).toLocaleLowerCase();
+  if (sopKey) {
+    return { bucket: 0, numeric: parseInt(sopKey.replace('SOP-', ''), 10), title };
+  }
+  return { bucket: 1, numeric: 0, title };
+}
+
+/**
+ * Comparator built on `getSopSortKey`. Use with `Array#sort` to produce the
+ * canonical SOP-then-title order across Templates and Documents views.
+ */
+export function compareSopDocuments(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): number {
+  const ka = getSopSortKey(a);
+  const kb = getSopSortKey(b);
+  if (ka.bucket !== kb.bucket) return ka.bucket - kb.bucket;
+  if (ka.bucket === 0 && ka.numeric !== kb.numeric) return ka.numeric - kb.numeric;
+  return ka.title.localeCompare(kb.title, undefined, { sensitivity: 'base' });
+}
+
 
 const TIER_A_SET = new Set(TIER_A_AUTO_SEED.map((s) => s.sop));
 const TIER_B_SET = new Set(TIER_B_CONDITIONAL.map((s) => s.sop));
@@ -134,8 +187,11 @@ const TIER_C_SET = new Set(TIER_C_MANUAL);
  * "SOP-NNN" identifier or a full document name; returns null for documents
  * that aren't part of the 51-SOP Xyreg library.
  */
-export function getSopTier(input: string | null | undefined): SopTier | null {
-  const sop = parseSopNumber(input);
+export function getSopTier(
+  input: string | null | undefined,
+  fallback?: string | null | undefined,
+): SopTier | null {
+  const sop = parseSopNumber(input) || parseSopNumber(fallback);
   if (!sop) return null;
   if (TIER_A_SET.has(sop)) return 'A';
   if (TIER_B_SET.has(sop)) return 'B';
@@ -189,6 +245,110 @@ export function formatSopDisplayId(sopKey: string): string {
 }
 
 /**
+ * Return the QA/DE/RM/CL/RA/MF/SC functional sub-prefix for a template/document
+ * name (or canonical SOP key). Returns null if the input is not an SOP or is
+ * unmapped. Used by filter UIs to allow searching by sub-prefix code.
+ */
+export function getSopSubPrefix(name: string | null | undefined): string | null {
+  const sopKey = parseSopNumber(name ?? '');
+  if (!sopKey) return null;
+  return SOP_FUNCTIONAL_SUBPREFIX[sopKey] ?? null;
+}
+
+/**
+ * ISO 13485 clause grouping for SOPs. Used by Document Control breakdowns to
+ * organise the Tier A / Tier B SOP lists under their governing standard
+ * sections instead of a flat alphabetical grid. Display layer only.
+ */
+export const SOP_ISO_CLAUSE: Readonly<Record<string, string>> = {
+  // §4 QMS / Document Control
+  'SOP-001': '§4 Quality Management System',
+  'SOP-002': '§4.2 Document Control',
+  // §5 Management Responsibility
+  'SOP-003': '§5.6 Management Review',
+  // §6 Resource Management
+  'SOP-004': '§6.2 Human Resources & Training',
+  'SOP-023': '§6.3–6.4 Infrastructure & Work Environment',
+  'SOP-024': '§6.3–6.4 Infrastructure & Work Environment',
+  // §7.3 Design & Development
+  'SOP-005': '§7.3 Design & Development',
+  'SOP-006': '§7.3 Design & Development',
+  'SOP-007': '§7.3 Design & Development',
+  'SOP-008': '§7.3 Design & Development',
+  'SOP-009': '§7.3 Design & Development',
+  'SOP-010': '§7.3 Design & Development',
+  'SOP-011': '§7.3 Design & Development',
+  'SOP-012': '§7.3 Design & Development',
+  'SOP-019': '§7.5.8 Identification & Traceability (UDI)',
+  'SOP-045': '§7.5.8 Identification & Traceability (UDI)',
+  // §7.4 Purchasing / Supplier Control
+  'SOP-016': '§7.4 Purchasing & Supplier Control',
+  'SOP-030': '§7.4 Purchasing & Supplier Control',
+  'SOP-043': '§7.4 Purchasing & Supplier Control',
+  // §7.5 Production & Service Provision
+  'SOP-017': '§7.5 Production & Service Provision',
+  'SOP-018': '§7.5.6 Process Validation',
+  'SOP-020': '§7.5.1 Labelling & Packaging',
+  'SOP-031': '§7.5 Configuration / Preservation',
+  'SOP-033': '§7.5 Configuration / Preservation',
+  'SOP-051': '§7.5 DHR / Batch Records',
+  // §7.6 Monitoring & Measuring Equipment
+  'SOP-025': '§7.6 Monitoring & Measuring Equipment',
+  // Regulatory submissions / Technical Documentation
+  'SOP-013': 'Regulatory Submissions & Technical Documentation',
+  'SOP-034': 'Regulatory Submissions & Technical Documentation',
+  'SOP-035': 'Regulatory Submissions & Technical Documentation',
+  'SOP-036': 'Regulatory Submissions & Technical Documentation',
+  'SOP-046': 'Regulatory Submissions & Technical Documentation',
+  // Clinical
+  'SOP-014': 'Clinical Evaluation & Investigation',
+  'SOP-047': 'Clinical Evaluation & Investigation',
+  'SOP-048': 'Clinical Evaluation & Investigation',
+  // ISO 14971 Risk Management
+  'SOP-015': 'ISO 14971 Risk Management',
+  // §8.2 Monitoring (PMS, complaints, FSCA, vigilance)
+  'SOP-021': '§8.2 Monitoring — Complaints, PMS, Vigilance',
+  'SOP-022': '§8.2 Monitoring — Complaints, PMS, Vigilance',
+  'SOP-037': '§8.2 Monitoring — Complaints, PMS, Vigilance',
+  'SOP-038': '§8.2 Monitoring — Complaints, PMS, Vigilance',
+  'SOP-042': '§8.2 Monitoring — Complaints, PMS, Vigilance',
+  'SOP-044': '§8.2 Monitoring — Complaints, PMS, Vigilance',
+  // §8.2.4 Internal Audit
+  'SOP-050': '§8.2.4 Internal Audit',
+  // §8.3 / 8.5 Nonconforming Product / CAPA
+  'SOP-028': '§8.3 / 8.5 Nonconforming Product & CAPA',
+  'SOP-032': '§8.3 / 8.5 Nonconforming Product & CAPA',
+};
+
+/** Stable ordering of clause headlines used by the breakdown renderer. */
+export const SOP_ISO_CLAUSE_ORDER: readonly string[] = [
+  '§4 Quality Management System',
+  '§4.2 Document Control',
+  '§5.6 Management Review',
+  '§6.2 Human Resources & Training',
+  '§6.3–6.4 Infrastructure & Work Environment',
+  '§7.3 Design & Development',
+  '§7.4 Purchasing & Supplier Control',
+  '§7.5 Production & Service Provision',
+  '§7.5.1 Labelling & Packaging',
+  '§7.5 Configuration / Preservation',
+  '§7.5 DHR / Batch Records',
+  '§7.5.6 Process Validation',
+  '§7.5.8 Identification & Traceability (UDI)',
+  '§7.6 Monitoring & Measuring Equipment',
+  'ISO 14971 Risk Management',
+  'Regulatory Submissions & Technical Documentation',
+  'Clinical Evaluation & Investigation',
+  '§8.2 Monitoring — Complaints, PMS, Vigilance',
+  '§8.2.4 Internal Audit',
+  '§8.3 / 8.5 Nonconforming Product & CAPA',
+];
+
+export function getSopIsoClause(sopKey: string): string {
+  return SOP_ISO_CLAUSE[sopKey] ?? 'Other / Cross-cutting';
+}
+
+/**
  * Rewrite a full document name (e.g. "SOP-016 Generic supplier evaluation…")
  * to use the three-part display ID ("SOP-SC-016 Generic supplier evaluation…").
  * Non-SOP names pass through untouched.
@@ -201,4 +361,25 @@ export function formatSopDisplayName(name: string | null | undefined): string {
   if (displayId === sopKey) return name;
   // Replace the leading SOP-NNN token (case-insensitive, allow separators).
   return name.replace(/SOP[-_\s]*\d{1,3}/i, displayId);
+}
+
+/**
+ * Rewrite EVERY occurrence of a legacy two-part `SOP-NNN` token inside an
+ * arbitrary block of text (or HTML) to its three-part display form
+ * (`SOP-{SUB}-NNN`). Tokens that are already three-part are left untouched.
+ *
+ * Used by the SOP content service to upgrade hardcoded references in seeded
+ * boilerplate (e.g. References, Records, Procedure sections) without having
+ * to rewrite the underlying `sopFullContent` constants.
+ */
+export function rewriteAllSopTokens(text: string | null | undefined): string {
+  if (!text) return '';
+  // Match SOP-NNN but NOT SOP-XX-NNN (negative lookahead for "-LETTERS-").
+  // Allow 1–3 digits to mirror parseSopNumber's tolerance.
+  return text.replace(/\bSOP-(\d{1,3})\b/gi, (match, num) => {
+    const key = `SOP-${String(num).padStart(3, '0')}`;
+    const sub = SOP_FUNCTIONAL_SUBPREFIX[key];
+    if (!sub) return match;
+    return `SOP-${sub}-${String(num).padStart(3, '0')}`;
+  });
 }

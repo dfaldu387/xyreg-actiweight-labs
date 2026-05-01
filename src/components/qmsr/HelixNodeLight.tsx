@@ -18,14 +18,10 @@ import { ISO13485ClausePopover } from './ISO13485ClausePopover';
 import { SOPStatusIndicator, type SOPStatus, type SOPStatusCount } from './SOPStatusIndicator';
 import { NodeSOPRequirementsDialog } from './NodeSOPRequirementsDialog';
 import { Badge } from '@/components/ui/badge';
-import {
-  NodeTooltip,
-  NodeTooltipContent,
-  NodeTooltipTrigger,
-} from '@/components/node-tooltip';
 import type { HelixNodeStatus, HelixLevel, HelixTrack } from '@/config/helixNodeConfig';
 import { TRACK_COLORS, STATUS_COLORS } from '@/config/helixNodeConfig';
 import { NODE_SOP_RECOMMENDATIONS, type SOPRecommendation } from '@/data/nodeSOPRecommendations';
+import { formatSopDisplayId } from '@/constants/sopAutoSeedTiers';
 import { useTranslation } from '@/hooks/useTranslation';
 
 export interface HelixNodeLightData {
@@ -96,22 +92,73 @@ interface NodeSOPChipsProps {
   sopStatus?: SOPStatus;
   sopCounts?: SOPStatusCount;
   onIndicatorClick: () => void;
+  onChipClick?: (target: { sopNumber: string; documentId?: string }) => void;
 }
 
-function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorClick }: NodeSOPChipsProps) {
-  // If we have linked SOPs from DB, show them
-  // Otherwise fall back to static recommendations
+function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorClick, onChipClick }: NodeSOPChipsProps) {
+  // Always start from canonical recommendations, then merge any linked docs
+  // matching by SOP number (e.g. SOP-QA-003 matches recommendation SOP-003).
   const recommendations = NODE_SOP_RECOMMENDATIONS[nodeId] || [];
-  const hasLinkedSOPs = linkedSOPs && linkedSOPs.length > 0;
-  
-  // Get SOPs to display (max 3, then show "+N more")
-  const linkedToShow = hasLinkedSOPs ? linkedSOPs.slice(0, 3) : [];
-  const recommendationsToShow = !hasLinkedSOPs ? recommendations.slice(0, 3) : [];
-  const remainingCount = hasLinkedSOPs 
-    ? Math.max(0, linkedSOPs.length - 3)
-    : Math.max(0, recommendations.length - 3);
+  const linked = linkedSOPs || [];
 
-  if (linkedToShow.length === 0 && recommendationsToShow.length === 0) {
+  type Merged = {
+    key: string;
+    displayId: string;
+    sopNumber: string;
+    documentId?: string;
+    status: 'approved' | 'in-progress' | 'missing';
+    title: string;
+  };
+
+  const numericFromSop = (s: string) => {
+    const m = s.match(/SOP-(?:[A-Z]{2}-)?(\d{3})/i);
+    return m ? m[1] : '';
+  };
+
+  const merged: Merged[] = [];
+  const usedLinkedIds = new Set<string>();
+
+  for (const rec of recommendations) {
+    const recNum = numericFromSop(rec.sopNumber);
+    const match = linked.find(
+      (l) => !usedLinkedIds.has(l.id) && numericFromSop(l.name) === recNum,
+    );
+    if (match) usedLinkedIds.add(match.id);
+    const status: Merged['status'] = match
+      ? match.status?.toLowerCase() === 'approved'
+        ? 'approved'
+        : 'in-progress'
+      : 'missing';
+    const matchedId = match?.name.match(/SOP-[A-Z]{2}-\d{3}/i)?.[0];
+    merged.push({
+      key: rec.sopNumber,
+      displayId: formatSopDisplayId(matchedId || rec.sopNumber),
+      sopNumber: rec.sopNumber,
+      documentId: match?.id,
+      status,
+      title: match?.name || `${rec.sopNumber} — ${rec.clauseDescription}`,
+    });
+  }
+
+  // Append any linked SOPs that don't match a recommendation
+  for (const l of linked) {
+    if (usedLinkedIds.has(l.id)) continue;
+    const id = l.name.match(/SOP-[A-Z]{2}-\d{3}/i)?.[0] || l.name;
+    merged.push({
+      key: l.id,
+      displayId: id,
+      sopNumber: id,
+      documentId: l.id,
+      status: l.status?.toLowerCase() === 'approved' ? 'approved' : 'in-progress',
+      title: l.name,
+    });
+  }
+
+  const maxChips = nodeId === 'design-control' ? 8 : 6;
+  const toShow = merged.slice(0, maxChips);
+  const remainingCount = Math.max(0, merged.length - maxChips);
+
+  if (toShow.length === 0) {
     // No recommendations for this node
     return (
       <SOPStatusIndicator
@@ -126,41 +173,43 @@ function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorCli
     <div className="space-y-1.5">
       {/* Status indicator row */}
       <SOPStatusIndicator
-        status={sopStatus || (hasLinkedSOPs ? 'in-progress' : 'missing')}
+        status={sopStatus || (linked.length > 0 ? 'in-progress' : 'missing')}
         counts={sopCounts}
         onClick={onIndicatorClick}
       />
       
       {/* SOP chips row */}
-      <div className="flex flex-wrap gap-1 max-w-[200px]">
-        {hasLinkedSOPs ? (
-          // Show actual linked SOPs from database
-          linkedToShow.map((sop) => (
-            <span
-              key={sop.id}
-              className={cn(
-                'inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium',
-                sop.status?.toLowerCase() === 'approved' 
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                  : 'bg-slate-50 text-slate-600 border border-slate-200'
-              )}
-              title={sop.name}
-            >
-              {sop.name.length > 12 ? sop.name.substring(0, 12) + '…' : sop.name}
-            </span>
-          ))
-        ) : (
-          // Show recommended SOPs (fallback)
-          recommendationsToShow.map((rec) => (
-            <span
-              key={rec.sopNumber}
-              className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-50 text-slate-500 border border-dashed border-slate-300"
-              title={`${rec.sopNumber}: ${rec.sopName}`}
-            >
-              {rec.sopNumber}
-            </span>
-          ))
+      <div
+        className={cn(
+          'gap-1.5',
+          nodeId === 'design-control'
+            ? 'grid grid-cols-4 max-w-[460px]'
+            : 'flex flex-wrap max-w-[200px]'
         )}
+      >
+        {toShow.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onChipClick?.({ sopNumber: m.sopNumber, documentId: m.documentId });
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className={cn(
+              'inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors cursor-pointer',
+              m.status === 'approved' &&
+                'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100',
+              m.status === 'in-progress' &&
+                'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100',
+              m.status === 'missing' &&
+                'bg-slate-50 text-slate-500 border border-dashed border-slate-300 hover:bg-slate-100 hover:text-slate-700',
+            )}
+            title={m.title}
+          >
+            {m.displayId.length > 14 ? m.displayId.substring(0, 14) + '…' : m.displayId}
+          </button>
+        ))}
         {remainingCount > 0 && (
           <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] text-slate-400">
             +{remainingCount}
@@ -175,6 +224,9 @@ function HelixNodeLightComponent({ data }: NodeProps) {
   const nodeData = data as unknown as HelixNodeLightData;
   const { lang } = useTranslation();
   const [sopDialogOpen, setSopDialogOpen] = useState(false);
+  const [autoOpenSop, setAutoOpenSop] = useState<
+    { sopNumber: string; documentId?: string } | undefined
+  >(undefined);
 
   const trackColor = TRACK_COLORS[nodeData.track];
   const statusStyle = statusConfig[nodeData.status];
@@ -196,13 +248,18 @@ function HelixNodeLightComponent({ data }: NodeProps) {
   };
 
   const handleSOPIndicatorClick = () => {
+    setAutoOpenSop(undefined);
+    setSopDialogOpen(true);
+  };
+
+  const handleChipClick = (target: { sopNumber: string; documentId?: string }) => {
+    setAutoOpenSop(target);
     setSopDialogOpen(true);
   };
 
   return (
     <>
-    <NodeTooltip>
-      <NodeTooltipTrigger
+      <div
         onClick={handleClick}
         className={cn(
           'relative cursor-grab active:cursor-grabbing transition-all duration-200 group',
@@ -238,6 +295,7 @@ function HelixNodeLightComponent({ data }: NodeProps) {
             className={cn(
               'relative rounded-lg border bg-white p-3 shadow-sm',
               'min-w-[200px] max-w-[220px]',
+              nodeData.id === 'design-control' && 'max-w-[480px] min-w-[480px]',
               'transition-all duration-300',
               'hover:shadow-md',
               statusStyle.border
@@ -336,6 +394,7 @@ function HelixNodeLightComponent({ data }: NodeProps) {
                   sopStatus={nodeData.sopStatus}
                   sopCounts={nodeData.sopCounts}
                   onIndicatorClick={handleSOPIndicatorClick}
+                  onChipClick={handleChipClick}
                 />
               )}
 
@@ -392,21 +451,20 @@ function HelixNodeLightComponent({ data }: NodeProps) {
               </div>
             </div>
           </div>
-        </NodeTooltipTrigger>
-        <NodeTooltipContent>
-          <p className="font-medium">{nodeData.label}</p>
-          <p className="text-xs text-muted-foreground">{nodeData.description}</p>
-        </NodeTooltipContent>
-    </NodeTooltip>
+      </div>
 
     {/* SOP Requirements Dialog */}
     <NodeSOPRequirementsDialog
       open={sopDialogOpen}
-      onOpenChange={setSopDialogOpen}
+      onOpenChange={(o) => {
+        setSopDialogOpen(o);
+        if (!o) setAutoOpenSop(undefined);
+      }}
       nodeId={nodeData.id}
       nodeLabel={nodeData.label}
       isoClause={nodeData.isoClause}
       companyId={nodeData.companyId}
+      autoOpenSop={autoOpenSop}
     />
     </>
   );

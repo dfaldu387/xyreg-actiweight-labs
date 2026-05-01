@@ -43,24 +43,83 @@ export function getSOPContentByName(docName: string, documentNumber?: string): S
 
 /**
  * Convert SOP content to DocumentSection format for the Document Studio editor.
+ *
+ * If a section's body contains lines that begin with `N.M ` (e.g.
+ * `6.1 Trend Reporting`), each such line is split out as its own H3 heading
+ * block, with the prose between two sub-headings becoming a paragraph block.
+ * Sections without `N.M` sub-headings (1.0 Purpose, 8.0 Revision History,
+ * etc.) keep the existing single-paragraph behaviour.
  */
 export function sopContentToSections(sopContent: SOPFullContent) {
-  return sopContent.sections.map((section, index) => ({
-    id: section.id,
-    title: section.title,
-    order: index,
-    content: [{
-      id: `${section.id}-1`,
-      type: 'paragraph' as const,
-      content: section.content,
-      isAIGenerated: false,
-      metadata: {
-        confidence: 1.0,
-        lastModified: new Date(),
-        author: 'ai' as const,
-        dataSource: 'auto-populated' as const,
-        populatedFrom: 'Xyreg SOP Library',
-      },
-    }],
-  }));
+  const baseMeta = {
+    confidence: 1.0,
+    author: 'ai' as const,
+    dataSource: 'auto-populated' as const,
+    populatedFrom: 'Xyreg SOP Library',
+  };
+
+  return sopContent.sections.map((section, index) => {
+    const raw = section.content || '';
+    // Match lines like "6.1 Trend Reporting" at the start of a line.
+    const subHeadingRe = /^\s*\d+\.\d+\s+.+$/gm;
+    const hasSubHeadings = subHeadingRe.test(raw);
+    subHeadingRe.lastIndex = 0;
+
+    const blocks: Array<{
+      id: string;
+      type: 'paragraph' | 'heading';
+      content: string;
+      isAIGenerated: boolean;
+      metadata: typeof baseMeta & { lastModified: Date };
+    }> = [];
+
+    const push = (type: 'paragraph' | 'heading', content: string) => {
+      const trimmed = content.trim();
+      if (!trimmed) return;
+      blocks.push({
+        id: `${section.id}-${blocks.length + 1}`,
+        type,
+        content: trimmed,
+        isAIGenerated: false,
+        metadata: { ...baseMeta, lastModified: new Date() },
+      });
+    };
+
+    if (!hasSubHeadings) {
+      push('paragraph', raw);
+    } else {
+      // Walk lines, accumulating paragraph buffers between sub-headings.
+      const lines = raw.split('\n');
+      let buffer: string[] = [];
+      const flushBuffer = () => {
+        if (buffer.length === 0) return;
+        push('paragraph', buffer.join('\n'));
+        buffer = [];
+      };
+      for (const line of lines) {
+        if (/^\s*\d+\.\d+\s+\S/.test(line)) {
+          flushBuffer();
+          push('heading', line);
+        } else {
+          buffer.push(line);
+        }
+      }
+      flushBuffer();
+    }
+
+    return {
+      id: section.id,
+      title: section.title,
+      order: index,
+      content: blocks.length > 0
+        ? blocks
+        : [{
+            id: `${section.id}-1`,
+            type: 'paragraph' as const,
+            content: raw,
+            isAIGenerated: false,
+            metadata: { ...baseMeta, lastModified: new Date() },
+          }],
+    };
+  });
 }

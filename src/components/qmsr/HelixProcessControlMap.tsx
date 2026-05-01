@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ReactFlow,
   Controls,
@@ -287,14 +288,30 @@ export function HelixProcessControlMap({
 }: HelixProcessControlMapProps) {
   const [isExpanded, setIsExpanded] = useState(!compact);
   const { data, isLoading, refetch } = useHelixPulseStatus(companyId);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedNodeId = searchParams.get('foundationNode');
+  const isDrawerOpen = !!selectedNodeId;
+
+  const setSelectedNodeId = useCallback((nodeId: string | null) => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (nodeId) next.set('foundationNode', nodeId);
+        else next.delete('foundationNode');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [setSearchParams]);
+
+  const setIsDrawerOpen = useCallback((open: boolean) => {
+    if (!open) setSelectedNodeId(null);
+  }, [setSelectedNodeId]);
 
   const handleNodeClick = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
-    setIsDrawerOpen(true);
     onNodeClick?.(nodeId, nodeId);
-  }, [onNodeClick]);
+  }, [onNodeClick, setSelectedNodeId]);
 
   const handleRBRClick = useCallback((rbrType: string) => {
     // Open the RBR-specific drawer/panel

@@ -175,6 +175,7 @@ export interface MenuItem {
   route?: string;
   upcoming?: boolean;
   domainColor?: DomainColor;
+  featureFlag?: string;
 }
 
 export interface ModuleConfig {
@@ -313,8 +314,8 @@ export const defaultSidebarConfig: SidebarConfig = {
           icon: <TrendingUp className="w-5 h-5" />,
           domainColor: 'gold',
           children: [
-            { id: 'company-strategic-blueprint', name: 'Strategic Blueprint', icon: <Map className="w-4 h-4" />, route: '/app/company/:companyName/commercial?tab=strategic-blueprint' },
-            { id: 'company-business-canvas', name: 'Business Canvas', icon: <Layers className="w-4 h-4" />, route: '/app/company/:companyName/commercial?tab=business-canvas' },
+            { id: 'company-strategic-blueprint', name: 'Strategic Blueprint', icon: <Map className="w-4 h-4" />, route: '/app/company/:companyName/commercial?tab=strategic-blueprint', featureFlag: 'strategic-blueprint' },
+            { id: 'company-business-canvas', name: 'Business Canvas', icon: <Layers className="w-4 h-4" />, route: '/app/company/:companyName/commercial?tab=business-canvas', featureFlag: 'business-canvas' },
             { id: 'company-feasibility', name: 'Portfolio Business Cases', icon: <ClipboardCheck className="w-4 h-4" />, route: '/app/company/:companyName/commercial?tab=feasibility-studies' },
             { id: 'company-market-analysis', name: 'Market Analysis', icon: <BarChart3 className="w-4 h-4" />, route: '/app/company/:companyName/commercial?tab=market-analysis' },
             { id: 'company-commercial-performance', name: 'Commercial Performance', icon: <TrendingUp className="w-4 h-4" />, route: '/app/company/:companyName/commercial?tab=commercial-performance' },

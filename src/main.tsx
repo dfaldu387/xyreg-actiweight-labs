@@ -38,6 +38,7 @@ import { GapAnalysisHelpProvider } from './context/GapAnalysisHelpContext'
 import { Toaster } from "sonner";
 import { RightRailProvider } from './context/RightRailContext';
 import { AiCreditProvider } from './context/AiCreditContext';
+import { TokenAuthHandler } from './components/auth/TokenAuthHandler';
 // Ensure we have an element to mount the app - BrowserRouter must wrap all providers
 const rootElement = document.getElementById("root");
 
@@ -55,6 +56,7 @@ root.render(
       <ErrorBoundary level="critical">
         <QueryClientProvider client={queryClient}>
           <TooltipStyles /> 
+          <TokenAuthHandler>
           <DevModeProvider>
             <LanguageProvider>
               <AuthProvider>
@@ -83,6 +85,7 @@ root.render(
               </AuthProvider>
             </LanguageProvider>
           </DevModeProvider>
+          </TokenAuthHandler>
         </QueryClientProvider>
       </ErrorBoundary>
     </BrowserRouter>

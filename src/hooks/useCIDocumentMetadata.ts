@@ -25,6 +25,7 @@ export interface CIDocumentMetadata {
   record_id: string | null;
   next_review_date: string | null;
   document_number: string | null;
+  change_control_ref: string | null;
 }
 
 /**
@@ -45,7 +46,7 @@ export function useCIDocumentMetadata(documentId: string | null, companyId: stri
     try {
       const { data, error } = await supabase
         .from('phase_assigned_document_template')
-        .select('id, name, status, due_date, document_type, sub_section, section_ids, authors_ids, reference_document_ids, phase_id, product_id, version, tags, is_record, date, is_current_effective_version, need_template_update, reviewer_group_ids, record_id, next_review_date, document_number')
+        .select('id, name, status, due_date, document_type, sub_section, section_ids, authors_ids, reference_document_ids, phase_id, product_id, version, tags, is_record, date, is_current_effective_version, need_template_update, reviewer_group_ids, record_id, next_review_date, document_number, change_control_ref')
         .eq('id', documentId)
         .maybeSingle();
 
@@ -76,6 +77,7 @@ export function useCIDocumentMetadata(documentId: string | null, companyId: stri
           record_id: data.record_id,
           next_review_date: data.next_review_date,
           document_number: data.document_number,
+          change_control_ref: (data as any).change_control_ref ?? null,
         });
       }
     } catch (err) {

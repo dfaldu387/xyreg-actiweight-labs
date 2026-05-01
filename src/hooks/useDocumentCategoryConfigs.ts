@@ -119,7 +119,11 @@ export function useDocumentCategoryConfigs(companyId: string | undefined) {
   /**
    * Fetch used number suffixes for a given prefix (e.g., "SOP" → ["001", "002"]).
    */
-  const getUsedNumbers = useCallback(async (prefix: string, filterCompanyId?: string): Promise<Set<string>> => {
+  const getUsedNumbers = useCallback(async (
+    prefix: string,
+    filterCompanyId?: string,
+    excludeDocumentId?: string,
+  ): Promise<Set<string>> => {
     let query = supabase
       .from('phase_assigned_document_template')
       .select('document_number')
@@ -127,6 +131,9 @@ export function useDocumentCategoryConfigs(companyId: string | undefined) {
 
     if (filterCompanyId) {
       query = query.eq('company_id', filterCompanyId);
+    }
+    if (excludeDocumentId) {
+      query = query.neq('id', excludeDocumentId);
     }
 
     const { data, error } = await query;

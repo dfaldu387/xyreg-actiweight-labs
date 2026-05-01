@@ -6,6 +6,7 @@ import { UserRole } from '@/types/documentTypes';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useSidebarState } from '@/hooks/useSidebarState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useCustomerFeatureFlag } from '@/hooks/useCustomerFeatureFlag';
 
 interface CompanyCommercialGroupProps {
   userRole: UserRole;
@@ -26,19 +27,21 @@ export function CompanyCommercialGroup({
   const { state: sidebarState } = useSidebar();
   const menuName = "Commercial Intelligence";
   const isCollapsed = sidebarState === "collapsed";
+  const businessCanvasEnabled = useCustomerFeatureFlag('business-canvas');
+  const strategicBlueprintEnabled = useCustomerFeatureFlag('strategic-blueprint');
 
   const commercialItems = [
     {
       title: "Strategic Blueprint",
       path: `${baseUrl}/commercial?tab=strategic-blueprint`,
       icon: TrendingUp,
-      visible: true
+      visible: strategicBlueprintEnabled
     },
     {
       title: "Business Canvas",
       path: `${baseUrl}/commercial?tab=business-canvas`,
       icon: LayoutGrid,
-      visible: true
+      visible: businessCanvasEnabled
     },
     {
       title: "Viability Studies",

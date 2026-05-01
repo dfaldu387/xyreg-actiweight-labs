@@ -120,7 +120,11 @@ export function DocumentRichContentView({ documentName, documentReference }: Doc
                 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-2
                 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2
                 [&_h4]:text-base [&_h4]:font-medium [&_h4]:mb-2
-                [&_blockquote]:border-l-4 [&_blockquote]:border-primary [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted-foreground"
+                [&_blockquote]:border-l-4 [&_blockquote]:border-primary [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted-foreground
+                [&_.wi-note]:my-2 [&_.wi-note]:rounded-md [&_.wi-note]:border [&_.wi-note]:border-blue-200 [&_.wi-note]:bg-blue-50 [&_.wi-note]:p-2 [&_.wi-note]:text-sm [&_.wi-note]:text-blue-900
+                [&_.wi-caution]:my-2 [&_.wi-caution]:rounded-md [&_.wi-caution]:border [&_.wi-caution]:border-amber-300 [&_.wi-caution]:bg-amber-50 [&_.wi-caution]:p-2 [&_.wi-caution]:text-sm [&_.wi-caution]:text-amber-900
+                [&_.wi-note_ul]:list-disc [&_.wi-note_ul]:pl-5 [&_.wi-note_ul]:my-1
+                [&_.wi-caution_ul]:list-disc [&_.wi-caution_ul]:pl-5 [&_.wi-caution_ul]:my-1"
               dangerouslySetInnerHTML={{ __html: section.content }}
             />
           </div>

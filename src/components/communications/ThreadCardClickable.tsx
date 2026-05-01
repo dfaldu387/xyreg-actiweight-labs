@@ -4,19 +4,23 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format, isToday, isYesterday } from 'date-fns';
 import { CommunicationThread } from '@/types/communications';
-import { Users } from 'lucide-react';
+import { Users, CheckCircle2, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useAuth } from '@/context/AuthContext';
 import { getParticipantInitials } from '@/utils/participantUtils';
+import { isQuickThread } from '@/lib/communications/moduleGrouping';
 
 interface ThreadCardClickableProps {
   thread: CommunicationThread;
   onClick: (thread: CommunicationThread) => void;
+  onArchive?: (thread: CommunicationThread) => void;
 }
 
-export function ThreadCardClickable({ thread, onClick }: ThreadCardClickableProps) {
+export function ThreadCardClickable({ thread, onClick, onArchive }: ThreadCardClickableProps) {
   const { lang } = useTranslation();
   const { user } = useAuth();
+  const quick = isQuickThread(thread);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -50,6 +54,32 @@ export function ThreadCardClickable({ thread, onClick }: ThreadCardClickableProp
   const participants = thread.participants || [];
   const unreadCount = thread.my_unread_count || 0;
 
+  // Quick (lightweight 1:1) variant: compact one-row card
+  if (quick) {
+    const senderName = thread.latest_message?.sender_user_id === user?.id
+      ? 'You'
+      : thread.latest_message?.sender_profile
+        ? [thread.latest_message.sender_profile.first_name, thread.latest_message.sender_profile.last_name].filter(Boolean).join(' ') || thread.latest_message.sender_profile.email
+        : '';
+    const preview = thread.latest_message?.content
+      || (thread.title?.replace(/^Quick Message:\s*/, '') ?? '');
+    return (
+      <div onClick={() => onClick(thread)} className="cursor-pointer">
+        <div className="border-l-2 border-amber-400 bg-muted/40 hover:bg-muted/70 transition-colors rounded-sm px-3 py-2 flex items-center gap-2">
+          <Zap className="h-3 w-3 text-amber-500 flex-shrink-0" />
+          <span className="text-xs text-muted-foreground flex-shrink-0">{senderName}</span>
+          <span className="text-xs truncate flex-1">{preview}</span>
+          {unreadCount > 0 && (
+            <Badge variant="destructive" className="text-xs h-4 px-1">{unreadCount}</Badge>
+          )}
+          <span className="text-[10px] text-muted-foreground flex-shrink-0">
+            {formatLastActivity(thread.last_activity_at)}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div onClick={() => onClick(thread)} className="cursor-pointer">
       <Card className="hover:shadow-md transition-shadow">
@@ -82,6 +112,20 @@ export function ThreadCardClickable({ thread, onClick }: ThreadCardClickableProp
               </Badge>
               {unreadCount > 0 && (
                 <Badge variant="destructive" className="text-xs">{unreadCount}</Badge>
+              )}
+              {onArchive && thread.status !== 'Closed' && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  title="Close thread"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onArchive(thread);
+                  }}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                </Button>
               )}
             </div>
           </div>

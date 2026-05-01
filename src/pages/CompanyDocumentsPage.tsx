@@ -15,6 +15,8 @@ import { usePlanMenuAccess } from '@/hooks/usePlanMenuAccess';
 import { PORTFOLIO_MENU_ACCESS } from '@/constants/menuAccessKeys';
 import { RestrictedFeatureProvider } from '@/contexts/RestrictedFeatureContext';
 import { RestrictedPreviewBanner } from '@/components/subscription/RestrictedPreviewBanner';
+import { ensureCompanySeedingComplete } from '@/services/ensureCompanySeedingService';
+import { useQueryClient } from '@tanstack/react-query';
 
 function CompanyDocumentsPage() {
   const { companyName } = useParams<{ companyName: string }>();
@@ -25,6 +27,7 @@ function CompanyDocumentsPage() {
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { companyRoles, isLoading: rolesLoading } = useCompanyRole();
+  const queryClient = useQueryClient();
 
   // Restriction check - double security pattern (hooks must be called before any conditional returns)
   const { isMenuAccessKeyEnabled, planName } = usePlanMenuAccess();
@@ -87,6 +90,32 @@ function CompanyDocumentsPage() {
 
     resolveCompanyId();
   }, [companyName, companyRoles, rolesLoading]);
+
+  // Self-heal: silently top-up any missing Foundation/Pathway SOPs and
+  // their derived WIs the moment the user opens Documents. No spinner —
+  // when nothing is missing this is a few cheap COUNT queries. When
+  // anything was inserted, invalidate the templates list so the new rows
+  // appear without a manual refresh.
+  useEffect(() => {
+    if (!companyId || !companyName) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await ensureCompanySeedingComplete(
+          companyId,
+          decodeURIComponent(companyName),
+        );
+        if (cancelled) return;
+        if (r.tierAInserted + r.tierBInserted + r.wiCreated > 0) {
+          queryClient.invalidateQueries({ queryKey: ['phase-assigned-document-template'] });
+          queryClient.invalidateQueries({ queryKey: ['company-documents'] });
+        }
+      } catch (err) {
+        console.warn('[CompanyDocumentsPage] self-heal seeding failed', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [companyId, companyName, queryClient]);
 
   if (isLoading) {
     return (

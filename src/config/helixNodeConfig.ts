@@ -132,6 +132,17 @@ export const HELIX_NODE_CONFIGS: HelixNodeConfig[] = [
     isoClause: '6.3-6.4',
     description: 'Infrastructure (buildings, equipment, IT systems) and work environment controls.',
   },
+  {
+    id: 'design-control',
+    label: 'Design Control',
+    shortLabel: 'Design',
+    rung: 1,
+    level: 'company',
+    track: 'engineering',
+    qmsrClause: '7.3',
+    isoClause: '7.3',
+    description: 'Master design & development control framework — planning, inputs, outputs, reviews, V&V, transfer, and changes (enterprise-level procedures; per-device records live in the Device Engine).',
+  },
 
   // ============ RUNG 2: Device Upstream ============
   {

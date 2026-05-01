@@ -4,7 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Search, ArrowLeft, Activity, FileText, Play, Book, BookOpen, Globe } from 'lucide-react';
+import { Search, ArrowLeft, Activity, FileText, Play, Book, BookOpen, Globe, Compass } from 'lucide-react';
+import { ComplianceJourneyContent } from '@/components/compliance-journey/ComplianceJourneyContent';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useAuth } from '@/context/AuthContext';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { useTranslation } from '@/hooks/useTranslation';
@@ -283,6 +285,7 @@ export function ReferenceTab({ initialGlossarySearch, onGlossaryOpened }: Refere
   const [selectedTopic, setSelectedTopic] = useState<HelpTopic | null>(null);
   const [showGlossary, setShowGlossary] = useState(false);
   const [showAtlas, setShowAtlas] = useState(false);
+  const [showJourney, setShowJourney] = useState(false);
   const [glossarySearchOverride, setGlossarySearchOverride] = useState<string | undefined>(undefined);
   const { userRole } = useAuth();
 
@@ -337,6 +340,25 @@ export function ReferenceTab({ initialGlossarySearch, onGlossaryOpened }: Refere
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
         />
+      </div>
+
+      {/* Getting Started — Compliance Journey */}
+      <div className="space-y-1.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 px-1">
+          <Compass className="h-4 w-4" /> Getting Started
+        </h3>
+        <Card
+          className="p-3 cursor-pointer hover:bg-accent/50 transition-colors border-primary/20 bg-primary/5"
+          onClick={() => setShowJourney(true)}
+        >
+          <p className="text-sm font-medium flex items-center gap-2">
+            The Compliance Journey
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">5 stages</Badge>
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Foundation → Design → Risk → Evidence → Dossier. The map of how a device gets to market in XYREG.
+          </p>
+        </Card>
       </div>
 
       {/* Regulatory Atlas card — always at top */}
@@ -394,6 +416,18 @@ export function ReferenceTab({ initialGlossarySearch, onGlossaryOpened }: Refere
           ))}
         </div>
       ))}
+
+      <Dialog open={showJourney} onOpenChange={setShowJourney}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>How XYREG Works — The Compliance Journey</DialogTitle>
+            <DialogDescription>
+              Five stages, in order. Each one builds the evidence the next one needs.
+            </DialogDescription>
+          </DialogHeader>
+          <ComplianceJourneyContent />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -482,6 +482,23 @@ async function fetchNodeStatus(
   }
 }
 
+// Reconcile a node's headline status against its real SOP approval data.
+// When a node has linked SOPs, the dot must reflect actual approval state —
+// mock/demo status is overridden so we never show green for unapproved SOPs.
+function reconcileStatusWithSOPs(
+  currentStatus: HelixNodeStatus,
+  sopStatus: SOPStatusData | undefined
+): HelixNodeStatus {
+  if (!sopStatus || sopStatus.counts.total === 0) {
+    // No SOPs linked → keep existing (mock or computed) status
+    return currentStatus;
+  }
+  if (sopStatus.status === 'complete') return 'validated';
+  if (sopStatus.status === 'in-progress') return 'active';
+  // total > 0 but none approved → critical
+  return 'critical';
+}
+
 export function useHelixPulseStatus(companyId: string, useMockData: boolean = true) {
   return useQuery({
     queryKey: ['helix-pulse-status', companyId, useMockData],
@@ -547,7 +564,13 @@ export function useHelixPulseStatus(companyId: string, useMockData: boolean = tr
           const nodeStatus = await fetchNodeStatus(companyId, config, useMockData);
           // Always fetch real SOP status from database
           const sopStatus = await fetchSOPStatus(companyId, config.id);
-          return { ...nodeStatus, sopStatus };
+          // Real SOP approval data trumps mock/computed status for the dot
+          const reconciledStatus = reconcileStatusWithSOPs(nodeStatus.status, sopStatus);
+          // Keep nestedRBR status in sync if it was mirroring the node status
+          const nestedRBR = nodeStatus.nestedRBR
+            ? { ...nodeStatus.nestedRBR, status: reconciledStatus }
+            : undefined;
+          return { ...nodeStatus, status: reconciledStatus, nestedRBR, sopStatus };
         })
       );
 

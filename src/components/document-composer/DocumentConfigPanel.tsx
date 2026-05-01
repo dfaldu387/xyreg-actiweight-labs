@@ -4,6 +4,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCIDocumentMetadata } from '@/hooks/useCIDocumentMetadata';
 import { CIPropertyPanel } from './CIPropertyPanel';
 import { cn } from '@/lib/utils';
+import { TranslateSection } from '@/components/product/documents/configure/TranslateSection';
+import { GenerateWorkInstructionSection } from '@/components/product/documents/configure/GenerateWorkInstructionSection';
+import { LinkedWorkInstructionsSection } from '@/components/product/documents/configure/LinkedWorkInstructionsSection';
+import { parseSopNumber, getSopTier } from '@/constants/sopAutoSeedTiers';
 
 interface DocumentConfigPanelProps {
   documentId?: string | null;
@@ -70,6 +74,7 @@ export function DocumentConfigPanel({
             <div className="text-[11px]">Save the draft from a phase to enable inline configuration.</div>
           </div>
         ) : (
+          <div className="space-y-3">
           <CIPropertyPanel
             documentId={metadata.id}
             companyId={companyId || ''}
@@ -103,6 +108,65 @@ export function DocumentConfigPanel({
             }}
             disabled={disabled}
           />
+          <div className="px-3 pb-3 pt-1 space-y-2">
+            <div className="border-t pt-3">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-2 px-1">
+                Derive new documents
+              </div>
+              <div className="space-y-2">
+                <TranslateSection
+                  sourceCiId={metadata.id}
+                  sourceLanguage={(metadata as any).language ?? 'EN'}
+                  sourceName={metadata.name}
+                  sourceDocumentNumber={metadata.document_number ?? null}
+                  onCreated={(newCiId) => {
+                    window.dispatchEvent(new CustomEvent('xyreg:open-draft-by-id', { detail: { ciId: newCiId } }));
+                  }}
+                  disabled={disabled}
+                />
+                {(() => {
+                  const isSop = (metadata.document_type ?? '').toUpperCase() === 'SOP';
+                  if (!isSop) return null;
+                  const sopKey = parseSopNumber(metadata.document_number)
+                    ?? parseSopNumber(metadata.name);
+                  const tier = getSopTier(metadata.document_number, metadata.name);
+                  // Foundational (Tier-A) SOPs: show shared global WI catalog,
+                  // not the per-company generator. Same SOP everywhere => same WIs.
+                  if (tier === 'A' && sopKey) {
+                    return (
+                      <LinkedWorkInstructionsSection
+                        sopTemplateKey={sopKey}
+                        companyId={companyId || ''}
+                        phaseId={metadata.phase_id ?? null}
+                        onOpened={(ciId) => {
+                          window.dispatchEvent(
+                            new CustomEvent('xyreg:open-draft-by-id', { detail: { ciId } }),
+                          );
+                        }}
+                      />
+                    );
+                  }
+                  // Custom / non-foundational SOPs: per-company AI generation
+                  // with auto-detected modules.
+                  return (
+                    <GenerateWorkInstructionSection
+                      sourceCiId={metadata.id}
+                      sourceName={metadata.name}
+                      sourceDocumentNumber={metadata.document_number ?? null}
+                      isSop={isSop}
+                      onCreated={(newCiId) => {
+                        window.dispatchEvent(
+                          new CustomEvent('xyreg:open-draft-by-id', { detail: { ciId: newCiId } }),
+                        );
+                      }}
+                      disabled={disabled}
+                    />
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+          </div>
         )}
       </ScrollArea>
     </div>

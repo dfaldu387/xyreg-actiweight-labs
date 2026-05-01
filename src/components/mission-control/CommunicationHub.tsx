@@ -6,8 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Send, Bell, Plus, Maximize2, Minimize2, Search, UsersRound, UserPen } from "lucide-react";
+import { MessageSquare, Send, Bell, Plus, Maximize2, Minimize2, Search, UsersRound, UserPen, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useTranslation } from "@/hooks/useTranslation";
 import { ThreadCardClickable } from "@/components/communications/ThreadCardClickable";
 import { ThreadDetailSheet } from "@/components/communications/ThreadDetailSheet";
@@ -15,6 +16,7 @@ import { NewCommunicationDialog } from "@/components/communications/NewCommunica
 import { CommunicationThread } from "@/types/communications";
 import { ErrorBoundary } from "@/components/error/ErrorBoundary";
 import { useCommunicationThreads } from "@/hooks/useCommunicationThreads";
+import { useCustomerFeatureFlag } from "@/hooks/useCustomerFeatureFlag";
 
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -32,6 +34,7 @@ interface CommunicationHubProps {
 }
 
 export function CommunicationHub({ scope, companyId, productId }: CommunicationHubProps) {
+  const communicationsEnabled = useCustomerFeatureFlag('communications-threads');
   const [newMessage, setNewMessage] = useState('');
   const [selectedRecipient, setSelectedRecipient] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
@@ -102,6 +105,7 @@ export function CommunicationHub({ scope, companyId, productId }: CommunicationH
         companyId,
         participantUserIds: [selectedRecipient],
         initialMessage: newMessage,
+        threadType: 'quick',
       });
       setNewMessage('');
       setSelectedRecipient('');
@@ -113,8 +117,33 @@ export function CommunicationHub({ scope, companyId, productId }: CommunicationH
   };
 
   // Recent threads for collapsed view (max 5)
-  const recentThreads = threads.slice(0, 5);
+  const recentThreads = threads.slice(0, 15);
 
+  const handleCloseThread = async (thread: CommunicationThread) => {
+    try {
+      const { error } = await supabase
+        .from('communication_threads')
+        .update({ status: 'Closed' })
+        .eq('id', thread.id);
+      if (error) throw error;
+      toast.success('Thread closed', {
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            await supabase
+              .from('communication_threads')
+              .update({ status: 'Active' })
+              .eq('id', thread.id);
+          },
+        },
+      });
+    } catch (err) {
+      console.error('Error closing thread:', err);
+      toast.error('Failed to close thread');
+    }
+  };
+
+  if (!communicationsEnabled) return null;
 
   if (isLoading) {
     return (
@@ -249,6 +278,7 @@ export function CommunicationHub({ scope, companyId, productId }: CommunicationH
                     key={thread.id}
                     thread={thread}
                     onClick={setSelectedThread}
+                    onArchive={handleCloseThread}
                   />
                 ))}
               </div>
@@ -333,39 +363,55 @@ export function CommunicationHub({ scope, companyId, productId }: CommunicationH
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              {lang('missionControl.recentMessages')}
+              <div className="flex flex-col">
+                <span>{lang('missionControl.recentMessages')}</span>
+                <span className="text-xs font-normal text-muted-foreground mt-0.5">
+                  Structured threads — subject, participants, history
+                </span>
+              </div>
               <ErrorBoundary level="component">
                 <NewCommunicationDialog companyId={companyId}>
-                  <Button size="sm" variant="outline">
+                  <Button size="sm" variant="outline" title="Start a structured, multi-recipient thread">
                     <Plus className="h-4 w-4 mr-1" />
-                    {lang('missionControl.new')}
+                    New Thread
                   </Button>
                 </NewCommunicationDialog>
               </ErrorBoundary>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {recentThreads.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  {lang('missionControl.noRecentCommunications')}
+            {recentThreads.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {lang('missionControl.noRecentCommunications')}
+              </div>
+            ) : (
+              <ScrollArea className="h-[360px] pr-3">
+                <div className="space-y-3">
+                  {recentThreads.map((thread) => (
+                    <ThreadCardClickable
+                      key={thread.id}
+                      thread={thread}
+                      onClick={setSelectedThread}
+                      onArchive={handleCloseThread}
+                    />
+                  ))}
                 </div>
-              ) : (
-                recentThreads.map((thread) => (
-                  <ThreadCardClickable
-                    key={thread.id}
-                    thread={thread}
-                    onClick={setSelectedThread}
-                  />
-                ))
-              )}
-            </div>
+              </ScrollArea>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>{lang('missionControl.quickMessage')}</CardTitle>
+            <CardTitle className="flex flex-col">
+              <span className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-amber-500" />
+                {lang('missionControl.quickMessage')}
+              </span>
+              <span className="text-xs font-normal text-muted-foreground mt-0.5">
+                Send a fast 1:1 note — no thread title required
+              </span>
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>

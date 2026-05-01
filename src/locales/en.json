@@ -5814,7 +5814,8 @@
       "active": "Active",
       "awaitingResponse": "Awaiting Response",
       "pending": "Pending",
-      "closed": "Closed"
+      "closed": "Closed",
+      "archived": "Archived"
     },
     "results": {
       "threadFound": "{{count}} thread found",
@@ -5839,11 +5840,15 @@
       },
       "noClosed": {
         "title": "No closed communications",
-        "description": "No communication threads have been closed yet."
+        "description": "Closed threads will appear here. Closing a thread marks it as finished and hides it from active lists — it stays searchable but is read-only. Reopen it any time."
       },
       "noThreads": {
         "title": "No communication threads",
         "description": "Start a new communication to begin collaborating with your team."
+      },
+      "noArchived": {
+        "title": "No archived communications",
+        "description": "Archived threads will appear here. Archive a thread to declutter your list — archived threads stay searchable but are read-only."
       }
     },
     "threadCard": {

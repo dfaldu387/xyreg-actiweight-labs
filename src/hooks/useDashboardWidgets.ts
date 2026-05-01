@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useCustomerFeatureFlag } from '@/hooks/useCustomerFeatureFlag';
 
 export interface WidgetDefinition {
   id: string;
@@ -125,6 +126,13 @@ function getDefaultEnabledIds(): string[] {
 }
 
 export function useDashboardWidgets() {
+  const communicationsEnabled = useCustomerFeatureFlag('communications-threads');
+
+  const availableWidgets = useMemo(
+    () => WIDGET_REGISTRY.filter(w => communicationsEnabled || w.id !== 'communication-hub'),
+    [communicationsEnabled]
+  );
+
   const [enabledWidgetIds, setEnabledWidgetIds] = useState<string[]>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -164,12 +172,12 @@ export function useDashboardWidgets() {
     });
   }, []);
 
-  const enabledWidgets = WIDGET_REGISTRY
+  const enabledWidgets = availableWidgets
     .filter(w => enabledWidgetIds.includes(w.id) && !w.comingSoon)
     .sort((a, b) => enabledWidgetIds.indexOf(a.id) - enabledWidgetIds.indexOf(b.id));
 
   return {
-    allWidgets: WIDGET_REGISTRY,
+    allWidgets: availableWidgets,
     enabledWidgets,
     enabledWidgetIds,
     toggleWidget,

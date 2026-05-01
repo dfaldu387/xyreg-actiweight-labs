@@ -3,6 +3,8 @@ import { List, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DocumentOutlinePanel } from './DocumentOutlinePanel';
 import { DocumentConfigPanel } from './DocumentConfigPanel';
+import { TemplateConfigPanel } from './TemplateConfigPanel';
+import type { DocumentTemplate } from '@/types/documentComposer';
 
 type Tab = 'outline' | 'configure';
 
@@ -19,6 +21,8 @@ interface LeftRailTabsProps {
   onCollapsedChange?: (collapsed: boolean) => void;
   /** Forwarded to DocumentConfigPanel so the body header reflects classification changes immediately. */
   onIsRecordChange?: (isRecord: boolean) => void;
+  /** When provided AND no documentId exists, the Configure tab renders a template-level view. */
+  template?: DocumentTemplate | null;
 }
 
 export function LeftRailTabs({
@@ -33,6 +37,7 @@ export function LeftRailTabs({
   externalCollapsed,
   onCollapsedChange,
   onIsRecordChange,
+  template,
 }: LeftRailTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>('outline');
 
@@ -94,6 +99,12 @@ export function LeftRailTabs({
         <DocumentOutlinePanel
           editorContainerRef={editorContainerRef}
           refreshTrigger={refreshTrigger}
+        />
+      ) : !documentId && template ? (
+        <TemplateConfigPanel
+          template={template}
+          showSectionNumbers={showSectionNumbers}
+          onShowSectionNumbersChange={onShowSectionNumbersChange}
         />
       ) : (
         <DocumentConfigPanel

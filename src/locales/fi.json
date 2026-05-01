@@ -5785,7 +5785,8 @@
       "active": "Aktiivinen",
       "awaitingResponse": "Awaiting Vastaus",
       "pending": "Odottaa",
-      "closed": "Suljettu"
+      "closed": "Suljettu",
+      "archived": "Arkistoitu"
     },
     "results": {
       "threadFound": "{{count}} thread found",
@@ -5815,6 +5816,10 @@
       "noThreads": {
         "title": "No Viestintä threads",
         "description": "Aloita uusi communication aloita collaborating sinun tiimi."
+      },
+      "noArchived": {
+        "title": "Ei arkistoituja viestejä",
+        "description": "Arkistoidut keskustelut näkyvät täällä. Ne ovat haettavissa mutta vain luettavissa."
       }
     },
     "threadCard": {

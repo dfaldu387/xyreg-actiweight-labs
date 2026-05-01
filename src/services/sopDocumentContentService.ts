@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { rewriteAllSopTokens } from '@/constants/sopAutoSeedTiers';
 
 export interface SOPDocumentContent {
   id: string;
@@ -356,7 +357,7 @@ DEFINITIONS
         {
           id: `content-${index + 1}`,
           type: 'paragraph' as const,
-          content: section.content || 'No content available',
+          content: rewriteAllSopTokens(section.content) || 'No content available',
           isAIGenerated: false,
           metadata: {
             confidence: 1.0,

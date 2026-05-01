@@ -55,7 +55,12 @@ const sheetVariants = cva(
 
 interface SheetContentProps
   extends React.HTMLAttributes<HTMLDivElement>,
-  VariantProps<typeof sheetVariants> { }
+  VariantProps<typeof sheetVariants> {
+  onPointerDownOutside?: (e: any) => void;
+  onInteractOutside?: (e: any) => void;
+  onFocusOutside?: (e: any) => void;
+  onEscapeKeyDown?: (e: any) => void;
+}
 
 const SheetContent = React.forwardRef<
   HTMLDivElement,
@@ -66,6 +71,36 @@ const SheetContent = React.forwardRef<
     <SheetPrimitive.Content
       ref={ref}
       className={cn(sheetVariants({ side }), className)}
+      onPointerDownOutside={(e: any) => {
+        const target = e?.target as HTMLElement | null;
+        if (target && target.closest && target.closest('[data-prof-xyreg-root]')) {
+          e.preventDefault();
+          return;
+        }
+        const orig = e?.detail?.originalEvent;
+        if (orig && typeof orig.clientX === 'number') {
+          const el = document.elementFromPoint(orig.clientX, orig.clientY) as HTMLElement | null;
+          if (el && el.closest('[data-prof-xyreg-root]')) e.preventDefault();
+        }
+      }}
+      onInteractOutside={(e: any) => {
+        const target = e?.target as HTMLElement | null;
+        if (target && target.closest && target.closest('[data-prof-xyreg-root]')) {
+          e.preventDefault();
+          return;
+        }
+        const orig = e?.detail?.originalEvent;
+        if (orig && typeof orig.clientX === 'number') {
+          const el = document.elementFromPoint(orig.clientX, orig.clientY) as HTMLElement | null;
+          if (el && el.closest('[data-prof-xyreg-root]')) e.preventDefault();
+        }
+      }}
+      onFocusOutside={(e: any) => {
+        const target = e?.target as HTMLElement | null;
+        if (target && target.closest && target.closest('[data-prof-xyreg-root]')) {
+          e.preventDefault();
+        }
+      }}
       {...props as any}
     >
       {children}

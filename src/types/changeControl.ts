@@ -82,6 +82,11 @@ export interface ChangeControlRequest {
   regulatory_approved: boolean;
   regulatory_approved_by: string | null;
   regulatory_approved_at: string | null;
+
+  // Reviewer Assignments (chosen at submit-for-review time)
+  technical_reviewer_id: string | null;
+  quality_reviewer_id: string | null;
+  regulatory_reviewer_id: string | null;
   
   // Implementation Tracking
   implementation_plan: string | null;
@@ -133,6 +138,8 @@ export interface CreateCCRInput {
   regulatory_impact?: boolean;
   owner_id?: string | null;
   target_implementation_date?: string | null;
+  /** Optional list of document IDs that this CCR will affect (bulk creation). */
+  affected_documents?: string[];
 }
 
 // Update CCR Input
@@ -155,6 +162,20 @@ export interface UpdateCCRInput {
   verification_plan?: string | null;
   verification_evidence?: string | null;
   target_implementation_date?: string | null;
+  // Approval tracking (set via approval action)
+  technical_approved?: boolean;
+  technical_approved_by?: string | null;
+  technical_approved_at?: string | null;
+  quality_approved?: boolean;
+  quality_approved_by?: string | null;
+  quality_approved_at?: string | null;
+  regulatory_approved?: boolean;
+  regulatory_approved_by?: string | null;
+  regulatory_approved_at?: string | null;
+  // Reviewer assignments
+  technical_reviewer_id?: string | null;
+  quality_reviewer_id?: string | null;
+  regulatory_reviewer_id?: string | null;
 }
 
 // CCR with related data

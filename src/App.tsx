@@ -96,6 +96,7 @@ const SuperAdminDashboard = lazy(() => import("@/pages/SuperAdminDashboard"));
 const SuperAdminBilling = lazy(() => import("@/pages/SuperAdminBilling"));
 const SuperAdminPlans = lazy(() => import("@/pages/SuperAdminPlans"));
 const SuperAdminPlanMenuAccess = lazy(() => import("@/pages/SuperAdminPlanMenuAccess"));
+const SuperAdminCustomerFeatureFlags = lazy(() => import("@/pages/SuperAdminCustomerFeatureFlags"));
 const SuperAdminPlanPricing = lazy(() => import("@/pages/SuperAdminPlanPricing"));
 const SuperAdminApiKeyManagement = lazy(() => import("@/components/super-admin/SuperAdminApiKeyManagement"));
 const SuperAdminAiTokenUsage = lazy(() => import("@/components/super-admin/SuperAdminAiTokenUsage"));
@@ -381,6 +382,15 @@ function App() {
                 <Suspense fallback={<PageLoader />}>
                   <ErrorBoundary level="component">
                     <SuperAdminPlanMenuAccess />
+                  </ErrorBoundary>
+                </Suspense>
+              } />
+
+              {/* Super Admin Customer Feature Flags */}
+              <Route path="app/feature-flags" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary level="component">
+                    <SuperAdminCustomerFeatureFlags />
                   </ErrorBoundary>
                 </Suspense>
               } />

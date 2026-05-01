@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, X, Info, Loader2 } from 'lucide-react';
+import { Upload, X, Info, Loader2, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,11 @@ import {
 } from '@/types/templateManagement';
 import { fetchTemplateSettings } from '@/utils/templateSettingsQueries';
 import { CategoryNumberingConfig } from '@/types/documentCategories';
+import {
+  FpdSopCatalogService,
+  TIER_LABELS,
+  type FpdTier,
+} from '@/services/fpdSopCatalogService';
 
 interface SuperAdminEnhancedTemplateUploadDialogProps {
   open: boolean;
@@ -43,11 +48,17 @@ export function SuperAdminEnhancedTemplateUploadDialog({
 
   const [filePath, setFilePath] = useState<string | null>(null);
   const [customCategories, setCustomCategories] = useState<CategoryNumberingConfig[]>([]);
+  const [fpdOptions, setFpdOptions] = useState<
+    Array<{ sop_key: string; tier: FpdTier; title: string }>
+  >([]);
 
   // Load custom categories when dialog opens
   useEffect(() => {
     if (open) {
       loadCustomCategories();
+      FpdSopCatalogService.listOptions()
+        .then(setFpdOptions)
+        .catch((err) => console.error('Failed to load FPD options', err));
     }
   }, [open]);
 
@@ -66,6 +77,8 @@ export function SuperAdminEnhancedTemplateUploadDialog({
         template_scope: mappedScope,
         template_category: editingTemplate.template_category || undefined,
         file: null as any, // Don't pre-populate file for editing
+        fpd_sop_key: editingTemplate.fpd_sop_key ?? null,
+        fpd_tier: editingTemplate.fpd_tier ?? null,
       });
 
       // Set file path if template has existing file
@@ -79,6 +92,8 @@ export function SuperAdminEnhancedTemplateUploadDialog({
         template_scope: undefined,
         template_category: undefined,
         file: null as any,
+        fpd_sop_key: null,
+        fpd_tier: null,
       });
       setFilePath(null);
     }
@@ -145,6 +160,8 @@ export function SuperAdminEnhancedTemplateUploadDialog({
       template_scope: undefined,
       template_category: undefined,
       file: null as any,
+      fpd_sop_key: null,
+      fpd_tier: null,
     });
     setFilePath(null);
     onOpenChange(false);
@@ -290,6 +307,58 @@ export function SuperAdminEnhancedTemplateUploadDialog({
                   Optional: Document type classification
                 </p>
               </div>
+            </div>
+
+            {/* FPD Bridge */}
+            <div className="space-y-3 pt-4">
+              <div className="flex items-center gap-2">
+                <Link2 className="h-4 w-4 text-muted-foreground" />
+                <h3 className="text-sm font-medium text-foreground">
+                  Link to FPD Catalog (optional)
+                </h3>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Attach this file to a Foundation, Pathway, or Device-specific
+                SOP. Linked files become the default attachment for that SOP
+                in every newly seeded company. Leave blank for a free-floating
+                template.
+              </p>
+              <Select
+                value={formData.fpd_sop_key ?? '__none__'}
+                onValueChange={(value) => {
+                  if (value === '__none__') {
+                    setFormData((prev) => ({
+                      ...prev,
+                      fpd_sop_key: null,
+                      fpd_tier: null,
+                    }));
+                  } else {
+                    const opt = fpdOptions.find((o) => o.sop_key === value);
+                    setFormData((prev) => ({
+                      ...prev,
+                      fpd_sop_key: value,
+                      fpd_tier: opt?.tier ?? null,
+                    }));
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="No FPD link (free template)" />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  <SelectItem value="__none__">
+                    No FPD link (free template)
+                  </SelectItem>
+                  {fpdOptions.map((opt) => (
+                    <SelectItem key={opt.sop_key} value={opt.sop_key}>
+                      {opt.sop_key} · {opt.title}
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({TIER_LABELS[opt.tier]})
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* File Upload */}

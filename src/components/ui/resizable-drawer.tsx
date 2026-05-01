@@ -10,6 +10,7 @@ interface ResizableDrawerProps {
   defaultWidthPercent?: number;
   minWidth?: number;
   maxWidthPercent?: number;
+  topOffsetPx?: number;
   children: React.ReactNode;
 }
 
@@ -20,6 +21,7 @@ export function ResizableDrawer({
   defaultWidthPercent = 40,
   minWidth = 400,
   maxWidthPercent = 98,
+  topOffsetPx = 64,
   children,
 }: ResizableDrawerProps) {
   const [drawerWidth, setDrawerWidth] = useState(() => window.innerWidth * (defaultWidthPercent / 100));
@@ -66,13 +68,23 @@ export function ResizableDrawer({
       anchor={anchor}
       open={open}
       onClose={onClose}
-      sx={{ zIndex: 45 }}
+      sx={{
+        zIndex: 45,
+        '& .MuiBackdrop-root': { top: `${topOffsetPx}px` },
+      }}
       ModalProps={{
         disableAutoFocus: true,
         disableEnforceFocus: true,
+        disableScrollLock: true,
       }}
       PaperProps={{
-        sx: { width: { xs: '100%', md: `${drawerWidth}px` }, maxWidth: '100vw', overflow: 'visible' },
+        sx: {
+          width: { xs: '100%', md: `${drawerWidth}px` },
+          maxWidth: '100vw',
+          overflow: 'visible',
+          top: `${topOffsetPx}px`,
+          height: `calc(100vh - ${topOffsetPx}px)`,
+        },
       }}
     >
       {/* Resize handle */}

@@ -13,7 +13,7 @@ interface TierBadgeProps {
 
 const TIER_META: Record<SopTier, { label: string; className: string; tooltip: string }> = {
   A: {
-    label: 'Generic',
+    label: 'Foundation',
     className: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600',
     tooltip:
       'Universal QMS boilerplate — identical across companies. Only [Company Name] is personalized.',

@@ -11,13 +11,12 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Eye, FileEdit, Send, MoreHorizontal, Link, Copy, FileDown, Loader2 } from "lucide-react";
+import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, ChevronLeft, ChevronRight, Pencil, Trash2, Eye, FileEdit, MoreHorizontal, Link, Copy, FileDown, Loader2 } from "lucide-react";
 import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
 import { toast } from 'sonner';
 import { InheritanceExclusionPopover } from "@/components/shared/InheritanceExclusionPopover";
 import { ItemExclusionScope } from "@/hooks/useInheritanceExclusion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { SendToReviewGroupDialog } from '@/components/documents/SendToReviewGroupDialog';
 import { CopyDocumentDialog } from '@/components/product/documents/CopyDocumentDialog';
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDocumentAuthors } from "@/hooks/useDocumentAuthors";
@@ -208,7 +207,6 @@ export function DocumentListView({
     setColumnVisibility(visibility);
   }, [hiddenColumns]);
 
-  const [sendReviewDoc, setSendReviewDoc] = React.useState<DocumentListItem | null>(null);
   const [pdfLoadingDocId, setPdfLoadingDocId] = React.useState<string | null>(null);
   const [deleteDoc, setDeleteDoc] = React.useState<DocumentListItem | null>(null);
   const [copyDoc, setCopyDoc] = React.useState<DocumentListItem | null>(null);
@@ -771,18 +769,6 @@ export function DocumentListView({
                 <Eye className="h-4 w-4" />
               </Button>
             )}
-            {/* Send for Review */}
-            {companyId && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSendReviewDoc(doc)}
-                disabled={isProcessing || disabled}
-                title="Send for Review"
-              >
-                <Send className={`h-4 w-4 ${iconColor}`} />
-              </Button>
-            )}
             {/* 3-dot menu: Edit, Delete, Preview PDF */}
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
@@ -1021,19 +1007,6 @@ export function DocumentListView({
           </div>
         </div>
       </div>
-
-    {/* Send for Review Dialog */}
-    {sendReviewDoc && companyId && (
-      <SendToReviewGroupDialog
-        open={!!sendReviewDoc}
-        onOpenChange={(open) => !open && setSendReviewDoc(null)}
-        documentId={sendReviewDoc.id}
-        documentName={sendReviewDoc.name}
-        companyId={companyId}
-        productId={productId}
-        existingGroupIds={[]}
-      />
-    )}
 
     {/* Delete Confirmation Dialog */}
     <AlertDialog open={!!deleteDoc} onOpenChange={(open) => !open && setDeleteDoc(null)}>

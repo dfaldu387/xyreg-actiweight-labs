@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,7 @@ import { Loader2 } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { AiDraftAssistPopover } from './AiDraftAssistPopover';
 
 const SOURCE_TYPE_OPTIONS: { value: CCRSourceType; label: string }[] = [
   { value: 'design_review', label: 'Design Review' },
@@ -48,6 +49,10 @@ export interface CCRPrefill {
   title?: string;
   sourceType?: CCRSourceType;
   changeType?: ChangeType;
+  /** Pre-populate the affected_documents array (bulk doc CCR creation). */
+  affectedDocumentIds?: string[];
+  /** Display-only names for the affected documents summary. */
+  affectedDocumentNames?: string[];
 }
 
 interface CCRCreateDialogProps {
@@ -61,6 +66,7 @@ interface CCRCreateDialogProps {
 export function CCRCreateDialog({ open, onOpenChange, companyId, productId, prefill }: CCRCreateDialogProps) {
   const createCCR = useCreateCCR();
   const { lang } = useTranslation();
+  const preserveDialogForProfRef = useRef(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [changeType, setChangeType] = useState<ChangeType>('design');
@@ -75,8 +81,39 @@ export function CCRCreateDialog({ open, onOpenChange, companyId, productId, pref
       if (prefill.title) setTitle(prefill.title);
       if (prefill.sourceType) setSourceType(prefill.sourceType);
       if (prefill.changeType) setChangeType(prefill.changeType);
+      if (prefill.affectedDocumentIds?.length && !prefill.title) {
+        setTitle(`Bulk update: ${prefill.affectedDocumentIds.length} documents`);
+      }
     }
   }, [open, prefill]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const markProfIntent = () => {
+      preserveDialogForProfRef.current = true;
+    };
+
+    window.addEventListener('prof-xyreg-launch-intent', markProfIntent);
+
+    return () => {
+      window.removeEventListener('prof-xyreg-launch-intent', markProfIntent);
+      preserveDialogForProfRef.current = false;
+    };
+  }, [open]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && preserveDialogForProfRef.current) {
+      preserveDialogForProfRef.current = false;
+      return;
+    }
+
+    if (!nextOpen) {
+      preserveDialogForProfRef.current = false;
+    }
+
+    onOpenChange(nextOpen);
+  };
 
   // Fetch CAPAs for the company when source type is CAPA
   const { data: capas } = useQuery({
@@ -153,6 +190,9 @@ export function CCRCreateDialog({ open, onOpenChange, companyId, productId, pref
         justification: justification.trim() || null,
         source_capa_id: sourceType === 'capa' && sourceCapaId ? sourceCapaId : null,
         source_reference: sourceReference.trim() || null,
+        affected_documents: prefill?.affectedDocumentIds && prefill.affectedDocumentIds.length > 0
+          ? prefill.affectedDocumentIds
+          : undefined,
       });
       resetForm();
       onOpenChange(false);
@@ -162,8 +202,8 @@ export function CCRCreateDialog({ open, onOpenChange, companyId, productId, pref
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[540px]">
+    <Dialog modal={false} open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-[540px] max-h-[85vh] overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{lang('changeControl.createDialogTitle')}</DialogTitle>
@@ -175,6 +215,23 @@ export function CCRCreateDialog({ open, onOpenChange, companyId, productId, pref
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
+            {prefill?.affectedDocumentIds && prefill.affectedDocumentIds.length > 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm">
+                <div className="font-medium text-amber-900">
+                  This CCR will affect {prefill.affectedDocumentIds.length} document{prefill.affectedDocumentIds.length === 1 ? '' : 's'}
+                </div>
+                {prefill.affectedDocumentNames && prefill.affectedDocumentNames.length > 0 && (
+                  <ul className="mt-2 max-h-32 overflow-y-auto list-disc list-inside text-xs text-amber-800 space-y-0.5">
+                    {prefill.affectedDocumentNames.slice(0, 50).map((name, i) => (
+                      <li key={i} className="truncate">{name}</li>
+                    ))}
+                    {prefill.affectedDocumentNames.length > 50 && (
+                      <li className="italic">…and {prefill.affectedDocumentNames.length - 50} more</li>
+                    )}
+                  </ul>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="ccr-title">{lang('changeControl.titleRequired')}</Label>
               <Input
@@ -297,7 +354,24 @@ export function CCRCreateDialog({ open, onOpenChange, companyId, productId, pref
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="ccr-description">{lang('changeControl.descriptionRequired')}</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ccr-description">{lang('changeControl.descriptionRequired')}</Label>
+                <AiDraftAssistPopover
+                  field="description"
+                  currentValue={description}
+                  onInsert={setDescription}
+                  companyId={companyId}
+                  productId={productId}
+                  title={title}
+                  changeType={changeType}
+                  sourceType={sourceType}
+                  sourceReference={sourceReference}
+                  affectedDocumentIds={prefill?.affectedDocumentIds}
+                  affectedDocumentNames={prefill?.affectedDocumentNames}
+                  targetObjectType={prefill?.targetObjectType}
+                  targetObjectLabel={prefill?.title}
+                />
+              </div>
               <Textarea
                 id="ccr-description"
                 value={description}
@@ -309,7 +383,24 @@ export function CCRCreateDialog({ open, onOpenChange, companyId, productId, pref
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ccr-justification">{lang('changeControl.justificationField')}</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ccr-justification">{lang('changeControl.justificationField')}</Label>
+                <AiDraftAssistPopover
+                  field="justification"
+                  currentValue={justification}
+                  onInsert={setJustification}
+                  companyId={companyId}
+                  productId={productId}
+                  title={title}
+                  changeType={changeType}
+                  sourceType={sourceType}
+                  sourceReference={sourceReference}
+                  affectedDocumentIds={prefill?.affectedDocumentIds}
+                  affectedDocumentNames={prefill?.affectedDocumentNames}
+                  targetObjectType={prefill?.targetObjectType}
+                  targetObjectLabel={prefill?.title}
+                />
+              </div>
               <Textarea
                 id="ccr-justification"
                 value={justification}

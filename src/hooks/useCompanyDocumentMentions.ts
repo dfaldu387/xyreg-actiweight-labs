@@ -9,6 +9,8 @@ export interface CompanyDocumentMention {
   id: string;
   name: string;
   document_type?: string;
+  document_number?: string;
+  document_reference?: string;
 }
 
 /**
@@ -26,20 +28,36 @@ export function useCompanyDocumentMentions(companyId?: string, enabled: boolean 
     }
     let cancelled = false;
     (async () => {
+      // Reference resolution must consider any company-level document the user
+      // can already see in their registry — not only `company_document` rows.
+      // `company_template` siblings (Core / phase-assigned device docs without a
+      // product) own the same document_reference / document_number and also
+      // count as "existing" for chip linking. Limiting to a single scope was
+      // the reason existing docs (e.g. SOP-MF-020 Labelling, SOP-DE-019)
+      // wrongly rendered as missing and triggered the create dialog.
       const { data, error } = await supabase
         .from('phase_assigned_document_template')
-        .select('id, name, document_reference, status, document_type')
+        .select('id, name, document_reference, document_number, status, document_type, document_scope')
         .eq('company_id', companyId)
-        .eq('document_scope', 'company_document')
+        .in('document_scope', ['company_document', 'company_template'])
+        .is('product_id', null)
+        .neq('is_excluded', true)
         .order('name');
       if (cancelled) return;
       if (error || !data) {
         setItems([]);
         return;
       }
+      // Prefer `company_document` rows when the same name appears under both
+      // scopes — that scope is what the company documents drawer opens by id.
+      const sorted = [...(data as any[])].sort((a, b) => {
+        const aw = a.document_scope === 'company_document' ? 0 : 1;
+        const bw = b.document_scope === 'company_document' ? 0 : 1;
+        return aw - bw;
+      });
       const seen = new Set<string>();
       const out: CompanyDocumentMention[] = [];
-      for (const r of data as any[]) {
+      for (const r of sorted) {
         const slug = slugifyDocName(r.name || '');
         if (!slug || seen.has(slug)) continue;
         seen.add(slug);
@@ -51,6 +69,8 @@ export function useCompanyDocumentMentions(companyId?: string, enabled: boolean 
           id: r.id,
           name: r.name,
           document_type: docType,
+          document_number: r.document_number || undefined,
+          document_reference: r.document_reference || undefined,
         });
       }
       setItems(out);

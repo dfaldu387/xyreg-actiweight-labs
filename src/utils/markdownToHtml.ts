@@ -56,14 +56,37 @@ export function markdownToHtml(md: string): string {
     return `${prefix}<ul>${items}</ul>`;
   });
 
-  // Convert remaining newlines to <br> (but not inside list tags)
-  html = html.replace(/\n/g, '<br>');
+  // Ensure lists are isolated as their own blocks even when adjacent text
+  // didn't have a blank line around them.
+  html = html.replace(/(<\/(?:ul|ol)>)(?!\n\n)/g, '$1\n\n');
+  html = html.replace(/(?<!\n\n)(<(?:ul|ol)>)/g, '\n\n$1');
 
-  // Clean up double <br> after lists
-  html = html.replace(/<\/(ol|ul)><br>/g, '</$1>');
-  html = html.replace(/<br><(ol|ul)>/g, '<$1>');
+  // Split on blank lines into separate paragraphs so each block becomes its
+  // own editor node. Without this, a multi-paragraph string ends up as one
+  // paragraph with <br>s, which makes block-level toggles (e.g. H3) act on
+  // the entire run instead of just the targeted line.
+  const blocks = html
+    .split(/\n\s*\n+/)
+    .map((b) => b.trim())
+    .filter(Boolean);
 
-  return html.trim();
+  const wrapped = blocks
+    .map((block) => {
+      // Don't double-wrap things that already start with a block-level tag.
+      if (/^<(p|ul|ol|h[1-6]|table|blockquote|pre|div)\b/i.test(block)) {
+        // Convert remaining single newlines inside the block to <br>.
+        return block.replace(/\n/g, '<br>');
+      }
+      return `<p>${block.replace(/\n/g, '<br>')}</p>`;
+    })
+    .join('');
+
+  // Clean up stray <br>s adjacent to lists.
+  let result = wrapped;
+  result = result.replace(/<\/(ol|ul)><br>/g, '</$1>');
+  result = result.replace(/<br><(ol|ul)>/g, '<$1>');
+
+  return result.trim();
 }
 
 /**

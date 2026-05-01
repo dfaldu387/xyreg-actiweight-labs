@@ -13,6 +13,8 @@ export interface QmsNodeProcess {
   node_id: string;
   process_description: string | null;
   process_steps: ProcessStep[] | null;
+  inputs: string[] | null;
+  outputs: string[] | null;
   updated_at: string;
   updated_by: string | null;
 }
@@ -52,6 +54,7 @@ export const DEFAULT_QMS_NODE_SOPS: Array<{
   { nodeId: 'mgmt-resp', sopName: 'Quality Management System', sopType: 'SOP', defaultDescription: 'QMS framework, quality policy, and process interactions' },
   { nodeId: 'resource-strategy', sopName: 'Training and Competence', sopType: 'SOP', defaultDescription: 'Training identification, delivery, and effectiveness evaluation' },
   { nodeId: 'infra-training', sopName: 'Control of Monitoring and Measuring Equipment', sopType: 'SOP', defaultDescription: 'Calibration and maintenance procedures' },
+  { nodeId: 'design-control', sopName: 'Design and Development Control', sopType: 'SOP', defaultDescription: 'Master design control framework per ISO 13485 §7.3 — planning, inputs, outputs, reviews, V&V, transfer, and changes' },
   
   // Rung 2 - Device Upstream
   { nodeId: 'reg-planning', sopName: 'Regulatory Submission Management', sopType: 'SOP', defaultDescription: 'Regulatory submission planning and lifecycle management' },
@@ -104,6 +107,8 @@ export class QmsNodeProcessService {
       return {
         ...data,
         process_steps: data.process_steps as ProcessStep[] | null,
+        inputs: (data as any).inputs as string[] | null,
+        outputs: (data as any).outputs as string[] | null,
       };
     } catch (error) {
       console.error('[QmsNodeProcessService] Error in getNodeProcess:', error);
@@ -118,21 +123,27 @@ export class QmsNodeProcessService {
     companyId: string,
     nodeId: string,
     processDescription: string,
-    processSteps?: ProcessStep[]
+    processSteps?: ProcessStep[],
+    inputs?: string[] | null,
+    outputs?: string[] | null,
   ): Promise<boolean> {
     try {
       const { data: user } = await supabase.auth.getUser();
-      
+
+      const payload: Record<string, unknown> = {
+        company_id: companyId,
+        node_id: nodeId,
+        process_description: processDescription,
+        process_steps: processSteps ? JSON.stringify(processSteps) : null,
+        updated_at: new Date().toISOString(),
+        updated_by: user?.user?.id || null,
+      };
+      if (inputs !== undefined) payload.inputs = inputs ? JSON.stringify(inputs) : null;
+      if (outputs !== undefined) payload.outputs = outputs ? JSON.stringify(outputs) : null;
+
       const { error } = await supabase
         .from('qms_node_internal_processes')
-        .upsert({
-          company_id: companyId,
-          node_id: nodeId,
-          process_description: processDescription,
-          process_steps: processSteps ? JSON.stringify(processSteps) : null,
-          updated_at: new Date().toISOString(),
-          updated_by: user?.user?.id || null,
-        }, {
+        .upsert(payload as any, {
           onConflict: 'company_id,node_id'
         });
 
@@ -280,3 +291,66 @@ export class QmsNodeProcessService {
     }
   }
 }
+
+/**
+ * Manual SOP override links — let users attach an existing company document to
+ * a required SOP slot when the auto-name-matcher misses it.
+ */
+export interface ManualSopLink {
+  id: string;
+  company_id: string;
+  sop_number: string;
+  document_id: string;
+}
+
+export const QmsManualSopLinkService = {
+  async getForCompany(companyId: string): Promise<ManualSopLink[]> {
+    const { data, error } = await supabase
+      .from('qms_sop_manual_links' as any)
+      .select('id, company_id, sop_number, document_id')
+      .eq('company_id', companyId);
+    if (error) {
+      console.error('[QmsManualSopLinkService] getForCompany error:', error);
+      return [];
+    }
+    return (data || []) as unknown as ManualSopLink[];
+  },
+
+  async setLink(
+    companyId: string,
+    sopNumber: string,
+    documentId: string,
+  ): Promise<boolean> {
+    const { error } = await supabase
+      .from('qms_sop_manual_links' as any)
+      .upsert(
+        {
+          company_id: companyId,
+          sop_number: sopNumber,
+          document_id: documentId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'company_id,sop_number' },
+      );
+    if (error) {
+      console.error('[QmsManualSopLinkService] setLink error:', error);
+      toast.error('Could not link document');
+      return false;
+    }
+    return true;
+  },
+
+  async clearLink(companyId: string, sopNumber: string): Promise<boolean> {
+    const { error } = await supabase
+      .from('qms_sop_manual_links' as any)
+      .delete()
+      .eq('company_id', companyId)
+      .eq('sop_number', sopNumber);
+    if (error) {
+      console.error('[QmsManualSopLinkService] clearLink error:', error);
+      toast.error('Could not unlink document');
+      return false;
+    }
+    return true;
+  },
+};

@@ -7,6 +7,7 @@ import { getCompanyFromUrl } from "@/utils/urlCompanyContext";
 import { hasEditorPrivileges } from "@/utils/roleUtils";
 import { MyActionItems } from "./MyActionItems";
 import { NewReleaseNotification } from "./NewReleaseNotification";
+import { ComplianceJourneyStrip } from "./ComplianceJourneyStrip";
 import { ProjectHealthAlerts } from "./ProjectHealthAlerts";
 import { MyDocumentsWidget } from "./MyDocumentsWidget";
 import { CommunicationHub } from "./CommunicationHub";
@@ -164,6 +165,7 @@ export function SingleCompanyDashboard() {
 
       <div className="space-y-6 pb-8 pt-4">
         {/* <NewReleaseNotification /> */}
+        <ComplianceJourneyStrip companyName={currentCompany?.companyName} companyId={currentCompanyId} />
         <MyActionItems companyId={currentCompanyId} />
         <SortableWidgetColumn
           widgets={filteredEnabledWidgets}

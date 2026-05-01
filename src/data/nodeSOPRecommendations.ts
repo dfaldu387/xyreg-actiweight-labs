@@ -9,8 +9,13 @@ export type SOPTrack = 'ENG' | 'REG' | 'BUS';
 
 export interface SOPRecommendation {
   sopNumber: string;      // e.g., "SOP-003"
-  sopName: string;        // e.g., "Management Review"
-  description: string;    // Brief description of the SOP's purpose
+  /**
+   * One-line note explaining *why this SOP belongs to this node* (clause/regulatory
+   * rationale). Stable across companies — kept in code on purpose.
+   * The SOP's actual *title* is resolved at runtime from the company's live
+   * document registry (and falls back to the canonical Xyreg SOP library).
+   */
+  clauseDescription: string;
   track: SOPTrack;
 }
 
@@ -37,14 +42,12 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'mgmt-resp': [
     {
       sopNumber: 'SOP-003',
-      sopName: 'Management Review',
-      description: 'Management responsibility and periodic review procedures per ISO 13485 5.6',
+      clauseDescription: 'Management responsibility & periodic review (ISO 13485 §5.6) — Tier A boilerplate',
       track: 'BUS',
     },
     {
       sopNumber: 'SOP-015',
-      sopName: 'Risk Management',
-      description: 'Primary framework for top management risk oversight per ISO 14971',
+      clauseDescription: 'Risk Management oversight (ISO 14971) — applies to all medical devices (Tier B always-on)',
       track: 'REG',
     },
   ],
@@ -52,29 +55,68 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'resource-strategy': [
     {
       sopNumber: 'SOP-004',
-      sopName: 'Personnel and Training',
-      description: 'Human resources, competency management and training records per ISO 13485 6.2',
+      clauseDescription: 'Human resources, competency & training records (ISO 13485 §6.2)',
       track: 'ENG',
     },
     {
       sopNumber: 'SOP-016',
-      sopName: 'Supplier Evaluation and Control',
-      description: 'Resource procurement and supplier qualification per ISO 13485 7.4',
+      clauseDescription: 'Resource procurement & supplier qualification (ISO 13485 §7.4)',
       track: 'BUS',
+    },
+  ],
+
+  'design-control': [
+    {
+      sopNumber: 'SOP-005',
+      clauseDescription: 'Design & development planning (ISO 13485 §7.3.2)',
+      track: 'ENG',
+    },
+    {
+      sopNumber: 'SOP-006',
+      clauseDescription: 'Design inputs (ISO 13485 §7.3.3)',
+      track: 'ENG',
+    },
+    {
+      sopNumber: 'SOP-007',
+      clauseDescription: 'Design outputs (ISO 13485 §7.3.4)',
+      track: 'ENG',
+    },
+    {
+      sopNumber: 'SOP-008',
+      clauseDescription: 'Design review (ISO 13485 §7.3.5)',
+      track: 'ENG',
+    },
+    {
+      sopNumber: 'SOP-009',
+      clauseDescription: 'Design verification & validation (ISO 13485 §7.3.6–7.3.7)',
+      track: 'ENG',
+    },
+    {
+      sopNumber: 'SOP-010',
+      clauseDescription: 'Design transfer (ISO 13485 §7.3.8) — manufacturing scope',
+      track: 'ENG',
+    },
+    {
+      sopNumber: 'SOP-011',
+      clauseDescription: 'Design change control (ISO 13485 §7.3.9)',
+      track: 'ENG',
+    },
+    {
+      sopNumber: 'SOP-012',
+      clauseDescription: 'Design History File / Technical Documentation (ISO 13485 §7.3.10)',
+      track: 'ENG',
     },
   ],
 
   'infra-training': [
     {
-      sopNumber: 'SOP-017',
-      sopName: 'Production and Service Provision',
-      description: 'Equipment maintenance and environment controls per ISO 13485 6.3-6.4',
-      track: 'ENG',
+      sopNumber: 'SOP-023',
+      clauseDescription: 'Infrastructure & work environment procedure (ISO 13485 §6.3–6.4)',
+      track: 'BUS',
     },
     {
-      sopNumber: 'SOP-018',
-      sopName: 'Process Validation',
-      description: 'Environmental and utility validation procedures per ISO 13485 7.5.6',
+      sopNumber: 'SOP-024',
+      clauseDescription: 'Equipment maintenance & calibration (ISO 13485 §6.3, §7.6)',
       track: 'ENG',
     },
   ],
@@ -86,8 +128,7 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'reg-planning': [
     {
       sopNumber: 'SOP-013',
-      sopName: 'General Safety and Performance Requirements',
-      description: 'GSPR documentation and regulatory pathway planning',
+      clauseDescription: 'GSPR documentation & regulatory pathway planning (EU MDR Annex I)',
       track: 'REG',
     },
   ],
@@ -95,14 +136,12 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'design-inputs': [
     {
       sopNumber: 'SOP-005',
-      sopName: 'Design and Development Planning',
-      description: 'Design planning and project management per ISO 13485 7.3.1',
+      clauseDescription: 'Design planning & project management (ISO 13485 §7.3.2)',
       track: 'ENG',
     },
     {
       sopNumber: 'SOP-006',
-      sopName: 'Design Inputs',
-      description: 'Requirements capture and design input documentation per ISO 13485 7.3.3',
+      clauseDescription: 'Requirements capture & design input documentation (ISO 13485 §7.3.3)',
       track: 'ENG',
     },
   ],
@@ -110,8 +149,7 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'supplier-selection': [
     {
       sopNumber: 'SOP-016',
-      sopName: 'Supplier Evaluation and Control',
-      description: 'Supplier qualification and selection per ISO 13485 7.4.1',
+      clauseDescription: 'Supplier qualification & selection (ISO 13485 §7.4.1)',
       track: 'BUS',
     },
   ],
@@ -119,8 +157,7 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'risk-mgmt': [
     {
       sopNumber: 'SOP-015',
-      sopName: 'Risk Management',
-      description: 'Risk analysis and control per ISO 14971',
+      clauseDescription: 'Risk analysis & control (ISO 14971)',
       track: 'REG',
     },
   ],
@@ -128,20 +165,17 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'design-dev': [
     {
       sopNumber: 'SOP-007',
-      sopName: 'Design Outputs',
-      description: 'Design output documentation per ISO 13485 7.3.4',
+      clauseDescription: 'Design output documentation (ISO 13485 §7.3.4)',
       track: 'ENG',
     },
     {
       sopNumber: 'SOP-008',
-      sopName: 'Design Review',
-      description: 'Design review procedures per ISO 13485 7.3.5',
+      clauseDescription: 'Design review procedures (ISO 13485 §7.3.5)',
       track: 'ENG',
     },
     {
       sopNumber: 'SOP-011',
-      sopName: 'Design Changes',
-      description: 'Design change control per ISO 13485 7.3.9',
+      clauseDescription: 'Design change control (ISO 13485 §7.3.9)',
       track: 'ENG',
     },
   ],
@@ -149,8 +183,7 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'supplier-controls': [
     {
       sopNumber: 'SOP-016',
-      sopName: 'Supplier Evaluation and Control',
-      description: 'Ongoing supplier monitoring and control per ISO 13485 7.4.3',
+      clauseDescription: 'Ongoing supplier monitoring & control (ISO 13485 §7.4.3)',
       track: 'BUS',
     },
   ],
@@ -158,8 +191,7 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'vv-testing': [
     {
       sopNumber: 'SOP-009',
-      sopName: 'Design Verification and Validation',
-      description: 'V&V testing procedures per ISO 13485 7.3.6-7.3.7',
+      clauseDescription: 'V&V testing procedures (ISO 13485 §7.3.6–7.3.7)',
       track: 'ENG',
     },
   ],
@@ -167,8 +199,7 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'process-validation': [
     {
       sopNumber: 'SOP-018',
-      sopName: 'Process Validation',
-      description: 'Production process validation per ISO 13485 7.5.6',
+      clauseDescription: 'Production process validation (ISO 13485 §7.5.6)',
       track: 'ENG',
     },
   ],
@@ -176,26 +207,22 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'production-monitoring': [
     {
       sopNumber: 'SOP-010',
-      sopName: 'Design Transfer',
-      description: 'Design transfer to production per ISO 13485 7.3.8',
+      clauseDescription: 'Design transfer to production (ISO 13485 §7.3.8)',
       track: 'ENG',
     },
     {
       sopNumber: 'SOP-012',
-      sopName: 'Design History File / Technical Documentation',
-      description: 'DHF/DMR documentation per ISO 13485 7.3.10',
+      clauseDescription: 'DHF / Technical Documentation index (ISO 13485 §7.3.10)',
       track: 'ENG',
     },
     {
       sopNumber: 'SOP-019',
-      sopName: 'Identification, Traceability, and UDI',
-      description: 'Product identification and traceability per ISO 13485 7.5.8',
+      clauseDescription: 'Product identification & traceability (ISO 13485 §7.5.8)',
       track: 'REG',
     },
     {
       sopNumber: 'SOP-020',
-      sopName: 'Labeling and Packaging Controls',
-      description: 'Labeling requirements per ISO 13485 7.5.1',
+      clauseDescription: 'Labeling & packaging controls (ISO 13485 §7.5.1)',
       track: 'REG',
     },
   ],
@@ -207,14 +234,12 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'pms': [
     {
       sopNumber: 'SOP-014',
-      sopName: 'Clinical Evaluation',
-      description: 'Clinical evaluation and PMCF link per ISO 13485 8.2.1',
+      clauseDescription: 'Clinical evaluation & PMCF link (ISO 13485 §8.2.1) — Tier B (EU clinical pathway)',
       track: 'REG',
     },
     {
       sopNumber: 'SOP-022',
-      sopName: 'Post-Market Surveillance',
-      description: 'PMS data collection and analysis per ISO 13485 8.2.1-8.2.3',
+      clauseDescription: 'PMS data collection & analysis (ISO 13485 §8.2.1–8.2.3)',
       track: 'REG',
     },
   ],
@@ -222,14 +247,12 @@ export const NODE_SOP_RECOMMENDATIONS: Record<string, SOPRecommendation[]> = {
   'capa-loop': [
     {
       sopNumber: 'SOP-021',
-      sopName: 'Complaints and Vigilance',
-      description: 'Customer feedback and vigilance reporting per ISO 13485 8.2.2',
+      clauseDescription: 'Customer feedback & vigilance reporting (ISO 13485 §8.2.2)',
       track: 'REG',
     },
     {
       sopNumber: 'SOP-028',
-      sopName: 'Corrective and Preventive Action',
-      description: 'CAPA procedures per ISO 13485 8.5.2-8.5.3',
+      clauseDescription: 'CAPA procedures (ISO 13485 §8.5.2–8.5.3)',
       track: 'REG',
     },
   ],

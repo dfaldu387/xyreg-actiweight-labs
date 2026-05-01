@@ -27,6 +27,9 @@ interface RightPanelProps {
   className?: string;
   /** When true, the embedded AI chat suppresses SOP @-mention suggestions. */
   disableSopMentions?: boolean;
+  /** Document workflow phase. When not 'draft', AI proposed-change actions
+   * (Accept/Reject/Replace) are hidden — content is locked. */
+  documentPhase?: 'draft' | 'review' | 'completed';
 }
 
 const TAB_META: Record<RightPanelTab, { label: string; accent: string; bg: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = {
@@ -48,6 +51,7 @@ export function RightPanel({
   onClose,
   className,
   disableSopMentions = false,
+  documentPhase = 'draft',
 }: RightPanelProps) {
   // Register this panel as an open right rail so page content (not global floating
   // widgets) can respect its width. Floating widgets stay pinned to the bottom-right.
@@ -261,6 +265,7 @@ export function RightPanel({
             editorContainerRef={editorContainerRef}
             onApplyContent={onApplyContent}
             disableSopMentions={disableSopMentions}
+            documentPhase={documentPhase}
           />
         </div>
         <div

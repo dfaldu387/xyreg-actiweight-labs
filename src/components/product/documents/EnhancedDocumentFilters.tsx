@@ -76,10 +76,17 @@ interface EnhancedDocumentFiltersProps {
   onHideExcludedChange?: (hide: boolean) => void;
 }
 
+// Tier filter (Foundation / Pathway / Device-specific)
+const TIER_OPTIONS: Array<{ value: 'A' | 'B' | 'C'; label: string }> = [
+  { value: 'A', label: 'Foundation' },
+  { value: 'B', label: 'Pathway' },
+  { value: 'C', label: 'Device-specific' },
+];
+
 // Use imported status options from utility
 const statusOptions: DocumentUIStatus[] = [...VALID_STATUS_OPTIONS] as DocumentUIStatus[];
 
-type FilterCategory = 'phase' | 'status' | 'author' | 'section' | 'tag' | 'refTag' | 'docType' | 'techApplicability' | 'scope' | 'sort';
+type FilterCategory = 'phase' | 'status' | 'author' | 'section' | 'tag' | 'refTag' | 'docType' | 'techApplicability' | 'scope' | 'tier' | 'sort';
 
 interface FilterCategoryConfig {
   key: FilterCategory;
@@ -125,7 +132,12 @@ export function EnhancedDocumentFilters({
   isVariant = false,
   hideExcluded = false,
   onHideExcludedChange,
-}: EnhancedDocumentFiltersProps) {
+  tierFilter = [],
+  onTierFilterChange,
+}: EnhancedDocumentFiltersProps & {
+  tierFilter?: Array<'A' | 'B' | 'C'>;
+  onTierFilterChange?: (tier: 'A' | 'B' | 'C') => void;
+}) {
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState<FilterCategory | null>(null);
@@ -140,6 +152,7 @@ export function EnhancedDocumentFilters({
     docTypeFilter.length > 0 ||
     techApplicabilityFilter.length > 0 ||
     scopeFilter.length > 0 ||
+    tierFilter.length > 0 ||
     sortByDate !== 'none' ||
     (searchQuery && searchQuery.length > 0);
 
@@ -147,6 +160,7 @@ export function EnhancedDocumentFilters({
     { key: 'phase' as FilterCategory, label: 'Core / Phase', available: !!onPhaseFilterChange && filterAvailablePhases.length > 0 },
     { key: 'status' as FilterCategory, label: 'Document status', available: !!onStatusFilterChange },
     { key: 'docType' as FilterCategory, label: 'Document type', available: !!onDocTypeFilterChange && availableDocTypes.length > 0 },
+    { key: 'tier' as FilterCategory, label: 'Tier', available: !!onTierFilterChange },
     { key: 'techApplicability' as FilterCategory, label: 'Tech applicability', available: !!onTechApplicabilityFilterChange && availableTechApplicabilities.length > 0 },
     { key: 'scope' as FilterCategory, label: 'Scope', available: !!onScopeFilterChange && availableScopes.length > 0 },
     { key: 'author' as FilterCategory, label: 'Author', available: !!onAuthorFilterChange && availableAuthors.length > 0 },
@@ -240,6 +254,19 @@ export function EnhancedDocumentFilters({
           label: 'Doc Type',
           value: dt,
           onRemove: () => onDocTypeFilterChange(dt)
+        });
+      }
+    });
+
+    // Tier filters
+    tierFilter.forEach(tier => {
+      if (onTierFilterChange) {
+        const opt = TIER_OPTIONS.find(o => o.value === tier);
+        chips.push({
+          key: `tier-${tier}`,
+          label: 'Tier',
+          value: opt?.label ?? tier,
+          onRemove: () => onTierFilterChange(tier),
         });
       }
     });
@@ -675,7 +702,35 @@ export function EnhancedDocumentFilters({
           </div>
         );
 
-      case 'techApplicability':
+      case 'tier': {
+        const filteredTiers = TIER_OPTIONS.filter(o =>
+          o.label.toLowerCase().includes(categorySearch.toLowerCase())
+        );
+        return (
+          <div className="space-y-1">
+            {filteredTiers.map((o) => {
+              const checked = tierFilter.includes(o.value);
+              return (
+                <button
+                  key={o.value}
+                  onClick={() => onTierFilterChange?.(o.value)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors"
+                >
+                  <div className={cn(
+                    "w-4 h-4 border rounded flex items-center justify-center",
+                    checked ? "bg-primary border-primary" : "border-input"
+                  )}>
+                    {checked && <Check className="h-3 w-3 text-primary-foreground" />}
+                  </div>
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+        );
+      }
+
+      case 'techApplicability': {
         const isTechChecked = (ta: string) =>
           techApplicabilityFilter.length === 0 || techApplicabilityFilter.includes(ta);
 
@@ -708,6 +763,7 @@ export function EnhancedDocumentFilters({
             )}
           </div>
         );
+      }
 
       case 'scope':
         const isScopeChecked = (scope: string) =>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { AIContentRecommendationService } from '@/services/aiContentRecommendationService';
+import { useCustomerFeatureFlag } from '@/hooks/useCustomerFeatureFlag';
 import { toast } from 'sonner';
 
 interface EmptySectionPromptProps {
@@ -25,6 +26,7 @@ export function EmptySectionPrompt({
 }: EmptySectionPromptProps) {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const aiAutoFillEnabled = useCustomerFeatureFlag('ai-auto-fill');
 
   const handleGenerate = async (customPrompt?: string) => {
     if (!companyId) {
@@ -111,7 +113,7 @@ export function EmptySectionPrompt({
           </Button>
         )}
 
-        {onOpenAutoFill && (
+        {onOpenAutoFill && aiAutoFillEnabled && (
           <Button
             size="sm"
             variant="ghost"

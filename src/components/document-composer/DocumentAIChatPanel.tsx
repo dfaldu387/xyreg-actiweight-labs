@@ -94,6 +94,9 @@ interface DocumentAIChatPanelProps {
   embedded?: boolean;
   /** When true, suppresses the company SOP and @device mentions (e.g. for QMS Document Control > Documents tab, where no device is selected). */
   disableSopMentions?: boolean;
+  /** Document workflow phase. When not 'draft', AI proposed-change actions
+   * (Accept/Reject/Replace) are hidden — content is locked for review/approval. */
+  documentPhase?: 'draft' | 'review' | 'completed';
 }
 
 function getDocumentPlainText(template: DocumentTemplate): string {
@@ -191,6 +194,7 @@ function RenderAIResponse({
   sectionDecisions,
   onSectionDecision,
   attachedSpans,
+  readOnly,
 }: {
   content: string;
   onApplyContent: (content: string, sectionName?: string, mode?: 'insert' | 'replace') => void;
@@ -200,6 +204,8 @@ function RenderAIResponse({
   sectionDecisions?: Record<string, DocSectionStatus>;
   onSectionDecision?: (sectionName: string, next: DocSectionStatus) => void;
   attachedSpans?: AttachedSpan[];
+  /** When true, hide Accept/Reject/Replace controls — used when the document is no longer in draft phase. */
+  readOnly?: boolean;
 }) {
   // Combined tokenizer: <doc-section> OR <span-rewrite>. Capture groups:
   //  [1]=docSection name, [2]=docSection body
@@ -270,6 +276,7 @@ function RenderAIResponse({
               originalSpan={span}
               replacement={part.text}
               editorInstanceRef={editorInstanceRef}
+              readOnly={readOnly}
             />
           );
         }
@@ -285,6 +292,7 @@ function RenderAIResponse({
             autoApply={autoApply}
             initialStatus={sectionDecisions?.[secName]}
             onStatusChange={onSectionDecision}
+            readOnly={readOnly}
           />
         );
       })}
@@ -355,11 +363,13 @@ function SpanRewriteBlock({
   originalSpan,
   replacement,
   editorInstanceRef,
+  readOnly,
 }: {
   spanIndex: number;
   originalSpan?: AttachedSpan;
   replacement: string;
   editorInstanceRef?: React.RefObject<any>;
+  readOnly?: boolean;
 }) {
   const [status, setStatus] = React.useState<SpanRewriteStatus>('pending');
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -453,7 +463,7 @@ function SpanRewriteBlock({
         </div>
       )}
 
-      {status === 'pending' && (
+      {status === 'pending' && !readOnly && (
         <div className="flex items-center justify-end gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
@@ -471,6 +481,11 @@ function SpanRewriteBlock({
             <Check className="w-3 h-3" />
             Accept
           </button>
+        </div>
+      )}
+      {status === 'pending' && readOnly && (
+        <div className="px-3 py-2 text-[11px] text-slate-500 italic bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800">
+          Document is no longer in draft — actions are disabled.
         </div>
       )}
     </div>
@@ -491,6 +506,7 @@ function DocSectionBlock({
   autoApply,
   initialStatus,
   onStatusChange,
+  readOnly,
 }: {
   sectionName: string;
   content: string;
@@ -501,6 +517,8 @@ function DocSectionBlock({
   initialStatus?: DocSectionStatus;
   /** Parent callback that commits the new status to its state. Required for the buttons to hide on click. */
   onStatusChange?: (sectionName: string, next: DocSectionStatus) => void;
+  /** When true, hide Accept/Reject/Replace controls (e.g. doc has moved past draft phase). */
+  readOnly?: boolean;
 }) {
   const status: DocSectionStatus = initialStatus ?? 'pending';
 
@@ -600,7 +618,7 @@ function DocSectionBlock({
       )}
 
       {/* Actions */}
-      {status === 'pending' && (
+      {status === 'pending' && !readOnly && (
         <div className="flex items-center justify-end gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
@@ -635,6 +653,11 @@ function DocSectionBlock({
           </button>
         </div>
       )}
+      {status === 'pending' && readOnly && (
+        <div className="px-3 py-2 text-[11px] text-slate-500 italic bg-slate-50 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800">
+          Document is no longer in draft — actions are disabled.
+        </div>
+      )}
     </div>
   );
 }
@@ -652,7 +675,9 @@ export function DocumentAIChatPanel({
   onWidthChange,
   embedded = false,
   disableSopMentions = false,
+  documentPhase = 'draft',
 }: DocumentAIChatPanelProps) {
+  const isLockedPhase = documentPhase !== 'draft';
   const { data: advisoryContext } = useAdvisoryContext(companyId, true);
   const numberingContext = useDocumentNumberingContext(documentId, companyId);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1409,10 +1434,11 @@ Rules:
                           onApplyContent={onApplyContent}
                           editorContainerRef={editorContainerRefProp}
                           editorInstanceRef={editorInstanceRef}
-                          autoApply={autoApplyThis}
+                          autoApply={autoApplyThis && !isLockedPhase}
                           sectionDecisions={msg.sectionDecisions}
                           onSectionDecision={(sectionName, next) => handleSectionDecision(idx, sectionName, next)}
                           attachedSpans={msg.attachedSpans}
+                          readOnly={isLockedPhase}
                         />
                         <PasteIntoSectionButton
                           content={cleaned}

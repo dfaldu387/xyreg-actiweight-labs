@@ -1,0 +1,2 @@
+ALTER TABLE public.communication_threads DROP CONSTRAINT IF EXISTS communication_threads_status_check;
+ALTER TABLE public.communication_threads ADD CONSTRAINT communication_threads_status_check CHECK ((status)::text = ANY ((ARRAY['Active'::character varying, 'Awaiting Response'::character varying, 'Closed'::character varying, 'Archived'::character varying])::text[]));

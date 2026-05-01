@@ -286,12 +286,169 @@ a.xyreg-link:hover {
   text-decoration-color: #1a73e8;
 }
 
+/* Tables inside the document editor (Revision History etc.) — render as a
+   real, readable grid instead of collapsed inline text. */
+.ProseMirror table,
+.ProseMirror table.xyreg-doc-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 12px 0 16px 0;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.ProseMirror table th,
+.ProseMirror table td {
+  border: 1px solid #e2e8f0;
+  padding: 6px 10px;
+  vertical-align: top;
+  text-align: left;
+  min-width: 60px;
+  position: relative;
+}
+
+.ProseMirror table th {
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.ProseMirror table tr:nth-child(even) td {
+  background-color: #fcfcfd;
+}
+
+.ProseMirror table .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(99, 102, 241, 0.12);
+  pointer-events: none;
+}
+
+/* Tighten heading-to-content spacing inside the document editor so applying
+   H1/H2/H3 to a line does not visually create an empty line beneath it.
+   The Tailwind Typography plugin defaults add a ~0.5em bottom margin and
+   the next paragraph adds a top margin, which together read as a blank
+   line. We collapse that gap to a tight, deliberate rhythm. */
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6 {
+  margin-bottom: 0.15em;
+}
+.ProseMirror h1 + p,
+.ProseMirror h2 + p,
+.ProseMirror h3 + p,
+.ProseMirror h4 + p,
+.ProseMirror h5 + p,
+.ProseMirror h6 + p,
+.ProseMirror h1 + ul,
+.ProseMirror h2 + ul,
+.ProseMirror h3 + ul,
+.ProseMirror h1 + ol,
+.ProseMirror h2 + ol,
+.ProseMirror h3 + ol {
+  margin-top: 0.15em;
+}
+
+/* Soft line breaks (Shift+Enter / HardBreak) get a faint "↵" marker so users
+   can tell them apart from real paragraph breaks — most "weird selection /
+   formatting" reports trace back to invisible <br>s, especially inside H3
+   headers. The marker is editor-only (rendered/exported HTML stays clean
+   because it's a CSS pseudo-element). */
+.ProseMirror br.xyreg-line-break {
+  position: relative;
+}
+.ProseMirror br.xyreg-line-break::after {
+  content: '↵';
+  position: absolute;
+  left: 0;
+  top: -0.1em;
+  font-size: 0.75em;
+  color: rgba(99, 102, 241, 0.5);
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Persistent selection highlight used while the Inline AI Edit popover is
    open. Visible even when the editor is not focused. */
 .xyreg-ai-edit-highlight {
   background-color: rgba(99, 102, 241, 0.22);
   border-radius: 2px;
   box-shadow: inset 0 -1px 0 rgba(99, 102, 241, 0.45);
+}
+
+/* Auto-detected document reference chips (e.g. "SOP-008", "TEMP-005").
+   Two states:
+   - linked  → resolves to an existing company document (blue underline, like a doc mention).
+   - missing → no matching document yet; renders as an amber dashed pill with a
+               trailing pencil-plus button that opens the create-reference dialog. */
+.xyreg-doc-ref,
+span[data-doc-ref] {
+  cursor: pointer;
+  font-weight: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: #1a73e8;
+  color: #1a56db;
+}
+.xyreg-doc-ref:hover,
+span[data-doc-ref]:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Missing — amber dashed pill with a small "+ pencil" affordance. */
+.xyreg-doc-ref[data-state="missing"],
+span[data-doc-ref][data-state="missing"] {
+  /* Match the linked chip's lightweight inline style. The only signal that
+     the document doesn't exist yet is a faint dotted underline (vs solid
+     for linked) and a small pencil icon that fades in on hover. */
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  text-decoration: underline dotted;
+  text-decoration-color: hsl(var(--muted-foreground) / 0.5);
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  line-height: inherit;
+}
+.xyreg-doc-ref[data-state="missing"]:hover,
+span[data-doc-ref][data-state="missing"]:hover {
+  color: hsl(var(--foreground));
+  text-decoration-color: hsl(var(--muted-foreground));
+}
+
+/* Trailing pencil affordance — rendered via ::after so clicks on the icon
+   are caught by a delegated handler that inspects the click coordinates
+   relative to the chip's right edge. Faint by default, fully visible on
+   hover, so the chip reads as plain text until you mouse over it. */
+.xyreg-doc-ref[data-state="missing"]::after,
+span[data-doc-ref][data-state="missing"]::after {
+  content: '';
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  margin-left: 2px;
+  align-self: center;
+  flex-shrink: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20h9'/><path d='M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z'/></svg>");
+  background-size: contain;
+  background-repeat: no-repeat;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 120ms ease-out;
+}
+.xyreg-doc-ref[data-state="missing"]:hover::after,
+span[data-doc-ref][data-state="missing"]:hover::after {
+  opacity: 0.9;
 }
 
 /* Document-composer @mention chips — Google Docs-style pills with leading
@@ -426,4 +583,20 @@ span[data-smart-chip][data-chip-type="placeholder"]::before {
     content: none !important;
     display: none !important;
   }
+}
+
+/* Required-SOPs dialog + in-place document drawer co-existence.
+   While the in-place drawer is open we add 'sop-drawer-on-top' on <body>:
+   1) Lift the MUI Drawer (portaled to document.body) above the Radix
+      Dialog (z-[60]) and its overlay (z-50).
+   2) Hide the Radix Dialog backdrop so the user sees the document and
+      its right-side detail panel clearly, with the SOP dialog docked to
+      the left as a small companion panel. */
+body.sop-drawer-on-top .MuiDrawer-root,
+body.sop-drawer-on-top .MuiModal-root {
+  z-index: 80 !important;
+}
+body.sop-drawer-on-top [data-radix-dialog-overlay] {
+  background-color: transparent !important;
+  pointer-events: none !important;
 }

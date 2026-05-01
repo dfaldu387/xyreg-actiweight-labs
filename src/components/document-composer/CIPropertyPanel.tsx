@@ -21,8 +21,10 @@ import { useReferenceDocuments } from '@/hooks/useReferenceDocuments';
 import { useCompanyActivePhases } from '@/hooks/useCompanyActivePhases';
 import { useReviewerGroups } from '@/hooks/useReviewerGroups';
 import { useExistingTags } from '@/hooks/useExistingTags';
+import { useCCRsByCompany } from '@/hooks/useChangeControlData';
 import { Settings2, Check, Loader2, BookOpen, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { SOP_FUNCTIONAL_SUBPREFIX } from '@/constants/sopAutoSeedTiers';
 
 interface CIPropertyPanelProps {
   documentId: string;
@@ -50,6 +52,7 @@ interface CIPropertyPanelProps {
   recordId?: string;
   nextReviewDate?: string;
   documentNumber?: string;
+  changeControlRef?: string;
   showSectionNumbers?: boolean;
   // Callback to persist changes
   onFieldChange: (field: string, value: any) => Promise<void>;
@@ -82,6 +85,7 @@ export function CIPropertyPanel({
   recordId,
   nextReviewDate,
   documentNumber,
+  changeControlRef,
   showSectionNumbers,
   onFieldChange,
   disabled = false,
@@ -96,6 +100,7 @@ export function CIPropertyPanel({
   const { activePhases } = useCompanyActivePhases(companyId);
   const { reviewerGroups = [] } = useReviewerGroups(companyId);
   const { data: existingTags = [] } = useExistingTags(companyId);
+  const { data: ccrs = [] } = useCCRsByCompany(companyId);
   const [isRefDocPickerOpen, setIsRefDocPickerOpen] = useState(false);
 
   // Local state for text inputs (debounced)
@@ -131,29 +136,41 @@ export function CIPropertyPanel({
     }
   }, [documentNumber]);
 
-  // Parse sub-prefix from existing document number on mount
+  // Parse sub-prefix from existing document number on mount.
+  // Storage uses canonical SOP-NNN form, but the UI shows a functional sub-prefix
+  // (e.g. SOP-QA-002) derived from the SOP key mapping. When the documentNumber
+  // doesn't already contain a sub-prefix token, fall back to that mapping so the
+  // dropdown reflects what the rest of the app displays.
   useEffect(() => {
     if (!documentNumber || !documentType || subPrefixes.length === 0) return;
     const withoutPrefix = documentNumber.replace(`${documentType}-`, '');
     const subMatch = subPrefixes.find(sp => withoutPrefix.startsWith(`${sp.code}-`));
-    if (subMatch && selectedSubPrefix !== subMatch.code) {
-      setSelectedSubPrefix(subMatch.code);
+    if (subMatch) {
+      if (selectedSubPrefix !== subMatch.code) setSelectedSubPrefix(subMatch.code);
+      return;
+    }
+    // Fallback: map canonical SOP-NNN → functional sub-prefix (display-only)
+    if (documentType.toUpperCase() === 'SOP') {
+      const canonical = `SOP-${withoutPrefix}`.toUpperCase();
+      const functionalSub = SOP_FUNCTIONAL_SUBPREFIX[canonical];
+      if (functionalSub && selectedSubPrefix !== functionalSub
+          && subPrefixes.some(sp => sp.code === functionalSub)) {
+        setSelectedSubPrefix(functionalSub);
+      }
     }
   }, [documentNumber, documentType, subPrefixes]);
 
-  // Fetch used numbers when category prefix changes
+  // Fetch used numbers when category prefix changes. Identify "own row" by
+  // documentId (UUID) — never by parsed number string — so this CI's own
+  // slot is always available to itself regardless of how the number is spelled.
   useEffect(() => {
     if (!documentType) return;
     setIsLoadingUsedNumbers(true);
-    getUsedNumbers(documentType, companyId).then(used => {
-      if (documentNumber) {
-        const ownMatch = documentNumber.match(new RegExp(`^${documentType}-(?:[A-Z]+-)?([\\d]+)`));
-        if (ownMatch) used.delete(ownMatch[1]);
-      }
+    getUsedNumbers(documentType, companyId, documentId).then(used => {
       setUsedNumbersSet(used);
       setIsLoadingUsedNumbers(false);
     });
-  }, [documentType, getUsedNumbers, documentNumber]);
+  }, [documentType, getUsedNumbers, companyId, documentId]);
 
   const showSaveIndicator = useCallback((field: string) => {
     setFieldStates(prev => ({ ...prev, [field]: 'saved' }));
@@ -308,7 +325,7 @@ export function CIPropertyPanel({
               }}
               disabled={disabled}
             >
-              <SelectTrigger className="h-8 text-sm flex-1">
+              <SelectTrigger className="h-8 text-sm font-mono w-24">
                 <SelectValue placeholder={isCategoryConfigsLoading ? "Loading..." : "Category"} />
               </SelectTrigger>
               <SelectContent>
@@ -596,6 +613,48 @@ export function CIPropertyPanel({
             />
           </div>
         )}
+
+        {/* Change Control Reference — applies to both Documents and Records */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">
+              Change Control Ref.
+              <span className="text-muted-foreground/70 ml-1">(CCR)</span>
+            </Label>
+            {renderSaveIndicator('change_control_ref')}
+          </div>
+          <Select
+            value={changeControlRef || '__none__'}
+            onValueChange={(val) =>
+              handleFieldSave('change_control_ref', val === '__none__' ? null : val)
+            }
+            disabled={disabled}
+          >
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Link to a CCR…" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">
+                <span className="text-muted-foreground">None</span>
+              </SelectItem>
+              {ccrs.length === 0 ? (
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                  No CCRs available for this company
+                </div>
+              ) : (
+                ccrs.map((ccr: any) => (
+                  <SelectItem key={ccr.ccr_id || ccr.id} value={ccr.ccr_id || ccr.id}>
+                    <span className="font-mono text-xs mr-2">{ccr.ccr_id || ccr.id}</span>
+                    <span className="truncate">{ccr.title || ccr.summary || ''}</span>
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          <p className="text-[10px] text-muted-foreground leading-tight">
+            Required for document revisions per ISO 13485 / 21 CFR Part 820.
+          </p>
+        </div>
 
         <Separator />
 

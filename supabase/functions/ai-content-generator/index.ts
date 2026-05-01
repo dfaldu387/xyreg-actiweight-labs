@@ -256,7 +256,11 @@ Guidelines:
 - Do NOT wrap your response in markdown code fences
 - Do NOT include any preamble or explanations
 
-${referenceContext ? `REFERENCE DOCUMENTS:\n${referenceContext}` : ''}
+${referenceContext ? `The following block describes the ACTUAL company and device this document belongs to. Treat every value here as ground truth and use the real names verbatim — never substitute placeholders like "Acme", "[Company Name]", "the company", or generic device names. When the user says things like "add company", "add company name", "add the device", "our company", "this device", they mean the exact names below.
+
+--- ACTIVE DEVICE & COMPANY CONTEXT ---
+${referenceContext}
+--- END ACTIVE CONTEXT ---` : ''}
 ${outputLanguage && outputLanguage !== 'en' ? `CRITICAL: Generate ALL output in ${outputLanguage === 'de' ? 'German' : outputLanguage === 'fr' ? 'French' : outputLanguage === 'fi' ? 'Finnish' : 'English'}.` : ''}`;
     } else {
       systemPrompt = `You are an expert technical writer specializing in medical device documentation and quality management systems.

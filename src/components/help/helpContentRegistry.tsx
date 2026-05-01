@@ -4,6 +4,8 @@ import { DynamicMilestonesHelp } from '@/components/help/DynamicMilestonesHelp';
 import { XyregGenesisIntroduction } from '@/components/investor-share/XyregGenesisIntroduction';
 import { useTranslation } from '@/hooks/useTranslation';
 import { XyregArchitectureHelp } from '@/components/help/XyregArchitectureHelp';
+import { FoundationNodeHelp } from '@/components/help/foundation/FoundationNodeHelp';
+import { HELIX_NODE_CONFIGS } from '@/config/helixNodeConfig';
 import {
   NCTrendsHelp,
   CAPATrendsHelp,
@@ -25,6 +27,13 @@ import {
   EnterprisePricingStrategyHelp,
   GlobalMarketAccessHelp,
 } from '@/components/help/EnterpriseHelpContent';
+import {
+  CCRDetailHelp,
+  CCRDetailDetailsHelp,
+  CCRDetailImpactHelp,
+  CCRDetailImplementationHelp,
+  CCRDetailHistoryHelp,
+} from '@/components/help/CCRDetailHelp';
 import {
   DeviceOverviewHelp,
   DevicePurposeHelp,
@@ -2437,6 +2446,35 @@ const CompanyDocumentsHelp: React.FC = () => {
         ]} />
       </HelpSection>
 
+      <HelpSection title="SOP Tiers — Generic, Pathway, Device-specific">
+        <p className="text-sm text-muted-foreground mb-3">
+          Xyreg classifies its 51 SOPs into three tiers based on how much
+          company- or device-specific tailoring they need. This is what drives
+          which SOPs are auto-created at onboarding versus authored on demand.
+        </p>
+        <div className="space-y-2">
+          <InfoCard
+            title="Tier A — Generic / Foundation (auto-created)"
+            description="Pure ISO 13485 / 21 CFR 820 process documents. The body is identical across every company — only [Company Name] is substituted. ~28 SOPs. Auto-seeded at company onboarding so a new admin lands on a populated QMS skeleton (Document Control, Management Review, CAPA, Internal Audit, Complaints, PMS, Design Control framework, etc.)."
+          />
+          <InfoCard
+            title="Tier B — Pathway-conditional (seed when applicable)"
+            description="~15 SOPs that only apply once a specific regulatory pathway or scope flag is true: EU MDR, EU MDR Class IIa+, EU clinical pathway, manufacturing in scope, or physical product. Examples: GSPR (EU MDR), Clinical Evaluation, PSUR (Class IIa+), Process Validation, Labelling & Packaging, DHR / Batch Records. Seeded with one click via the 'Seed pathway-conditional SOPs' button on the Templates tab once the company's profile makes them relevant."
+          />
+          <InfoCard
+            title="Tier C — Device-specific (manual authoring)"
+            description="8 SOPs that require real product or process substance, not just naming: Usability Engineering (IEC 62366-1), Software Lifecycle (IEC 62304), Software Validation (lists tools), Sterilization (method-specific), Biocompatibility (materials-specific), Cleanroom Operations (facility-specific), Clinical Investigation (study-specific), SaMD (architecture-specific). Never auto-seeded — authored on demand in Document Studio with the actual product context."
+          />
+        </div>
+        <p className="text-sm text-muted-foreground mt-3">
+          <strong className="text-foreground">Rule of thumb:</strong> a SOP is
+          Tier A if its body would be byte-identical between two unrelated
+          companies. Tier B if it depends on a regulatory pathway or scope flag.
+          Tier C if it requires device-specific substance — materials, software
+          architecture, sterilization method, study protocol, etc.
+        </p>
+      </HelpSection>
+
       <TipCard>
         {lang('help.content.companyDocuments.tip')}
       </TipCard>
@@ -3045,6 +3083,11 @@ export const helpContentRegistry: Record<string, React.FC<HelpContentProps>> = {
   'company-nc-trends': NCTrendsHelp,
   'company-capa-trends': CAPATrendsHelp,
   'company-change-control': GlobalChangeControlHelp,
+  'ccr-detail': CCRDetailHelp,
+  'ccr-detail-details': CCRDetailDetailsHelp,
+  'ccr-detail-impact': CCRDetailImpactHelp,
+  'ccr-detail-implementation': CCRDetailImplementationHelp,
+  'ccr-detail-history': CCRDetailHistoryHelp,
   'company-management-review': ManagementReviewHelp,
   'company-design-review': EnterpriseDesignReviewHelp,
   'company-infrastructure': InfrastructureHelp,
@@ -3093,6 +3136,18 @@ export const helpContentRegistry: Record<string, React.FC<HelpContentProps>> = {
   'company-platforms': CompanyPlatformsHelp,
   'company-marketplace': CompanyMarketplaceHelp,
 };
+
+// Auto-register a per-node help renderer for every QMS Foundation node
+// so the global Help sidebar can surface node-specific help (e.g. Design Control)
+// when a foundation node drawer is open.
+for (const node of HELIX_NODE_CONFIGS) {
+  const key = `foundation-node-${node.id}`;
+  if (!helpContentRegistry[key]) {
+    const NodeHelp: React.FC<HelpContentProps> = () => <FoundationNodeHelp nodeId={node.id} />;
+    NodeHelp.displayName = `FoundationNodeHelp(${node.id})`;
+    helpContentRegistry[key] = NodeHelp;
+  }
+}
 
 export function getHelpContent(topicKey: string): React.FC<HelpContentProps> {
   return helpContentRegistry[topicKey] || GeneralHelp;

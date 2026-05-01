@@ -36,7 +36,7 @@ DialogOverlay.displayName = "DialogOverlay"
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & React.HTMLAttributes<HTMLDivElement>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, onPointerDownOutside, onInteractOutside, onFocusOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -45,6 +45,46 @@ const DialogContent = React.forwardRef<
         "fixed left-[50%] top-[50%] z-[60] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
         className
       )}
+      onPointerDownOutside={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest('[data-prof-xyreg-root]')) {
+          e.preventDefault();
+          return;
+        }
+        const orig: any = (e as any).detail?.originalEvent;
+        if (orig && typeof orig.clientX === 'number') {
+          const el = document.elementFromPoint(orig.clientX, orig.clientY) as HTMLElement | null;
+          if (el && el.closest('[data-prof-xyreg-root]')) {
+            e.preventDefault();
+            return;
+          }
+        }
+        onPointerDownOutside?.(e);
+      }}
+      onInteractOutside={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest('[data-prof-xyreg-root]')) {
+          e.preventDefault();
+          return;
+        }
+        const orig: any = (e as any).detail?.originalEvent;
+        if (orig && typeof orig.clientX === 'number') {
+          const el = document.elementFromPoint(orig.clientX, orig.clientY) as HTMLElement | null;
+          if (el && el.closest('[data-prof-xyreg-root]')) {
+            e.preventDefault();
+            return;
+          }
+        }
+        onInteractOutside?.(e);
+      }}
+      onFocusOutside={(e: any) => {
+        const target = e?.target as HTMLElement | null;
+        if (target && target.closest && target.closest('[data-prof-xyreg-root]')) {
+          e.preventDefault();
+          return;
+        }
+        onFocusOutside?.(e);
+      }}
       {...props as any}
     >
       {children}

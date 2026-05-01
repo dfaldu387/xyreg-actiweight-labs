@@ -175,8 +175,8 @@ export function useCommunicationThreads(options: UseCommunicationThreadsOptions 
         const dbStatus = statusMap[options.status] || options.status;
         query = query.eq('status', dbStatus);
       } else {
-        // By default, exclude archived threads
-        query = query.neq('status', 'Archived');
+        // By default, exclude closed threads (terminal state, hidden from active lists)
+        query = query.neq('status', 'Closed');
       }
 
       const { data, error } = await query;

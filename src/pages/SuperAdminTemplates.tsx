@@ -14,6 +14,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search, FileText, Tags, Calendar, Link, Plus, Edit, Trash2, Eye, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { WICatalogSection } from '@/components/super-admin/WICatalogSection';
+import { FpdCatalogSection } from '@/components/super-admin/FpdCatalogSection';
+import { TIER_LABELS, TIER_BADGE_CLASSES, type FpdTier } from '@/services/fpdSopCatalogService';
 
 // Utility function to get badge styling based on document type
 const getScopeBadgeStyle = (scope: string | null | undefined) => {
@@ -272,6 +276,13 @@ function SuperAdminTemplates() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="px-6 py-6 space-y-6">
+          <Tabs defaultValue="templates" className="space-y-6">
+            <TabsList>
+              <TabsTrigger value="templates">Document Templates</TabsTrigger>
+              <TabsTrigger value="fpd-catalog">FPD Catalog</TabsTrigger>
+              <TabsTrigger value="wi-catalog">WI Catalog</TabsTrigger>
+            </TabsList>
+            <TabsContent value="templates" className="space-y-6">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card>
@@ -432,6 +443,25 @@ function SuperAdminTemplates() {
                                             template.scope === 'both' ? 'Both' : template.scope}
                                       </Badge>
                                     )}
+                                    {template.fpd_sop_key && (
+                                      <Badge
+                                        variant="outline"
+                                        className={cn(
+                                          'text-xs font-medium',
+                                          template.fpd_tier
+                                            ? TIER_BADGE_CLASSES[template.fpd_tier as FpdTier]
+                                            : '',
+                                        )}
+                                        title="Linked to FPD catalog entry"
+                                      >
+                                        → {template.fpd_sop_key}
+                                        {template.fpd_tier && (
+                                          <span className="ml-1 opacity-75">
+                                            · {TIER_LABELS[template.fpd_tier as FpdTier]}
+                                          </span>
+                                        )}
+                                      </Badge>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-2">
                                     {template.file_path && (
@@ -489,6 +519,14 @@ function SuperAdminTemplates() {
               )}
             </CardContent>
           </Card>
+            </TabsContent>
+            <TabsContent value="fpd-catalog">
+              <FpdCatalogSection />
+            </TabsContent>
+            <TabsContent value="wi-catalog">
+              <WICatalogSection />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 

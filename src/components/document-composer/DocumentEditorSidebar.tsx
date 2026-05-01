@@ -22,6 +22,7 @@ interface DocumentEditorSidebarProps {
   onRecordIdChange?: (recordId: string | null) => void;
   onNextReviewDateChange?: (nextReviewDate: string | null) => void;
   onDocumentNumberChange?: (documentNumber: string | null) => void;
+  onChangeControlRefChange?: (changeControlRef: string | null) => void;
   onShowSectionNumbersChange?: (show: boolean) => void;
   showSectionNumbers?: boolean;
 
@@ -45,6 +46,7 @@ export function DocumentEditorSidebar({
   onRecordIdChange,
   onNextReviewDateChange,
   onDocumentNumberChange,
+  onChangeControlRefChange,
   onShowSectionNumbersChange,
   showSectionNumbers,
   isEditing,
@@ -93,6 +95,13 @@ export function DocumentEditorSidebar({
     }
   }, [ciMetadata?.document_number, onDocumentNumberChange]);
 
+  // Notify parent of change_control_ref changes
+  useEffect(() => {
+    if (ciMetadata && onChangeControlRefChange) {
+      onChangeControlRefChange(ciMetadata.change_control_ref ?? null);
+    }
+  }, [ciMetadata?.change_control_ref, onChangeControlRefChange]);
+
   return (
     <>
       {/* Collapsible Sidebar */}
@@ -134,6 +143,7 @@ export function DocumentEditorSidebar({
               recordId={ciMetadata.record_id || undefined}
               nextReviewDate={ciMetadata.next_review_date || undefined}
               documentNumber={ciMetadata.document_number || undefined}
+              changeControlRef={ciMetadata.change_control_ref || undefined}
               showSectionNumbers={showSectionNumbers}
               onFieldChange={async (field, value) => {
                 if (field === 'showSectionNumbers') {

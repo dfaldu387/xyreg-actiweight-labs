@@ -46,6 +46,7 @@ import { useDocumentTypes } from "@/hooks/useDocumentTypes";
 import { AddDocumentTypeSheet } from "@/components/common/AddDocumentTypeSheet";
 import { useDocumentCategoryConfigs } from "@/hooks/useDocumentCategoryConfigs";
 import { useSubPrefixes } from "@/hooks/useSubPrefixes";
+import { SOP_FUNCTIONAL_SUBPREFIX } from "@/constants/sopAutoSeedTiers";
 import { useCompanyDateFormat } from "@/hooks/useCompanyDateFormat";
 import { ReferenceDocumentPicker } from "@/components/common/ReferenceDocumentPicker";
 import { useReferenceDocuments } from "@/hooks/useReferenceDocuments";
@@ -173,13 +174,25 @@ export function EditDocumentDialog({
   const [usedNumbersSet, setUsedNumbersSet] = useState<Set<string>>(new Set());
   const [isLoadingUsedNumbers, setIsLoadingUsedNumbers] = useState(false);
 
-  // Parse sub-prefix from an existing document number on mount/change
+  // Parse sub-prefix from an existing document number on mount/change.
+  // Storage uses canonical SOP-NNN; UI shows functional sub-prefix (SOP-QA-002).
+  // When the documentNumber has no embedded sub-prefix, fall back to the
+  // SOP_FUNCTIONAL_SUBPREFIX mapping so the dropdown reflects the list view.
   useEffect(() => {
     if (!documentNumber || !selectedDocumentType || subPrefixes.length === 0) return;
     const withoutPrefix = documentNumber.replace(`${selectedDocumentType}-`, '');
     const subMatch = subPrefixes.find(sp => withoutPrefix.startsWith(`${sp.code}-`));
-    if (subMatch && selectedSubPrefix !== subMatch.code) {
-      setSelectedSubPrefix(subMatch.code);
+    if (subMatch) {
+      if (selectedSubPrefix !== subMatch.code) setSelectedSubPrefix(subMatch.code);
+      return;
+    }
+    if (selectedDocumentType.toUpperCase() === 'SOP') {
+      const canonical = `SOP-${withoutPrefix}`.toUpperCase();
+      const functionalSub = SOP_FUNCTIONAL_SUBPREFIX[canonical];
+      if (functionalSub && selectedSubPrefix !== functionalSub
+          && subPrefixes.some(sp => sp.code === functionalSub)) {
+        setSelectedSubPrefix(functionalSub);
+      }
     }
   }, [documentNumber, selectedDocumentType, subPrefixes]);
   const { data: existingTags = [] } = useExistingTags(companyId);

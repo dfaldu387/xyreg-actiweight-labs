@@ -1,8 +1,9 @@
 
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Briefcase, Layers, ExternalLink, Clock } from "lucide-react";
+import { Briefcase, Layers, ExternalLink, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Client } from "@/types/client";
@@ -13,6 +14,8 @@ import { CompanyUsageService } from '@/services/companyUsageService';
 import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/hooks/useCompanyTime";
 import { getCompanyTime, type CompanyTimeData } from "@/hooks/useCompanyTimesBatch";
+import { supabase } from "@/integrations/supabase/client";
+import { DashboardOtpDialog } from "@/components/DashboardOtpDialog";
 
 interface ClientCardProps {
   client: Client;
@@ -27,6 +30,13 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
   const { switchCompanyRole, companyRoles, refreshCompanyRoles } = useCompanyRole();
   const { lang } = useTranslation();
   const { totalSeconds, weeklySeconds } = getCompanyTime(companyTimesMap, client.id);
+
+  const [showOtpDialog, setShowOtpDialog] = useState(false);
+  const [targetAppUrl, setTargetAppUrl] = useState("");
+  const [otpUserEmail, setOtpUserEmail] = useState("");
+  const [otpUserId, setOtpUserId] = useState("");
+  const [otpUserName, setOtpUserName] = useState("");
+  const [dashboardLoading, setDashboardLoading] = useState(false);
 
   const getStatusColor = (status: Client["status"]) => {
     switch (status) {
@@ -47,14 +57,7 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
     onClientSelect(client);
   };
 
-  const navigateToCompanyDashboard = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (disabled) return;
-
-    if (onCompanyDashboardClick) {
-      onCompanyDashboardClick();
-    }
-
+  const doInternalNavigation = async () => {
     try {
       await CompanyUsageService.recordCompanyAccess(client.id);
 
@@ -88,6 +91,71 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
       }
     } catch (error) {
       navigate(`/app/company/${encodeURIComponent(client.name)}`);
+    }
+  };
+
+  const navigateToCompanyDashboard = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (disabled || dashboardLoading) return;
+
+    if (onCompanyDashboardClick) {
+      onCompanyDashboardClick();
+    }
+
+    const otpEnabled = import.meta.env.VITE_OTP_DASHBOARD_ACCESS === 'true';
+
+    if (!otpEnabled) {
+      setDashboardLoading(true);
+      await doInternalNavigation();
+      setDashboardLoading(false);
+      return;
+    }
+
+    // Check if company has an app_url
+    setDashboardLoading(true);
+    try {
+      const { data: company } = await supabase
+        .from("companies")
+        .select("app_url")
+        .eq("id", client.id)
+        .maybeSingle();
+
+      if (company?.app_url) {
+        // Get current user info for OTP
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setOtpUserEmail(user.email || "");
+          setOtpUserId(user.id);
+          setOtpUserName(
+            user.user_metadata?.full_name ||
+            user.user_metadata?.name ||
+            `${user.user_metadata?.first_name || ""} ${user.user_metadata?.last_name || ""}`.trim() ||
+            ""
+          );
+          setTargetAppUrl(company.app_url);
+          setShowOtpDialog(true);
+        }
+      } else {
+        await doInternalNavigation();
+      }
+    } catch {
+      await doInternalNavigation();
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+  const handleOtpVerified = async () => {
+    setShowOtpDialog(false);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const url = new URL(targetAppUrl);
+      url.searchParams.set("access_token", session.access_token);
+      url.searchParams.set("refresh_token", session.refresh_token);
+      url.searchParams.set("company_id", client.id);
+      url.searchParams.set("company_name", client.name);
+      window.location.href = url.toString();
     }
   };
 
@@ -169,13 +237,32 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
               variant="outline"
               className="flex-1 flex items-center gap-1"
               onClick={navigateToCompanyDashboard}
-              disabled={disabled}
+              disabled={disabled || dashboardLoading}
             >
-              {lang('clients.dashboard')} <ExternalLink className="w-3.5 h-3.5" />
+              {dashboardLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  {lang('clients.dashboard')}
+                </>
+              ) : (
+                <>
+                  {lang('clients.dashboard')} <ExternalLink className="w-3.5 h-3.5" />
+                </>
+              )}
             </Button>
           </div>
         </div>
       </CardContent>
+
+      <DashboardOtpDialog
+        open={showOtpDialog}
+        onOpenChange={setShowOtpDialog}
+        onVerified={handleOtpVerified}
+        userEmail={otpUserEmail}
+        userId={otpUserId}
+        userName={otpUserName}
+        companyName={client.name}
+      />
     </Card>
   );
 }

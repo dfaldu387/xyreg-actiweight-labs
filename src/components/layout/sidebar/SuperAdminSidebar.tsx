@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
-import { Users, CreditCard, Settings, Shield, FileText, History, MessageSquare, Key, Layers, Ticket, Sparkles, DollarSign, Rocket, Coins } from 'lucide-react';
+import { Users, CreditCard, Settings, Shield, FileText, History, MessageSquare, Key, Layers, Ticket, Sparkles, DollarSign, Rocket, Coins, ToggleRight } from 'lucide-react';
 
 export default function SuperAdminSidebar() {
   const location = useLocation();
@@ -31,6 +31,12 @@ export default function SuperAdminSidebar() {
     //   icon: DollarSign,
     //   path: '/super-admin/app/plan-pricing',
     // },
+    {
+      id: 'feature-flags',
+      label: 'Feature Flags',
+      icon: ToggleRight,
+      path: '/super-admin/app/feature-flags',
+    },
     {
       id: 'releases',
       label: 'Releases',

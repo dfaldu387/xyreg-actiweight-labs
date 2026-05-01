@@ -5785,7 +5785,8 @@
       "active": "Aktiv",
       "awaitingResponse": "Antwort ausstehend",
       "pending": "Ausstehend",
-      "closed": "Geschlossen"
+      "closed": "Geschlossen",
+      "archived": "Archiviert"
     },
     "results": {
       "threadFound": "{{count}} Thread gefunden",
@@ -5815,6 +5816,10 @@
       "noThreads": {
         "title": "Keine Kommunikationsstränge",
         "description": "Starten Sie eine neue Kommunikation, um mit Ihrem Team zusammenzuarbeiten."
+      },
+      "noArchived": {
+        "title": "Keine archivierten Kommunikationen",
+        "description": "Archivierte Threads erscheinen hier. Archivierte Threads bleiben durchsuchbar, sind aber schreibgeschützt."
       }
     },
     "threadCard": {

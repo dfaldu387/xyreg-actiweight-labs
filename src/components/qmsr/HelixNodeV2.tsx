@@ -7,7 +7,6 @@ import {
   Clock, 
   Hexagon, 
   HelpCircle, 
-  X,
   Building2,
   Cpu
 } from 'lucide-react';
@@ -17,7 +16,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { HelixNodeStatus, HelixLevel, HelixTrack } from '@/config/helixNodeConfig';
 import { TRACK_COLORS, STATUS_COLORS } from '@/config/helixNodeConfig';
@@ -210,33 +208,23 @@ function HelixNodeV2Component({ data, id }: NodeProps) {
                   </span>
                 </PopoverTrigger>
                 <PopoverContent 
-                  side="right" 
-                  align="start"
-                  className="w-72 p-0 bg-slate-900 border-slate-700 shadow-xl z-[9999]"
+                  side="top"
+                  align="center"
+                  sideOffset={8}
+                  className="w-64 p-3 bg-popover text-popover-foreground border border-border shadow-md rounded-md z-[9999]"
                   onPointerDown={(e) => e.stopPropagation()}
                   onWheel={(e) => e.stopPropagation()}
                 >
-                  <div className="p-3 border-b border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-slate-100 text-sm">{nodeData.label}</h4>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-slate-500 hover:text-slate-300"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setHelpOpen(false);
-                        }}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
+                  <div className="space-y-1.5">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <h4 className="font-semibold text-foreground text-sm leading-tight">
+                        {nodeData.label}
+                      </h4>
+                      <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                        ISO 13485 {nodeData.isoClause}
+                      </span>
                     </div>
-                    <p className="text-[10px] text-slate-500 font-mono mt-1">
-                      ISO 13485 Clause {nodeData.isoClause}
-                    </p>
-                  </div>
-                  <div className="p-3">
-                    <p className="text-xs text-slate-400 leading-relaxed">
+                    <p className="text-xs text-muted-foreground leading-relaxed">
                       {nodeData.description}
                     </p>
                   </div>

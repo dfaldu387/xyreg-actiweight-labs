@@ -109,21 +109,42 @@ function speakBrowser(text: string) {
     return;
   }
 
+  // Capture the generation at speak-time so a later hardStopTTS() (e.g.
+  // triggered by a new user prompt) can invalidate this utterance even
+  // after speechSynthesis has already started speaking.
+  const myGen = ttsGeneration;
   const utterance = new SpeechSynthesisUtterance(stripped);
   utterance.rate = 0.95;
   utterance.pitch = 1;
-  utterance.onend = () => finishTTSPlayback();
+  utterance.onend = () => {
+    if (myGen !== ttsGeneration) return; // stale — newer prompt took over
+    finishTTSPlayback();
+  };
   utterance.onerror = () => cancelTTSPlayback();
+  // Poll for stale generation; if a newer prompt arrived, hard-cancel.
+  const staleCheck = setInterval(() => {
+    if (myGen !== ttsGeneration || ttsCancelled) {
+      try { window.speechSynthesis.cancel(); } catch {}
+      clearInterval(staleCheck);
+    }
+    if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+      clearInterval(staleCheck);
+    }
+  }, 200);
   window.speechSynthesis.speak(utterance);
 }
 
 const VOICE_OPTIONS = [
-  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Clear & professional' },
-  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', desc: 'Warm & authoritative' },
-  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', desc: 'Calm British' },
-  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', desc: 'Deep & warm' },
-  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', desc: 'Clear American' },
-  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', desc: 'Natural Australian' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Clear & professional', gender: 'male' },
+  { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', desc: 'Warm & authoritative', gender: 'male' },
+  { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel', desc: 'Calm British', gender: 'male' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', desc: 'Deep & warm', gender: 'male' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', desc: 'Clear American', gender: 'male' },
+  { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie', desc: 'Natural Australian', gender: 'male' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', desc: 'Soft & warm', gender: 'female' },
+  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', desc: 'Young & expressive', gender: 'female' },
+  { id: 'jBpfuIE2acCO8z3wKNLl', name: 'Gigi', desc: 'Energetic & playful', gender: 'female' },
+  { id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Grace', desc: 'Gentle & soothing', gender: 'female' },
 ] as const;
 
 /** Active audio element for cancellation. */
@@ -131,6 +152,27 @@ let activeAudio: HTMLAudioElement | null = null;
 
 /** Flag to cancel TTS that is still being fetched when mute is clicked. */
 let ttsCancelled = false;
+
+/** Monotonic generation counter — any in-flight TTS with an older generation is discarded. */
+let ttsGeneration = 0;
+
+/** Hard-stop any current or pending TTS playback (audio + speech synthesis). */
+function hardStopTTS() {
+  ttsCancelled = true;
+  ttsGeneration++;
+  try { window.speechSynthesis?.cancel(); } catch {}
+  if (activeAudio) {
+    try {
+      activeAudio.pause();
+      activeAudio.currentTime = 0;
+      activeAudio.src = '';
+      activeAudio.load();
+      activeAudio.remove();
+    } catch {}
+    activeAudio = null;
+  }
+  cancelTTSPlayback();
+}
 
 /** Flag tracking whether TTS audio is currently playing (prevents mic self-prompting). */
 let isTTSPlaying = false;
@@ -151,12 +193,9 @@ function prewarmAudio() {
 
 /** Speak text via ElevenLabs TTS edge function, falling back to browser. */
 async function speakElevenLabs(text: string, voiceId?: string) {
-  if (activeAudio) {
-    activeAudio.pause();
-    activeAudio.remove();
-    activeAudio = null;
-  }
-  window.speechSynthesis?.cancel();
+  // Hard-stop anything currently playing, then claim a new generation.
+  hardStopTTS();
+  const myGen = ++ttsGeneration;
   ttsCancelled = false;
   beginTTSPlayback();
 
@@ -185,6 +224,11 @@ async function speakElevenLabs(text: string, voiceId?: string) {
       // Check if mute was clicked while we were fetching
       if (ttsCancelled) {
         console.log('[TTS] Cancelled — mute was clicked during fetch');
+        cancelTTSPlayback();
+        return;
+      }
+      if (myGen !== ttsGeneration) {
+        console.log('[TTS] Stale generation — discarding fetched audio');
         cancelTTSPlayback();
         return;
       }
@@ -222,6 +266,13 @@ async function speakElevenLabs(text: string, voiceId?: string) {
 
       try {
         await audio.play();
+        if (myGen !== ttsGeneration || ttsCancelled) {
+          console.log('[TTS] Cancelled after play() resolved — stopping');
+          try { audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.remove(); } catch {}
+          if (activeAudio === audio) activeAudio = null;
+          cancelTTSPlayback();
+          return;
+        }
         console.log('[TTS] Playing ElevenLabs audio — paused:', audio.paused, 'currentTime:', audio.currentTime, 'networkState:', audio.networkState);
       } catch (playErr) {
         console.warn('[TTS] audio.play() rejected:', playErr);
@@ -255,6 +306,7 @@ export function FloatingAdvisoryBot() {
   const [isLoading, setIsLoading] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [selectedVoice, setSelectedVoice] = useState<string>(VOICE_OPTIONS[0].id);
+  const [voiceGenderTab, setVoiceGenderTab] = useState<'male' | 'female'>('male');
   const [showHistory, setShowHistory] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isCompact, setIsCompact] = useState(false);
@@ -264,6 +316,8 @@ export function FloatingAdvisoryBot() {
   const [apiKeyMissing, setApiKeyMissing] = useState(false);
   const recognitionRef = useRef<any>(null);
   const conversationModeRef = useRef(false);
+  /** Accumulated transcript across recognition restarts during a single PTT hold. */
+  const pttAccumulatedRef = useRef<string>('');
   const isDragging = useRef(false);
   const pttDelayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
@@ -303,6 +357,7 @@ export function FloatingAdvisoryBot() {
 
   const pageContext = useMemo(() => {
     let ctx = `\n\n--- CURRENT USER CONTEXT ---`;
+    ctx += `\nYou DO have awareness of what the user is currently looking at via the context below (route, company, product, page data). When the user asks "can you see the screen?" or "what am I looking at?", DO NOT say you cannot see their screen. Instead, describe the current page, section, and any product/company context you have here. Only clarify that you read structured page context (not pixels) if the user explicitly asks how you know.`;
     ctx += `\nThe user is currently viewing: ${currentSection || 'dashboard'}`;
     if (companyContext) ctx += `\nCompany: ${companyContext.companyName}`;
     if (product) {
@@ -440,6 +495,11 @@ export function FloatingAdvisoryBot() {
 
   const handleSend = useCallback(async () => {
     if (!input.trim() || isLoading || !selectedAgent) return;
+
+    // Stop any in-flight TTS (browser SpeechSynthesis or edge-function audio)
+    // before starting a new prompt — prevents the previous answer from
+    // continuing to play over the new one.
+    hardStopTTS();
 
     // Guard: Google Vertex AI key must be configured for this company.
     // Show an inline error banner in the chat panel with a button to go set it.
@@ -611,7 +671,8 @@ export function FloatingAdvisoryBot() {
         }
       }
       captured = finalText;
-      setInput(fixTranscript(finalText + interimText));
+      const combined = (pttAccumulatedRef.current + ' ' + finalText + ' ' + interimText).trim();
+      setInput(fixTranscript(combined));
 
       // In conversation mode, auto-send after 1.5s of silence
       if (conversationModeRef.current && (finalText || interimText)) {
@@ -627,8 +688,25 @@ export function FloatingAdvisoryBot() {
     recognition.onend = () => {
       clearSilenceTimer();
       recognitionRef.current = null;
-      if (captured.trim()) {
-        const fixed = fixTranscript(captured.trim());
+      // If user is still holding the mic (push-to-talk), restart recognition
+      // instead of auto-sending — they haven't released yet.
+      if (isPTTActive.current && !conversationModeRef.current) {
+        // Persist any captured text so it isn't lost when we restart.
+        if (captured.trim()) {
+          pttAccumulatedRef.current = (pttAccumulatedRef.current + ' ' + captured.trim()).trim();
+        }
+        setTimeout(() => {
+          if (isPTTActive.current && !recognitionRef.current) {
+            try { startRecognition(); } catch {}
+          }
+        }, 50);
+        return;
+      }
+      // Merge any accumulated text from previous restarts during PTT hold.
+      const fullCaptured = (pttAccumulatedRef.current + ' ' + captured).trim();
+      pttAccumulatedRef.current = '';
+      if (fullCaptured) {
+        const fixed = fixTranscript(fullCaptured);
         setInput(fixed);
         setIsListening(false);
         setTimeout(() => {
@@ -668,15 +746,8 @@ export function FloatingAdvisoryBot() {
 
   // Mouse/touch down → start push-to-talk (after 300ms to allow double-click detection)
   const handleMicDown = useCallback(() => {
-    // Stop any playing TTS audio immediately (walkie-talkie interrupt)
-    if (activeAudio) {
-      activeAudio.pause();
-      activeAudio.remove();
-      activeAudio = null;
-    }
-    window.speechSynthesis?.cancel();
-    cancelTTSPlayback();
-    ttsCancelled = true;
+    // Hard-stop any playing or pending TTS immediately (walkie-talkie interrupt)
+    hardStopTTS();
 
     if (conversationMode) {
       // Already in conversation mode — just stop everything
@@ -689,6 +760,7 @@ export function FloatingAdvisoryBot() {
     pttDelayTimer.current = setTimeout(() => {
       pttPressTimeRef.current = Date.now();
       isPTTActive.current = true;
+      pttAccumulatedRef.current = '';
       if (!recognitionRef.current) {
         startRecognition();
       }
@@ -772,13 +844,23 @@ export function FloatingAdvisoryBot() {
     ? { left: position.x, top: position.y }
     : { right: railRightCss, bottom: 80 };
 
+  const announceLaunchIntent = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('prof-xyreg-launch-intent'));
+  }, []);
+
   if (!open) {
     return (
       <button
         onClick={() => setOpen(true)}
+        onPointerDown={(e) => {
+          announceLaunchIntent();
+          e.stopPropagation();
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
         style={{ right: railRightCss }}
-        className="fixed bottom-[5.5rem] z-50 h-14 w-14 rounded-full bg-[#D4AF37] text-white shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-200 flex items-center justify-center group"
+        className="fixed bottom-[5.5rem] z-[100] h-14 w-14 rounded-full bg-[#D4AF37] text-white shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-200 flex items-center justify-center group"
         title="Technical Advisory Board"
+        data-prof-xyreg-root
       >
         <Users className="h-6 w-6 group-hover:scale-110 transition-transform" />
         <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white animate-pulse" />
@@ -791,8 +873,11 @@ export function FloatingAdvisoryBot() {
 
   return (
     <div
-      className={`fixed z-50 bg-background border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in ${borderClass ? `border-l-4 ${borderClass}` : ''}`}
+      className={`fixed z-[100] bg-background border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-scale-in ${borderClass ? `border-l-4 ${borderClass}` : ''}`}
       style={{ width: currentWidth, height: currentHeight, ...posStyle }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      data-prof-xyreg-root
     >
       <div
         className="flex items-center justify-between px-4 py-3 border-b bg-muted/30 shrink-0 cursor-grab active:cursor-grabbing"
@@ -823,7 +908,23 @@ export function FloatingAdvisoryBot() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {VOICE_OPTIONS.map(v => (
+                <div className="flex border-b border-border mb-1">
+                  <button
+                    type="button"
+                    className={`flex-1 px-2 py-1.5 text-[10px] font-medium transition-colors ${voiceGenderTab === 'male' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                    onMouseDown={(e) => { e.preventDefault(); setVoiceGenderTab('male'); }}
+                  >
+                    Male
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 px-2 py-1.5 text-[10px] font-medium transition-colors ${voiceGenderTab === 'female' ? 'text-primary border-b-2 border-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                    onMouseDown={(e) => { e.preventDefault(); setVoiceGenderTab('female'); }}
+                  >
+                    Female
+                  </button>
+                </div>
+                {VOICE_OPTIONS.filter(v => v.gender === voiceGenderTab).map(v => (
                   <SelectItem key={v.id} value={v.id} className="text-xs">
                     <span className="font-medium">{v.name}</span>
                     <span className="text-muted-foreground ml-1">· {v.desc}</span>
@@ -996,13 +1097,14 @@ export function FloatingAdvisoryBot() {
 
           {/* Input */}
           <div className="border-t px-3 py-2.5 shrink-0">
-            <div className="flex gap-2">
+            <div className="flex items-end gap-2">
               <Textarea
+                autoSize={false}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={`Ask ${selectedAgent.name}...`}
-                className="min-h-[36px] max-h-[80px] resize-none text-xs"
+                className="h-9 min-h-9 max-h-24 resize-none overflow-y-auto text-xs"
                 rows={1}
               />
               {speechSupported && (

@@ -9,7 +9,6 @@ import { EnhancedTemplateUploadDialog } from './document-control/templates/Enhan
 import { TemplateUploadData } from '@/types/templateManagement';
 import { TemplateManagementService } from '@/services/templateManagementService';
 import { useToast } from '@/hooks/use-toast';
-import { SopAutoSeedStatus } from './document-control/SopAutoSeedStatus';
 
 interface TemplatesSettingsProps {
   companyId: string;
@@ -56,9 +55,6 @@ export function TemplatesSettings({ companyId }: TemplatesSettingsProps) {
 
   return (
     <div className="space-y-6" data-tour="document-templates">
-      {/* Foundation SOP auto-seed status & manual backfill */}
-      <SopAutoSeedStatus companyId={companyId} companyName={companyName} />
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

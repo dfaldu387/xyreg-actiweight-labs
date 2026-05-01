@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Plus, GripVertical } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { WIDGET_REGISTRY } from '@/hooks/useDashboardWidgets';
+import { useCustomerFeatureFlag } from '@/hooks/useCustomerFeatureFlag';
 import { Badge } from '@/components/ui/badge';
 import { hasEditorPrivileges } from '@/utils/roleUtils';
 import {
@@ -107,9 +108,14 @@ function SortableWidgetRow({
 
 export function WidgetPalette({ enabledWidgetIds, onToggleWidget, onReorderWidget, userRole }: WidgetPaletteProps) {
   const { lang } = useTranslation();
+  const communicationsEnabled = useCustomerFeatureFlag('communications-threads');
 
   const canViewAdminWidgets = hasEditorPrivileges(userRole || 'viewer');
-  const visibleWidgets = WIDGET_REGISTRY.filter(w => !w.adminOnly || canViewAdminWidgets);
+  const visibleWidgets = WIDGET_REGISTRY.filter(w => {
+    if (w.adminOnly && !canViewAdminWidgets) return false;
+    if (w.id === 'communication-hub' && !communicationsEnabled) return false;
+    return true;
+  });
 
   // Sort: enabled widgets first (in enabledWidgetIds order), then disabled ones in registry order
   const sortedWidgets = [...visibleWidgets].sort((a, b) => {
