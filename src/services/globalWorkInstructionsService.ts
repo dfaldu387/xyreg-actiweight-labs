@@ -43,6 +43,25 @@ export async function listGlobalWIsForSop(
 }
 
 /**
+ * Look up the per-company SOP CI id whose `document_number` matches the
+ * foundational SOP key for the given WI. Returns null if not yet seeded.
+ */
+export async function resolveParentSopCiId(
+  companyId: string,
+  sopTemplateKey: string,
+): Promise<string | null> {
+  if (!companyId || !sopTemplateKey) return null;
+  const { data } = await supabase
+    .from('phase_assigned_document_template')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('document_number', sopTemplateKey)
+    .eq('document_type', 'SOP')
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+/**
  * Resolve (or create) the per-company CI that materializes a global WI.
  * Returns the CI id ready for the DocumentDraftDrawer to open.
  */
@@ -76,6 +95,12 @@ export async function materializeGlobalWIForCompany(opts: {
   }
   const gwi = wi as unknown as GlobalWI;
 
+  // 2b. Resolve the parent SOP CI for this company so we can hard-link the
+  //     WI back to it via `reference_document_ids`. If the SOP hasn't been
+  //     seeded yet for this company, we proceed unlinked — the backfill
+  //     service can repair it later.
+  const parentSopId = await resolveParentSopCiId(companyId, gwi.sop_template_key);
+
   // 3. Per-company number == global number (WI parent + child suffix,
   //    e.g. "WI-QA-002-1"). The child index is scoped to its parent SOP
   //    family so collisions are impossible. If a row with that number
@@ -84,11 +109,23 @@ export async function materializeGlobalWIForCompany(opts: {
   const newNumber = gwi.wi_number;
   const { data: existingByNumber } = await supabase
     .from('phase_assigned_document_template')
-    .select('id')
+    .select('id, reference_document_ids')
     .eq('company_id', companyId)
     .eq('document_number', newNumber)
     .maybeSingle();
   if (existingByNumber?.id) {
+    // Backfill the parent SOP link if the existing row is missing it.
+    if (parentSopId) {
+      const current: string[] = Array.isArray((existingByNumber as any).reference_document_ids)
+        ? ((existingByNumber as any).reference_document_ids as string[])
+        : [];
+      if (!current.includes(parentSopId)) {
+        await supabase
+          .from('phase_assigned_document_template')
+          .update({ reference_document_ids: [...current, parentSopId] } as never)
+          .eq('id', existingByNumber.id);
+      }
+    }
     // Backfill the materialization record so we don't keep re-checking.
     await supabase
       .from('global_wi_company_materializations' as never)
@@ -114,6 +151,7 @@ export async function materializeGlobalWIForCompany(opts: {
       version: '1.0',
       is_record: false,
       derivation_type: 'work_instruction',
+      reference_document_ids: parentSopId ? [parentSopId] : [],
       description: `Materialized from global Work Instruction ${gwi.wi_number} (foundational ${gwi.sop_template_key}).`,
     } as never)
     .select('id')
@@ -137,6 +175,7 @@ export async function materializeGlobalWIForCompany(opts: {
         modules: gwi.modules,
         focus: gwi.focus,
         sop_template_key: gwi.sop_template_key,
+        parent_sop_ci_id: parentSopId,
         materializedAt: new Date().toISOString(),
       } as unknown as Json,
     });
@@ -155,4 +194,25 @@ export async function materializeGlobalWIForCompany(opts: {
     } as never);
 
   return ci.id;
+}
+
+
+/**
+ * Same as `materializeGlobalWIForCompany` but returns a structured result
+ * so callers can surface why the open failed (RLS, missing FK, etc.).
+ */
+export async function materializeGlobalWIForCompanyDetailed(opts: {
+  globalWiId: string;
+  companyId: string;
+  phaseId: string;
+}): Promise<{ ok: true; ciId: string } | { ok: false; reason: string }> {
+  try {
+    const ciId = await materializeGlobalWIForCompany(opts);
+    if (ciId) return { ok: true, ciId };
+    return { ok: false, reason: 'Materialization returned null. Check console for the underlying Supabase error.' };
+  } catch (e) {
+    const msg = (e as Error)?.message ?? String(e);
+    console.error('[globalWI] materialize threw', e);
+    return { ok: false, reason: msg };
+  }
 }

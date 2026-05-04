@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useSidebarState } from '@/hooks/useSidebarState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { isoTooltips } from '@/constants/isoTooltips';
+import { cn } from '@/lib/utils';
 
 interface ProductDefinitionGroupProps {
   userRole: UserRole;
@@ -15,12 +16,14 @@ interface ProductDefinitionGroupProps {
     pathname: string;
     search: string;
   };
+  accentClassName?: string;
 }
 
 export function ProductDefinitionGroup({
   userRole,
   currentProductId,
-  location
+  location,
+  accentClassName,
 }: ProductDefinitionGroupProps) {
   const baseUrl = `/app/product/${currentProductId}`;
   const { expandedMenus, toggleMenuExpansion, setAutoExpansion } = useSidebarState();
@@ -97,10 +100,10 @@ export function ProductDefinitionGroup({
           asChild
           isActive={isProductDefinitionLandingActive}
           tooltip="Device Definition" 
-          className="flex-1 px-3 py-2.5 font-medium text-sm"
+          className={cn("flex-1 px-3 py-2.5 font-medium text-sm", accentClassName)}
         >
           <Link to={productDefinitionPath} className="flex items-center gap-3">
-            <div className={`text-muted-foreground ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
+            <div className={`text-teal-600 [&_svg]:!text-teal-600 ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
               <Info className="h-5 w-5" />
             </div>
             <span>Device Definition</span>
@@ -149,7 +152,7 @@ export function ProductDefinitionGroup({
                         className="px-6 py-2 text-sm"
                       >
                         <Link to={item.path} className="flex items-center gap-3">
-                          <div className="text-muted-foreground">
+                          <div className="text-teal-500">
                             <item.icon className="h-5 w-5" />
                           </div>
                           <span>{item.title}</span>

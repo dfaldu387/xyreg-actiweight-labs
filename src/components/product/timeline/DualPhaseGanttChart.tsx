@@ -8,7 +8,10 @@ import { PhaseGanttChart } from "./PhaseGanttChart";
 import { useActivities } from "@/hooks/useActivities";
 import { useActivityDateSync } from "@/hooks/useActivityDateSync";
 import { useCompanyActivePhases } from "@/hooks/useCompanyActivePhases";
-import { GanttChartV23 } from '@/components/gantt-chart/GanttChart';
+// NOTE: We previously lazy-loaded `GanttChartV23` here, but its `@svar-ui/*`
+// transitive deps fail to resolve in the preview, which breaks the entire
+// Product Dashboard chunk. The read-only timeline now reuses the safe
+// `PhaseGanttChart` (rendered with `isReadOnly` props disabled).
 import { useTranslation } from '@/hooks/useTranslation';
 interface Phase {
   id: string;
@@ -163,24 +166,17 @@ export function DualPhaseGanttChart({
         <div className="min-w-[1200px]">
           {/* All phases combined in one view */}
           {[...preLaunchPhases, ...postLaunchPhases].length > 0 ? (
-            isReadOnly ? (
-              <GanttChartV23
-                productId={product?.id}
-                readonly={true}
-              />
-            ) : (
-              <PhaseGanttChart 
-                phases={[...preLaunchPhases, ...postLaunchPhases]} 
-                product={product} 
-                progress={progress} 
-                onPhaseStartDateChange={onPhaseStartDateChange} 
-                onPhaseEndDateChange={onPhaseEndDateChange} 
-                onBatchPhaseUpdates={onBatchPhaseUpdates} 
-                companyId={companyId}
-                activities={activities}
-                onActivityUpdate={updateActivity}
-              />
-            )
+            <PhaseGanttChart
+              phases={[...preLaunchPhases, ...postLaunchPhases]}
+              product={product}
+              progress={progress}
+              onPhaseStartDateChange={isReadOnly ? undefined : onPhaseStartDateChange}
+              onPhaseEndDateChange={isReadOnly ? undefined : onPhaseEndDateChange}
+              onBatchPhaseUpdates={isReadOnly ? undefined : onBatchPhaseUpdates}
+              companyId={companyId}
+              activities={activities}
+              onActivityUpdate={isReadOnly ? undefined : updateActivity}
+            />
           ) : (
             <Card>
               <CardContent className="py-12 text-center">

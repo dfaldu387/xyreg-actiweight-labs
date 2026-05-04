@@ -7,6 +7,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useSidebarState } from '@/hooks/useSidebarState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { isoTooltips } from '@/constants/isoTooltips';
+import { cn } from '@/lib/utils';
 
 interface OperationsGroupProps {
   userRole: UserRole;
@@ -15,13 +16,15 @@ interface OperationsGroupProps {
     pathname: string;
     search: string;
   };
+  accentClassName?: string;
 }
 
 
 export function OperationsGroup({
   userRole,
   currentCompany,
-  location
+  location,
+  accentClassName,
 }: OperationsGroupProps) {
   const baseUrl = `/app/company/${encodeURIComponent(currentCompany)}`;
   const { expandedMenus, toggleMenuExpansion, setAutoExpansion } = useSidebarState();
@@ -69,10 +72,10 @@ export function OperationsGroup({
       <div className="flex items-center gap-3 w-full">
         <SidebarMenuButton
           tooltip="Operations"
-          className="flex-1 px-3 py-2.5 font-medium text-sm cursor-pointer"
+          className={cn("flex-1 px-3 py-2.5 font-medium text-sm cursor-pointer", accentClassName)}
         >
           <div className="flex items-center gap-3">
-            <div className={`text-muted-foreground ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
+            <div className={`text-blue-600 [&_svg]:!text-blue-600 ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
               <Settings className="h-5 w-5" />
             </div>
             <span>Operations</span>
@@ -104,7 +107,7 @@ export function OperationsGroup({
                           className="px-6 py-2 text-sm"
                         >
                           <Link to={item.path} className="flex items-center gap-3">
-                            <div className="text-muted-foreground">
+                            <div className="text-blue-500">
                               <item.icon className="h-5 w-5" />
                             </div>
                             <span>{item.title}</span>

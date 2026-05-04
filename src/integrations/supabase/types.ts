@@ -5533,6 +5533,66 @@ export type Database = {
         }
         Relationships: []
       }
+      consulting_hours_log: {
+        Row: {
+          amount_paid: number | null
+          company_id: string
+          created_at: string | null
+          currency: string | null
+          description: string | null
+          hours: number
+          id: string
+          metadata: Json | null
+          stripe_invoice_id: string | null
+          stripe_session_id: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount_paid?: number | null
+          company_id: string
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          hours: number
+          id?: string
+          metadata?: Json | null
+          stripe_invoice_id?: string | null
+          stripe_session_id?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount_paid?: number | null
+          company_id?: string
+          created_at?: string | null
+          currency?: string | null
+          description?: string | null
+          hours?: number
+          id?: string
+          metadata?: Json | null
+          stripe_invoice_id?: string | null
+          stripe_session_id?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "consulting_hours_log_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "consulting_hours_log_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+        ]
+      }
       contextual_suggestions: {
         Row: {
           actioned_at: string | null
@@ -8537,6 +8597,65 @@ export type Database = {
         }
         Relationships: []
       }
+      document_user_comments: {
+        Row: {
+          anchor: Json | null
+          assignee_id: string | null
+          author_id: string
+          author_name: string | null
+          company_id: string
+          content: string
+          created_at: string
+          document_id: string
+          id: string
+          is_resolved: boolean
+          mentioned_user_ids: string[]
+          parent_id: string | null
+          quoted_text: string | null
+          updated_at: string
+        }
+        Insert: {
+          anchor?: Json | null
+          assignee_id?: string | null
+          author_id: string
+          author_name?: string | null
+          company_id: string
+          content: string
+          created_at?: string
+          document_id: string
+          id?: string
+          is_resolved?: boolean
+          mentioned_user_ids?: string[]
+          parent_id?: string | null
+          quoted_text?: string | null
+          updated_at?: string
+        }
+        Update: {
+          anchor?: Json | null
+          assignee_id?: string | null
+          author_id?: string
+          author_name?: string | null
+          company_id?: string
+          content?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          is_resolved?: boolean
+          mentioned_user_ids?: string[]
+          parent_id?: string | null
+          quoted_text?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_user_comments_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "document_user_comments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_versions: {
         Row: {
           change_summary: string | null
@@ -9287,28 +9406,37 @@ export type Database = {
       esign_otp_codes: {
         Row: {
           code: string
+          company_id: string | null
           created_at: string | null
           email: string
           expires_at: string
           id: string
+          last_redirect_at: string | null
+          remember_minutes: number | null
           used: boolean | null
           user_id: string
         }
         Insert: {
           code: string
+          company_id?: string | null
           created_at?: string | null
           email: string
           expires_at: string
           id?: string
+          last_redirect_at?: string | null
+          remember_minutes?: number | null
           used?: boolean | null
           user_id: string
         }
         Update: {
           code?: string
+          company_id?: string | null
           created_at?: string | null
           email?: string
           expires_at?: string
           id?: string
+          last_redirect_at?: string | null
+          remember_minutes?: number | null
           used?: boolean | null
           user_id?: string
         }
@@ -14977,6 +15105,7 @@ export type Database = {
           ai_booster_packs: number | null
           cancelled_at: string | null
           company_id: string
+          consulting_hours: number | null
           created_at: string | null
           expires_at: string | null
           extra_devices: number | null
@@ -14994,6 +15123,7 @@ export type Database = {
           ai_booster_packs?: number | null
           cancelled_at?: string | null
           company_id: string
+          consulting_hours?: number | null
           created_at?: string | null
           expires_at?: string | null
           extra_devices?: number | null
@@ -15011,6 +15141,7 @@ export type Database = {
           ai_booster_packs?: number | null
           cancelled_at?: string | null
           company_id?: string
+          consulting_hours?: number | null
           created_at?: string | null
           expires_at?: string | null
           extra_devices?: number | null
@@ -26388,6 +26519,8 @@ export type Database = {
       }
       training_modules: {
         Row: {
+          attestation_text: string
+          auto_generated: boolean
           company_id: string
           created_at: string | null
           delivery_method: string
@@ -26398,14 +26531,22 @@ export type Database = {
           group_name: string | null
           id: string
           is_active: boolean | null
+          max_attempts: number
+          minimum_read_seconds: number
           name: string
+          pass_threshold: number
+          requires_quiz: boolean
           requires_signature: boolean | null
+          source_document_id: string | null
+          source_version: string | null
           type: string
           updated_at: string | null
           validity_days: number | null
           version: string | null
         }
         Insert: {
+          attestation_text?: string
+          auto_generated?: boolean
           company_id: string
           created_at?: string | null
           delivery_method?: string
@@ -26416,14 +26557,22 @@ export type Database = {
           group_name?: string | null
           id?: string
           is_active?: boolean | null
+          max_attempts?: number
+          minimum_read_seconds?: number
           name: string
+          pass_threshold?: number
+          requires_quiz?: boolean
           requires_signature?: boolean | null
+          source_document_id?: string | null
+          source_version?: string | null
           type: string
           updated_at?: string | null
           validity_days?: number | null
           version?: string | null
         }
         Update: {
+          attestation_text?: string
+          auto_generated?: boolean
           company_id?: string
           created_at?: string | null
           delivery_method?: string
@@ -26434,8 +26583,14 @@ export type Database = {
           group_name?: string | null
           id?: string
           is_active?: boolean | null
+          max_attempts?: number
+          minimum_read_seconds?: number
           name?: string
+          pass_threshold?: number
+          requires_quiz?: boolean
           requires_signature?: boolean | null
+          source_document_id?: string | null
+          source_version?: string | null
           type?: string
           updated_at?: string | null
           validity_days?: number | null
@@ -26470,6 +26625,102 @@ export type Database = {
             referencedRelation: "documents"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "training_modules_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "company_template_documents_by_phase"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "training_modules_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_quiz_attempts: {
+        Row: {
+          answers: Json
+          attempted_at: string
+          id: string
+          passed: boolean
+          record_id: string
+          score: number
+          user_id: string
+        }
+        Insert: {
+          answers: Json
+          attempted_at?: string
+          id?: string
+          passed: boolean
+          record_id: string
+          score: number
+          user_id: string
+        }
+        Update: {
+          answers?: Json
+          attempted_at?: string
+          id?: string
+          passed?: boolean
+          record_id?: string
+          score?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_quiz_attempts_record_id_fkey"
+            columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "training_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      training_quiz_questions: {
+        Row: {
+          correct_index: number
+          created_at: string
+          explanation: string | null
+          id: string
+          module_id: string
+          options: Json
+          order_index: number
+          question: string
+          updated_at: string
+        }
+        Insert: {
+          correct_index: number
+          created_at?: string
+          explanation?: string | null
+          id?: string
+          module_id: string
+          options: Json
+          order_index?: number
+          question: string
+          updated_at?: string
+        }
+        Update: {
+          correct_index?: number
+          created_at?: string
+          explanation?: string | null
+          id?: string
+          module_id?: string
+          options?: Json
+          order_index?: number
+          question?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_quiz_questions_module_id_fkey"
+            columns: ["module_id"]
+            isOneToOne: false
+            referencedRelation: "training_modules"
+            referencedColumns: ["id"]
+          },
         ]
       }
       training_records: {
@@ -26483,12 +26734,21 @@ export type Database = {
           due_date: string | null
           expires_at: string | null
           id: string
+          phase: string
           previous_record_id: string | null
+          quiz_attempts_count: number
+          quiz_passed_at: string | null
+          quiz_score: number | null
+          read_completed_at: string | null
+          read_seconds: number
+          read_started_at: string | null
           reissue_reason: string | null
           role_requirement_id: string | null
           scheduled_session_date: string | null
           score: number | null
           signature_data: Json | null
+          signature_hash: string | null
+          signed_at: string | null
           started_at: string | null
           status: string
           training_module_id: string
@@ -26505,12 +26765,21 @@ export type Database = {
           due_date?: string | null
           expires_at?: string | null
           id?: string
+          phase?: string
           previous_record_id?: string | null
+          quiz_attempts_count?: number
+          quiz_passed_at?: string | null
+          quiz_score?: number | null
+          read_completed_at?: string | null
+          read_seconds?: number
+          read_started_at?: string | null
           reissue_reason?: string | null
           role_requirement_id?: string | null
           scheduled_session_date?: string | null
           score?: number | null
           signature_data?: Json | null
+          signature_hash?: string | null
+          signed_at?: string | null
           started_at?: string | null
           status?: string
           training_module_id: string
@@ -26527,12 +26796,21 @@ export type Database = {
           due_date?: string | null
           expires_at?: string | null
           id?: string
+          phase?: string
           previous_record_id?: string | null
+          quiz_attempts_count?: number
+          quiz_passed_at?: string | null
+          quiz_score?: number | null
+          read_completed_at?: string | null
+          read_seconds?: number
+          read_started_at?: string | null
           reissue_reason?: string | null
           role_requirement_id?: string | null
           scheduled_session_date?: string | null
           score?: number | null
           signature_data?: Json | null
+          signature_hash?: string | null
+          signed_at?: string | null
           started_at?: string | null
           status?: string
           training_module_id?: string
@@ -26841,6 +27119,7 @@ export type Database = {
           is_internal: boolean
           is_invite_user: boolean | null
           is_primary: boolean
+          job_title: string | null
           last_accessed_at: string | null
           updated_at: string
           user_id: string
@@ -26859,6 +27138,7 @@ export type Database = {
           is_internal?: boolean
           is_invite_user?: boolean | null
           is_primary?: boolean
+          job_title?: string | null
           last_accessed_at?: string | null
           updated_at?: string
           user_id: string
@@ -26877,6 +27157,7 @@ export type Database = {
           is_internal?: boolean
           is_invite_user?: boolean | null
           is_primary?: boolean
+          job_title?: string | null
           last_accessed_at?: string | null
           updated_at?: string
           user_id?: string

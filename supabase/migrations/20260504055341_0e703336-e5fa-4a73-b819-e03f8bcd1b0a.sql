@@ -1,0 +1,1 @@
+ALTER TABLE public.user_company_access ADD COLUMN IF NOT EXISTS job_title text;

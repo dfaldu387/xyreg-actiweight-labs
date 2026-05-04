@@ -21,6 +21,9 @@ import {
   Link2,
   Link2Off,
   Check,
+  ChevronRight,
+  Loader2,
+  ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -68,6 +71,12 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 import { formatSopDisplayId } from '@/constants/sopAutoSeedTiers';
+import { SOP_FULL_CONTENT } from '@/data/sopFullContent';
+import {
+  listGlobalWIsForSop,
+  materializeGlobalWIForCompany,
+  type GlobalWI,
+} from '@/services/globalWorkInstructionsService';
 
 interface NodeSOPRequirementsDialogProps {
   open: boolean;
@@ -162,16 +171,109 @@ function SOPRow({
   );
   const { setLink, clearLink } = useManualSopLinkMutations(companyId);
 
+  // ── Work Instruction sub-list ─────────────────────────────────────────
+  const [wiOpen, setWiOpen] = useState(false);
+  const [wis, setWis] = useState<GlobalWI[] | null>(null);
+  const [wisLoading, setWisLoading] = useState(false);
+  const [wiBusyId, setWiBusyId] = useState<string | null>(null);
+
+  // Lazy-load WIs the first time the row is expanded.
+  useEffect(() => {
+    if (!wiOpen || wis !== null) return;
+    let cancelled = false;
+    setWisLoading(true);
+    listGlobalWIsForSop(sop.sopNumber)
+      .then((rows) => {
+        if (!cancelled) setWis(rows);
+      })
+      .finally(() => {
+        if (!cancelled) setWisLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [wiOpen, wis, sop.sopNumber]);
+
+  // Pre-fetch the count once so we can show a badge without expanding.
+  const [wiCount, setWiCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    listGlobalWIsForSop(sop.sopNumber).then((rows) => {
+      if (!cancelled) {
+        setWiCount(rows.length);
+        // Cache rows so expand is instant on the first click.
+        if (rows.length > 0) setWis(rows);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [sop.sopNumber]);
+
+  const handleOpenWI = async (wi: GlobalWI) => {
+    if (!companyId) {
+      toast.error('Cannot open WI — missing company context');
+      return;
+    }
+    // Resolve the phase id from any existing CI in this company. Foundation
+    // SOPs all share the same company-level phase, so any one works.
+    setWiBusyId(wi.id);
+    try {
+      const { data: anyCI } = await supabase
+        .from('phase_assigned_document_template')
+        .select('phase_id')
+        .eq('company_id', companyId)
+        .not('phase_id', 'is', null)
+        .limit(1)
+        .maybeSingle();
+      const phaseId = (anyCI as { phase_id?: string } | null)?.phase_id;
+      if (!phaseId) {
+        toast.error('No company phase found to anchor the WI');
+        return;
+      }
+      const ciId = await materializeGlobalWIForCompany({
+        globalWiId: wi.id,
+        companyId,
+        phaseId,
+      });
+      if (!ciId) {
+        toast.error('Failed to open Work Instruction');
+        return;
+      }
+      onViewSOP?.(ciId);
+    } finally {
+      setWiBusyId(null);
+    }
+  };
+
+  const hasWIs = (wiCount ?? 0) > 0;
+
   return (
-    <div 
+    <div
       className={cn(
-        'flex items-center justify-between p-3 rounded-lg border',
+        'rounded-lg border',
         isMissing && 'border-red-200 bg-red-50/50',
         isNotApplicable && 'border-slate-200 bg-slate-50/60 opacity-75',
         !isMissing && !isNotApplicable && 'border-slate-200 bg-white',
       )}
     >
-      <div className="flex-1 min-w-0">
+      <div className="flex items-center justify-between p-3">
+      <div className="flex-1 min-w-0 flex items-start gap-1">
+        {hasWIs ? (
+          <button
+            type="button"
+            onClick={() => setWiOpen((v) => !v)}
+            className="mt-0.5 p-0.5 rounded hover:bg-slate-100 text-slate-500 flex-shrink-0"
+            aria-label={wiOpen ? 'Hide Work Instructions' : 'Show Work Instructions'}
+          >
+            <ChevronRight
+              className={cn('h-3.5 w-3.5 transition-transform', wiOpen && 'rotate-90')}
+            />
+          </button>
+        ) : (
+          <span className="w-[18px] flex-shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <FileText className="h-4 w-4 text-slate-500 flex-shrink-0" />
           <span className="font-mono text-sm font-semibold text-slate-700">
@@ -193,6 +295,15 @@ function SOPRow({
               Linked
             </Badge>
           )}
+          {hasWIs && (
+            <Badge
+              variant="outline"
+              className="text-[9px] px-1 py-0 h-4 border-purple-200 bg-purple-50 text-purple-600 font-normal"
+            >
+              <ListChecks className="h-2.5 w-2.5 mr-0.5" />
+              {wiCount} WI{wiCount === 1 ? '' : 's'}
+            </Badge>
+          )}
         </div>
         <p className="text-sm font-medium text-slate-900 truncate">
           {status.documentName}
@@ -200,6 +311,7 @@ function SOPRow({
         <p className="text-xs text-slate-500 line-clamp-1">
           {sop.clauseDescription}
         </p>
+        </div>
       </div>
       
       <div className="flex items-center gap-2 ml-3 flex-shrink-0">
@@ -247,7 +359,7 @@ function SOPRow({
                     {status.manuallyLinked ? 'Change' : 'Link'}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[320px] p-0" align="end">
+                <PopoverContent className="w-[320px] p-0 z-[80]" align="end">
                   <Command>
                     <CommandInput placeholder="Search documents..." />
                     <CommandList>
@@ -327,6 +439,55 @@ function SOPRow({
           </>
         )}
       </div>
+      </div>
+
+      {hasWIs && wiOpen && (
+        <div className="border-t border-slate-100 bg-slate-50/60 px-3 py-2">
+          {wisLoading && !wis ? (
+            <div className="flex items-center text-[11px] text-slate-500 py-1">
+              <Loader2 className="h-3 w-3 animate-spin mr-2" /> Loading Work Instructions…
+            </div>
+          ) : (
+            <ul className="space-y-1 ml-5">
+              {(wis || []).map((wi) => (
+                <li
+                  key={wi.id}
+                  className="flex items-center justify-between gap-2 px-2 py-1 rounded border border-slate-200 bg-white text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate">
+                      <span className="font-mono text-slate-500 mr-1.5">
+                        {wi.wi_number}
+                      </span>
+                      <span className="font-medium text-slate-800">{wi.title}</span>
+                    </div>
+                    {wi.focus && (
+                      <div className="text-[10px] text-slate-500 truncate">
+                        {wi.focus}
+                      </div>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px] shrink-0"
+                    onClick={() => handleOpenWI(wi)}
+                    disabled={wiBusyId === wi.id}
+                  >
+                    {wiBusyId === wi.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <>
+                        <ExternalLink className="h-3 w-3 mr-1" /> View
+                      </>
+                    )}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -355,17 +516,6 @@ export function NodeSOPRequirementsDialog({
     isNew?: boolean;
   } | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
-
-  // While the in-place drawer is open, add a body-level class so a small
-  // CSS rule can lift the MUI Drawer (portaled to document.body) above the
-  // Radix Dialog (which uses z-[60]). Scoped to this dialog only — other
-  // drawers in the app keep their normal stacking.
-  useEffect(() => {
-    if (drawerDoc) {
-      document.body.classList.add('sop-drawer-on-top');
-      return () => document.body.classList.remove('sop-drawer-on-top');
-    }
-  }, [drawerDoc]);
 
   // Open existing document in-place — fetch metadata, then mount the drawer.
   const handleViewInPlace = async (documentId: string) => {
@@ -409,7 +559,8 @@ export function NodeSOPRequirementsDialog({
   const missingCount = sopStatuses?.filter(s => s.status === 'missing').length ?? 0;
 
   // Auto-open the drawer for a specific SOP when requested via chip click.
-  // Runs once per open+autoOpenSop combo, after status resolves.
+  // Runs once per open+autoOpenSop combo. Chip launches should go straight
+  // into Document Studio without first showing the SOP requirements popup.
   const autoOpenedRef = React.useRef<string | null>(null);
   useEffect(() => {
     if (!open) {
@@ -419,63 +570,39 @@ export function NodeSOPRequirementsDialog({
     if (!autoOpenSop) return;
     const key = `${autoOpenSop.sopNumber}:${autoOpenSop.documentId || ''}`;
     if (autoOpenedRef.current === key) return;
-    if (drawerDoc) return;
-    // If we already know the documentId, open it directly without waiting.
+    if (drawerDoc || drawerLoading) return;
+    autoOpenedRef.current = key;
+
+    // If status is already resolved and linked, prefer opening the existing
+    // document even when the chip payload did not include the CI id yet.
+    const resolvedStatus = sopStatuses?.find((s) => s.sopNumber === autoOpenSop.sopNumber);
+    const resolvedDocumentId = autoOpenSop.documentId || resolvedStatus?.documentId;
+
     if (autoOpenSop.documentId) {
-      autoOpenedRef.current = key;
       handleViewInPlace(autoOpenSop.documentId);
       return;
     }
-    // Otherwise wait for sopStatuses to resolve so we can pick view vs create.
-    if (isLoading || !sopStatuses) return;
-    const status = sopStatuses.find((s) => s.sopNumber === autoOpenSop.sopNumber);
-    autoOpenedRef.current = key;
-    if (status?.documentId) {
-      handleViewInPlace(status.documentId);
+    if (resolvedDocumentId) {
+      handleViewInPlace(resolvedDocumentId);
     } else {
       const rec = recommendations.find((r) => r.sopNumber === autoOpenSop.sopNumber);
       handleCreateInPlace(
         autoOpenSop.sopNumber,
-        status?.documentName || rec?.clauseDescription || autoOpenSop.sopNumber,
+        resolvedStatus?.documentName || rec?.clauseDescription || autoOpenSop.sopNumber,
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, autoOpenSop, sopStatuses, isLoading]);
+  }, [open, autoOpenSop, sopStatuses, drawerDoc, drawerLoading, recommendations]);
+
+  const shouldShowRequirementsDialog = open && !drawerDoc && !drawerLoading && !autoOpenSop;
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      // While the in-place drawer is open, switch the dialog to non-modal
-      // so Radix releases the focus trap and stops applying pointer-events:
-      // none / aria-hidden to siblings (which was making the drawer
-      // unclickable until the user touched the page chrome).
-      modal={!drawerDoc}
-    >
+    <Dialog open={shouldShowRequirementsDialog} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
           'transition-all duration-200',
-          // Default: centered modal.
-          !drawerDoc && 'max-w-3xl w-[92vw]',
-          // Drawer open: dock to the left edge as a slim companion panel so
-          // the user keeps the SOP list as context alongside the document.
-          drawerDoc &&
-            '!left-4 !top-4 !translate-x-0 !translate-y-0 !max-w-[360px] !w-[360px] !max-h-[calc(100vh-2rem)] !p-4 !shadow-xl !overflow-y-auto',
+          'max-w-3xl w-[92vw]',
         )}
-        // Prevent Radix from auto-closing the dialog when the user clicks
-        // inside the drawer, and don't steal focus back from the drawer.
-        onPointerDownOutside={(e) => {
-          if (drawerDoc) e.preventDefault();
-        }}
-        onInteractOutside={(e) => {
-          if (drawerDoc) e.preventDefault();
-        }}
-        onOpenAutoFocus={(e) => {
-          if (drawerDoc) e.preventDefault();
-        }}
-        onCloseAutoFocus={(e) => {
-          if (drawerDoc) e.preventDefault();
-        }}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -489,12 +616,6 @@ export function NodeSOPRequirementsDialog({
             </DialogDescription>
           )}
         </DialogHeader>
-
-        {/* Numbering format hint — explains why some SOPs carry MF/RA/etc. sub-prefixes */}
-        <p className="text-[11px] text-slate-500 -mt-1 leading-snug">
-          Numbering uses Xyreg's 3-part format <span className="font-mono">SOP-{'{area}'}-{'{number}'}</span>.
-          Design Transfer (SOP-010) shows as <span className="font-mono">SOP-MF-010</span> because it sits in the manufacturing scope.
-        </p>
 
         {/* Stats summary */}
         <div className="flex items-center gap-4 py-2 px-3 bg-slate-50 rounded-lg">
@@ -535,7 +656,7 @@ export function NodeSOPRequirementsDialog({
                   sopStatuses?.find((s) => s.sopNumber === sop.sopNumber) ?? {
                     sopNumber: sop.sopNumber,
                     displayId: formatSopDisplayId(sop.sopNumber),
-                    documentName: sop.sopNumber,
+                    documentName: SOP_FULL_CONTENT[sop.sopNumber]?.title || sop.sopNumber,
                     status: 'missing',
                   };
                 return (
@@ -563,13 +684,19 @@ export function NodeSOPRequirementsDialog({
         )}
       </DialogContent>
 
-      {/* In-place document drawer — opens on top of this dialog so the user
-          stays on the QMS Foundation page. */}
+      {/* In-place document drawer — when it opens, the SOP popup is hidden so
+          closing the drawer is a single-step exit back to the map. */}
       {drawerDoc && (
           <DocumentDraftDrawer
             open={true}
             onOpenChange={(o) => {
-              if (!o) setDrawerDoc(null);
+              if (!o) {
+                // Close the document drawer AND the SOP requirements dialog
+                // in one action — otherwise closing the drawer would leave
+                // the SOP popup visible underneath, requiring a second close.
+                setDrawerDoc(null);
+                onOpenChange(false);
+              }
             }}
             documentId={drawerDoc.id}
             documentName={drawerDoc.name}
@@ -577,8 +704,14 @@ export function NodeSOPRequirementsDialog({
             companyId={companyId}
             companyName={companyName}
             isNewUnsavedDocument={drawerDoc.isNew}
-            onDocumentSaved={() => setDrawerDoc(null)}
-            onDocumentCreated={() => setDrawerDoc(null)}
+            onDocumentSaved={() => {
+              setDrawerDoc(null);
+              onOpenChange(false);
+            }}
+            onDocumentCreated={() => {
+              setDrawerDoc(null);
+              onOpenChange(false);
+            }}
             disableSopMentions
           />
       )}

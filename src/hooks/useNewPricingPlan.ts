@@ -121,7 +121,7 @@ export function useNewPricingPlan(): UseNewPricingPlanReturn {
 
       if (companyPlanData) {
         return {
-          companyPlan: companyPlanData as NewPricingCompanyPlan,
+          companyPlan: companyPlanData as unknown as NewPricingCompanyPlan,
           plan: companyPlanData.plan as NewPricingPlan
         };
       }

@@ -7,6 +7,7 @@ import { UserRole } from '@/types/documentTypes';
 import { useSidebarState } from '@/hooks/useSidebarState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { isoTooltips } from '@/constants/isoTooltips';
+import { cn } from '@/lib/utils';
 
 interface MilestonesGroupProps {
   userRole: UserRole;
@@ -15,12 +16,14 @@ interface MilestonesGroupProps {
     pathname: string;
     search: string;
   };
+  accentClassName?: string;
 }
 
 export function MilestonesGroup({
   userRole,
   currentProductId,
-  location
+  location,
+  accentClassName,
 }: MilestonesGroupProps) {
   const { expandedMenus, toggleMenuExpansion, setAutoExpansion } = useSidebarState();
   const { state: sidebarState } = useSidebar();
@@ -56,10 +59,10 @@ export function MilestonesGroup({
           asChild
           isActive={isMilestonesActive}
           tooltip="Development Lifecycle" 
-          className="flex-1 px-3 py-2.5 font-medium text-sm"
+          className={cn("flex-1 px-3 py-2.5 font-medium text-sm", accentClassName)}
         >
           <Link to={milestonesPath} className="flex items-center gap-3">
-            <div className={`text-muted-foreground ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
+            <div className={`text-blue-600 [&_svg]:!text-blue-600 ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
               <Flag className="h-5 w-5" />
             </div>
             {!isCollapsed && <span>Development Lifecycle</span>}
@@ -89,7 +92,7 @@ export function MilestonesGroup({
                       className="px-6 py-2 text-sm"
                     >
                       <Link to={clinicalTrialsPath} className="flex items-center gap-3">
-                        <div className="text-muted-foreground">
+                        <div className="text-blue-500">
                           <Microscope className="h-5 w-5" />
                         </div>
                         <span>Clinical Trials</span>

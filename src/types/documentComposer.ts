@@ -51,22 +51,23 @@ export interface DocumentControl {
   effectiveDate: Date;
   nextReviewDate?: Date;
   documentOwner: string;
+  documentOwnerTitle?: string;
   preparedBy: {
     name: string;
     title: string;
-    date: Date;
+    date: Date | string | null;
     signature?: string;
   };
   reviewedBy: {
     name: string;
     title: string;
-    date: Date;
+    date: Date | string | null;
     signature?: string;
   };
   approvedBy: {
     name: string;
     title: string;
-    date: Date;
+    date: Date | string | null;
     signature?: string;
   };
 }

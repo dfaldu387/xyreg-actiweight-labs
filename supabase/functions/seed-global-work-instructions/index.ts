@@ -161,7 +161,7 @@ async function generateWI(
   }
 }
 
-function sectionsFromWI(wi: WIPayload, sourceTitle: string) {
+function sectionsFromWI(wi: WIPayload, sourceTitle: string, sourceSopNumber: string | null) {
   const escape = (s: string) => String(s ?? "")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const para = (html: string) => ({ type: "paragraph", content: html });
@@ -188,7 +188,9 @@ function sectionsFromWI(wi: WIPayload, sourceTitle: string) {
       `<ul>${(wi.acceptance ?? []).map((a) => `<li>${escape(a)}</li>`).join("")}</ul>`,
     )] },
     { id: "reference", title: "5. Reference", content: [para(
-      `<p>Derived from foundational SOP: ${escape(sourceTitle)}.</p>`,
+      sourceSopNumber
+        ? `<p>Derived from foundational SOP: ${escape(sourceSopNumber)} ${escape(sourceTitle)}.</p>`
+        : `<p>Derived from foundational SOP: ${escape(sourceTitle)}.</p>`,
     )] },
     { id: "approval", title: "6. Approval & Change Control", content: [para(
       `<p>Version 1.0 — Authorised under <strong>CCR-PENDING</strong>. Subsequent revisions require a new Change Control Record (CCR) per SOP-006 Change Control. The authorising CCR number will be linked here once the CCR is approved.</p>`,
@@ -274,7 +276,12 @@ serve(async (req) => {
 
         // Child suffix: WI-QA-002-1, WI-QA-002-2, ...
         const wiNumber = `${parentNumber}-${i + 1}`;
-        const sections = sectionsFromWI(wi, sop.title);
+        // Derive the parent SOP number from the WI parent number so the
+        // Reference section becomes a clickable chip in the editor.
+        const sourceSopNumber = parentNumber.startsWith("WI-")
+          ? parentNumber.replace(/^WI-/, "SOP-")
+          : null;
+        const sections = sectionsFromWI(wi, sop.title, sourceSopNumber);
         const cleanedTitle = sanitizeWITitle(wi.title, `Work Instruction — ${focusText}`);
         // Merge curated roles with AI-suggested roles, dedupe.
         const mergedRoles = Array.from(

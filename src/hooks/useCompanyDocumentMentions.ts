@@ -11,6 +11,8 @@ export interface CompanyDocumentMention {
   document_type?: string;
   document_number?: string;
   document_reference?: string;
+  sub_section?: string;
+  status?: string;
 }
 
 /**
@@ -37,7 +39,7 @@ export function useCompanyDocumentMentions(companyId?: string, enabled: boolean 
       // wrongly rendered as missing and triggered the create dialog.
       const { data, error } = await supabase
         .from('phase_assigned_document_template')
-        .select('id, name, document_reference, document_number, status, document_type, document_scope')
+        .select('id, name, document_reference, document_number, status, document_type, document_scope, sub_section')
         .eq('company_id', companyId)
         .in('document_scope', ['company_document', 'company_template'])
         .is('product_id', null)
@@ -71,6 +73,8 @@ export function useCompanyDocumentMentions(companyId?: string, enabled: boolean 
           document_type: docType,
           document_number: r.document_number || undefined,
           document_reference: r.document_reference || undefined,
+          sub_section: r.sub_section || undefined,
+          status: r.status || undefined,
         });
       }
       setItems(out);

@@ -15,7 +15,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { formatDuration } from "@/hooks/useCompanyTime";
 import { getCompanyTime, type CompanyTimeData } from "@/hooks/useCompanyTimesBatch";
 import { supabase } from "@/integrations/supabase/client";
-import { DashboardOtpDialog } from "@/components/DashboardOtpDialog";
+import { DashboardOtpDialog, isOtpRemembered } from "@/components/DashboardOtpDialog";
 
 interface ClientCardProps {
   client: Client;
@@ -124,6 +124,21 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
         // Get current user info for OTP
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+          // Skip OTP if remembered (per-user per-company from DB)
+          if (await isOtpRemembered(user.id, client.id)) {
+            setTargetAppUrl(company.app_url);
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+              const url = new URL(company.app_url);
+              url.searchParams.set("access_token", session.access_token);
+              url.searchParams.set("refresh_token", session.refresh_token);
+              url.searchParams.set("company_id", client.id);
+              url.searchParams.set("company_name", client.name);
+              window.location.href = url.toString();
+              return;
+            }
+          }
+
           setOtpUserEmail(user.email || "");
           setOtpUserId(user.id);
           setOtpUserName(
@@ -262,6 +277,7 @@ export function ClientCard({ client, onClientSelect, onCompanyDashboardClick, di
         userId={otpUserId}
         userName={otpUserName}
         companyName={client.name}
+        companyId={client.id}
       />
     </Card>
   );

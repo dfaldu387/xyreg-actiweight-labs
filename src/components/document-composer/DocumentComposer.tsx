@@ -967,33 +967,52 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
   };
 
   const handleDocumentControlChange = (field: string, value: string) => {
-    const currentTemplate = generatedTemplate;
-    if (!currentTemplate) return;
+    let updatedTemplate: any = null;
+    setGeneratedTemplate((prev: any) => {
+      if (!prev) return prev;
+      const dc: any = { ...(prev.documentControl || {}) };
 
-    const dc: any = { ...(currentTemplate.documentControl || {}) };
+      if (field === 'documentOwner') {
+        dc.documentOwner = value || undefined;
+      } else if (field === 'documentOwnerTitle') {
+        dc.documentOwnerTitle = value || undefined;
+      } else if (field === 'documentTitle') {
+        dc.documentTitle = value;
+      } else if (field === 'sopNumber') {
+        dc.sopNumber = value;
+      } else if (field === 'version') {
+        dc.version = value;
+      } else if (field === 'effectiveDate') {
+        dc.effectiveDate = value ? new Date(value) : undefined;
+      } else if (field === 'nextReviewDate') {
+        dc.nextReviewDate = value ? new Date(value) : undefined;
+      } else if (field.startsWith('preparedBy.') || field.startsWith('reviewedBy.') || field.startsWith('approvedBy.')) {
+        const [prefix, sub] = field.split('.');
+        const existing = dc[prefix] || { name: '', title: '', date: new Date() };
+        dc[prefix] = { ...existing, [sub]: value || '' };
+      }
 
-    if (field === 'documentOwner') {
-      dc.documentOwner = value || undefined;
-    } else if (field === 'documentTitle') {
-      dc.documentTitle = value;
-    } else if (field === 'sopNumber') {
-      dc.sopNumber = value;
-    } else if (field === 'version') {
-      dc.version = value;
-    } else if (field === 'effectiveDate') {
-      dc.effectiveDate = value ? new Date(value) : undefined;
-    } else if (field === 'nextReviewDate') {
-      dc.nextReviewDate = value ? new Date(value) : undefined;
-    } else if (field.startsWith('preparedBy.')) {
-      dc.preparedBy = { ...(dc.preparedBy || {}), name: value || '' };
-    } else if (field.startsWith('reviewedBy.')) {
-      dc.reviewedBy = { ...(dc.reviewedBy || {}), name: value || '' };
-    } else if (field.startsWith('approvedBy.')) {
-      dc.approvedBy = { ...(dc.approvedBy || {}), name: value || '' };
+      updatedTemplate = { ...prev, documentControl: dc };
+      return updatedTemplate;
+    });
+
+    if (!updatedTemplate) return;
+
+    // Persist so signature/owner choices survive reopening the drawer.
+    const templateId = updatedTemplate.id || 'temp-template';
+    try {
+      DocumentTemplatePersistenceService.saveTemplateToLocalStorage(templateId, updatedTemplate);
+    } catch (e) {
+      console.warn('Local persistence failed:', e);
     }
-
-    const updatedTemplate = { ...currentTemplate, documentControl: dc };
-    setGeneratedTemplate(updatedTemplate);
+    if (activeCompanyRole?.companyId) {
+      DocumentStudioPersistenceService.debouncedSave(
+        templateId,
+        updatedTemplate,
+        activeCompanyRole.companyId,
+        1000
+      );
+    }
   };
 
   const handleAIGenerate = async () => {

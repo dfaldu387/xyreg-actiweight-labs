@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Sparkles, Users, MessageCircle, X, GripVertical, Plus } from 'lucide-react';
+import { Sparkles, MessageCircle, X, GripVertical, Plus, Move, PanelRightOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DocumentAIChatPanel } from './DocumentAIChatPanel';
-import { DocumentChatPanel } from './DocumentChatPanel';
 import { DocxCommentSidebar } from '@/components/review/DocxCommentSidebar';
 import { DocxCommentHighlighter } from '@/components/review/DocxCommentHighlighter';
 import { useDocxComments } from '@/hooks/useDocxComments';
 import { DocumentTemplate } from '@/types/documentComposer';
 import { useRegisterRightRail } from '@/context/RightRailContext';
 
-export type RightPanelTab = 'ai' | 'team' | 'comments';
+export type RightPanelTab = 'ai' | 'comments';
 
 interface RightPanelProps {
   template: DocumentTemplate;
@@ -34,7 +33,6 @@ interface RightPanelProps {
 
 const TAB_META: Record<RightPanelTab, { label: string; accent: string; bg: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }> = {
   ai: { label: 'AI Assistant', accent: '#534AB7', bg: '#EEEDFE', icon: Sparkles },
-  team: { label: 'User Chat', accent: '#0F6E56', bg: '#E1F5EE', icon: Users },
   comments: { label: 'Comments', accent: '#BA7517', bg: '#FFF4E0', icon: MessageCircle },
 };
 
@@ -68,6 +66,14 @@ export function RightPanel({
     return () => window.removeEventListener('xyreg:open-ai-panel', handler);
   }, []);
 
+  // Bridge: bubble menu "Comment" dispatches xyreg:add-document-comment, so
+  // auto-switch to the Comments tab so the composer is visible.
+  useEffect(() => {
+    const handler = () => setActiveTab('comments');
+    window.addEventListener('xyreg:add-document-comment', handler);
+    return () => window.removeEventListener('xyreg:add-document-comment', handler);
+  }, []);
+
   // Resizable width: persisted, clamped to [280, 720].
   const widthStorageKey = 'xyreg.rightPanel.width';
   const [width, setWidth] = useState<number>(() => {
@@ -78,6 +84,58 @@ export function RightPanel({
     } catch { return 320; }
   });
   const isResizingRef = useRef(false);
+
+  // Float mode: detach panel from right edge so the user can drag it anywhere.
+  const floatPosKey = 'xyreg.rightPanel.floatPos';
+  const floatModeKey = 'xyreg.rightPanel.floatMode';
+  const [isFloating, setIsFloating] = useState<boolean>(() => {
+    try { return localStorage.getItem(floatModeKey) === '1'; } catch { return false; }
+  });
+  const [floatPos, setFloatPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const raw = localStorage.getItem(floatPosKey);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (typeof p?.x === 'number' && typeof p?.y === 'number') return p;
+      }
+    } catch { /* ignore */ }
+    return { x: Math.max(40, window.innerWidth - 380), y: 120 };
+  });
+  const isDraggingRef = useRef(false);
+
+  useEffect(() => {
+    try { localStorage.setItem(floatModeKey, isFloating ? '1' : '0'); } catch { /* ignore */ }
+  }, [isFloating]);
+  useEffect(() => {
+    try { localStorage.setItem(floatPosKey, JSON.stringify(floatPos)); } catch { /* ignore */ }
+  }, [floatPos]);
+
+  const handleHeaderDragMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!isFloating) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    isDraggingRef.current = true;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startPos = { ...floatPos };
+    const onMove = (ev: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const nx = Math.max(0, Math.min(window.innerWidth - 80, startPos.x + (ev.clientX - startX)));
+      const ny = Math.max(0, Math.min(window.innerHeight - 80, startPos.y + (ev.clientY - startY)));
+      setFloatPos({ x: nx, y: ny });
+    };
+    const onUp = () => {
+      isDraggingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [isFloating, floatPos]);
 
   useEffect(() => {
     try { localStorage.setItem(widthStorageKey, String(width)); } catch { /* ignore */ }
@@ -156,15 +214,17 @@ export function RightPanel({
   // Scroll position persistence per-tab (per-session only)
   const scrollRefs: Record<RightPanelTab, React.RefObject<HTMLDivElement | null>> = {
     ai: useRef<HTMLDivElement | null>(null),
-    team: useRef<HTMLDivElement | null>(null),
     comments: useRef<HTMLDivElement | null>(null),
   };
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(storageKey);
-      if (stored === 'ai' || stored === 'team' || stored === 'comments') {
+      if (stored === 'ai' || stored === 'comments') {
         setActiveTab(stored);
+      } else if (stored === 'team') {
+        // Legacy: User Chat tab merged into Comments.
+        setActiveTab('comments');
       }
     } catch { /* ignore */ }
   }, [storageKey]);
@@ -176,10 +236,27 @@ export function RightPanel({
 
   const activeMeta = TAB_META[activeTab];
 
+  const floatStyle: React.CSSProperties = isFloating
+    ? {
+        position: 'fixed',
+        left: floatPos.x,
+        top: floatPos.y,
+        width,
+        height: Math.min(window.innerHeight - 40, 720),
+        zIndex: 90,
+        boxShadow: '0 20px 60px -10px rgba(0,0,0,0.35)',
+        borderRadius: 12,
+      }
+    : { width };
+
   return (
     <div
-      className={cn('flex flex-col bg-background border-l shrink-0 h-full relative', className)}
-      style={{ width }}
+      className={cn(
+        'flex flex-col bg-background shrink-0 relative',
+        isFloating ? 'border rounded-xl overflow-hidden' : 'border-l h-full',
+        className,
+      )}
+      style={floatStyle}
     >
       {/* Left-edge resize handle with 6-dot grip */}
       <div
@@ -195,7 +272,11 @@ export function RightPanel({
       <div className="sticky top-0 z-10 bg-background border-b">
         {/* Utility toolbar: active tab label + context actions (New chat, Close) */}
         <div className="flex items-center justify-between px-3 h-9 border-b bg-muted/20">
-          <div className="flex items-center gap-2 min-w-0">
+          <div
+            className={cn('flex items-center gap-2 min-w-0 flex-1', isFloating && 'cursor-grab active:cursor-grabbing select-none')}
+            onMouseDown={handleHeaderDragMouseDown}
+            title={isFloating ? 'Drag to move' : undefined}
+          >
             <span
               className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
               style={{ background: activeMeta.accent }}
@@ -203,8 +284,21 @@ export function RightPanel({
             <span className="text-[11px] font-semibold text-foreground truncate">
               {activeMeta.label}
             </span>
+            {isFloating && <Move className="w-3 h-3 text-muted-foreground ml-1" />}
           </div>
           <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setIsFloating((v) => !v)}
+              className="h-6 w-6 rounded hover:bg-muted flex items-center justify-center"
+              title={isFloating ? 'Dock to right edge' : 'Detach — drag anywhere'}
+            >
+              {isFloating ? (
+                <PanelRightOpen className="w-3.5 h-3.5 text-muted-foreground" />
+              ) : (
+                <Move className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </button>
             {onClose && (
               <button
                 type="button"
@@ -269,18 +363,6 @@ export function RightPanel({
           />
         </div>
         <div
-          ref={scrollRefs.team}
-          className="absolute inset-0 overflow-hidden"
-          style={{ display: activeTab === 'team' ? 'block' : 'none' }}
-        >
-          <DocumentChatPanel
-            embedded
-            documentId={documentId}
-            companyId={companyId}
-            documentName={documentName}
-          />
-        </div>
-        <div
           ref={scrollRefs.comments}
           className="absolute inset-0 overflow-hidden"
           style={{ display: activeTab === 'comments' ? 'block' : 'none' }}
@@ -292,6 +374,7 @@ export function RightPanel({
             return (
               <DocxCommentSidebar
                 documentId={id}
+                companyId={companyId}
                 fullWidth
                 onCommentClick={(comment) => {
                   const container = editorContainerRef?.current;

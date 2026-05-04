@@ -184,7 +184,7 @@ export function ComplianceJourneyStrip({
     if (activeProducts.length === 0) {
       // No products yet — send to the company products page so they can create one.
       if (companyName) {
-        navigate(`/app/company/${encodeURIComponent(companyName)}/products`);
+        navigate(`/app/company/${encodeURIComponent(companyName)}/portfolio?view=cards`);
       }
       return;
     }

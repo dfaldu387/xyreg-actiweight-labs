@@ -75,7 +75,7 @@ export function ResizableDrawer({
       ModalProps={{
         disableAutoFocus: true,
         disableEnforceFocus: true,
-        disableScrollLock: true,
+        disableScrollLock: false,
       }}
       PaperProps={{
         sx: {

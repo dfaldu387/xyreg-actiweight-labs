@@ -89,12 +89,16 @@ export function SOPStatusIndicator({
         <TooltipTrigger asChild>
           <div
             className={cn(
-              'flex items-center gap-1.5 px-1 py-0.5 -ml-1 rounded transition-colors',
+              'flex items-center gap-1.5 px-1 py-0.5 -ml-1 rounded transition-colors nodrag nopan',
               onClick && 'cursor-pointer hover:bg-slate-100',
               className
             )}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDownCapture={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               onClick?.();
             }}
           >

@@ -12,7 +12,8 @@ import {
   type SortingState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ArrowUpDown, ChevronLeft, ChevronRight, FileEdit, Trash2, Eye, Pencil, MoreHorizontal, Copy, FileDown, Loader2, Languages } from "lucide-react";
+import { compareDocumentNumber } from '@/utils/documentFilterParams';
+import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, FileEdit, Trash2, Eye, Pencil, MoreHorizontal, Copy, FileDown, Loader2, Languages } from "lucide-react";
 import { DocumentStarButton } from './DocumentStarButton';
 import { DocumentPdfPreviewService } from '@/services/documentPdfPreviewService';
 import { toast } from 'sonner';
@@ -89,6 +90,10 @@ interface CompanyDocumentListViewProps {
   bulkSelectedDocs?: Set<string>;
   onToggleBulkDoc?: (docId: string) => void;
   onSelectAll?: (allIds: string[]) => void;
+  /** When set, render parent rows with chevrons and indent child rows. */
+  groupedMode?: boolean;
+  /** Map of parent document id -> array of child document ids (for grouped mode). */
+  parentChildMap?: Map<string, string[]>;
 }
 
 const getStatusBadgeStyles = (status: string) => {
@@ -134,6 +139,8 @@ export function CompanyDocumentListView({
   bulkSelectedDocs,
   onToggleBulkDoc,
   onSelectAll,
+  groupedMode = false,
+  parentChildMap,
 }: CompanyDocumentListViewProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [pendingDeleteDoc, setPendingDeleteDoc] = React.useState<CompanyDocument | null>(null);
@@ -264,6 +271,35 @@ export function CompanyDocumentListView({
     });
   }, [updateUrlParams]);
 
+    // === Grouped (SOP -> WI) view state ===
+  const childIdSet = React.useMemo(() => {
+    if (!groupedMode || !parentChildMap) return new Set<string>();
+    const s = new Set<string>();
+    parentChildMap.forEach((kids) => kids.forEach((id) => s.add(id)));
+    return s;
+  }, [groupedMode, parentChildMap]);
+  const parentOf = React.useMemo(() => {
+    const m = new Map<string, string>();
+    if (!groupedMode || !parentChildMap) return m;
+    parentChildMap.forEach((kids, parentId) => {
+      kids.forEach((cid) => m.set(cid, parentId));
+    });
+    return m;
+  }, [groupedMode, parentChildMap]);
+  // Expanded by default — users can collapse parents.
+  const [expandedParents, setExpandedParents] = React.useState<Set<string>>(() => new Set());
+  React.useEffect(() => {
+    if (!groupedMode || !parentChildMap) return;
+    setExpandedParents(new Set(Array.from(parentChildMap.keys())));
+  }, [groupedMode, parentChildMap]);
+  const toggleParent = React.useCallback((parentId: string) => {
+    setExpandedParents((prev) => {
+      const next = new Set(prev);
+      if (next.has(parentId)) next.delete(parentId); else next.add(parentId);
+      return next;
+    });
+  }, []);
+
   const columns: ColumnDef<CompanyDocument>[] = React.useMemo(() => [
     ...(bulkMode ? [{
       id: "bulk_select",
@@ -301,13 +337,12 @@ export function CompanyDocumentListView({
         return formatSopDisplayName(name);
       },
       id: "name",
-      // Plain alphabetical sort on the displayed name (prefix + title).
-      // Previously used `compareSopDocuments`, which forced canonical SOP
-      // numeric order (SOP-QA-001 always first) regardless of sort direction.
+      // Alphabetical sort on the displayed name. Use the "Number" option in
+      // the Sort by filter to order by document_number segment-by-segment.
       sortingFn: (rowA, rowB) => {
-        const nameA = `${rowA.original.document_number ?? ''} ${rowA.original.name ?? ''}`.trim();
-        const nameB = `${rowB.original.document_number ?? ''} ${rowB.original.name ?? ''}`.trim();
-        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base', numeric: true });
+        const a = (rowA.getValue("name") as string) ?? "";
+        const b = (rowB.getValue("name") as string) ?? "";
+        return a.localeCompare(b, undefined, { sensitivity: "base" });
       },
       header: ({ column }) => {
         return (
@@ -341,10 +376,27 @@ export function CompanyDocumentListView({
         const displayName = displayDocNumber
           ? `${displayDocNumber} ${displayCleanName}`
           : displayCleanName;
+        const isParentInGrouped = groupedMode && parentChildMap?.has(doc.id);
+        const isChildInGrouped = groupedMode && childIdSet.has(doc.id);
+        const childCount = isParentInGrouped ? (parentChildMap!.get(doc.id)?.length ?? 0) : 0;
+        const isExpanded = isParentInGrouped ? expandedParents.has(doc.id) : false;
         return (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
+                <span className="inline-flex items-center gap-1 max-w-full">
+                  {isParentInGrouped && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 -ml-1 shrink-0"
+                      onClick={(e) => { e.stopPropagation(); toggleParent(doc.id); }}
+                      aria-label={isExpanded ? 'Collapse Work Instructions' : 'Expand Work Instructions'}
+                    >
+                      {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                    </Button>
+                  )}
+                  {isChildInGrouped && <span className="inline-block w-5 shrink-0" aria-hidden />}
                 <span
                   className={`font-medium max-w-[240px] truncate block ${onCreateInStudio ? 'cursor-pointer hover:underline text-primary' : 'cursor-default'}`}
                   onClick={onCreateInStudio ? (e) => { e.stopPropagation(); onCreateInStudio(doc); } : undefined}
@@ -380,6 +432,12 @@ export function CompanyDocumentListView({
                         </span>
                       </TooltipContent>
                     </Tooltip>
+                  )}
+                </span>
+                  {isParentInGrouped && childCount > 0 && (
+                    <Badge variant="outline" className="ml-2 text-[10px] font-normal text-muted-foreground">
+                      {childCount} {childCount === 1 ? 'WI' : 'WIs'}
+                    </Badge>
                   )}
                 </span>
               </TooltipTrigger>
@@ -843,6 +901,12 @@ export function CompanyDocumentListView({
               table.getRowModel().rows.map((row) => {
                 const status = row.original.status?.toLowerCase();
                 const isApprovedOrReport = status === 'approved' || status === 'completed' || status === 'report';
+
+                // In grouped mode, skip child rows whose parent is collapsed.
+                if (groupedMode) {
+                  const parentId = parentOf.get(row.original.id);
+                  if (parentId && !expandedParents.has(parentId)) return null;
+                }
 
                 // Match card view styling: green for approved/report, blue for others
                 const rowBgClass = isApprovedOrReport

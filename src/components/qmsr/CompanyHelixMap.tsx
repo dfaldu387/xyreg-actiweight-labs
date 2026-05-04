@@ -5,7 +5,7 @@
  * Light mode styling to match the rest of the application.
  */
 
-import React, { useMemo, useCallback, useState } from 'react';
+import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   ReactFlow,
@@ -559,7 +559,23 @@ function CompanyHelixMapInner({
 
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
+  // Suppress accidental node-click drawer-opens that fire from SOP popup
+  // interactions inside the node card (Radix dispatches a synthetic click
+  // on close that bubbles up as a node selection in React Flow).
+  const suppressUntilRef = useRef<number>(0);
+  useEffect(() => {
+    const onSuppress = () => {
+      // 500ms covers the dialog close animation + synthetic click.
+      suppressUntilRef.current = Date.now() + 500;
+    };
+    window.addEventListener('qmsr:suppress-node-click', onSuppress);
+    return () => window.removeEventListener('qmsr:suppress-node-click', onSuppress);
+  }, []);
+
   const handleNodeClick = useCallback((nodeId: string) => {
+    if (Date.now() < suppressUntilRef.current) {
+      return;
+    }
     setSelectedNodeId(nodeId);
     onNodeClick?.(nodeId, nodeId);
   }, [onNodeClick, setSelectedNodeId]);

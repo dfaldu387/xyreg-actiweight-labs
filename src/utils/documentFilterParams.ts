@@ -19,6 +19,8 @@ export type SortByDateOption =
   | 'approval_oldest'
   | 'name_asc'
   | 'name_desc'
+  | 'number_asc'
+  | 'number_desc'
   | 'phase_asc'
   | 'phase_desc'
   | 'section_asc'
@@ -130,6 +132,8 @@ export const VALID_SORT_OPTIONS: SortByDateOption[] = [
   'approval_oldest',
   'name_asc',
   'name_desc',
+  'number_asc',
+  'number_desc',
   'phase_asc',
   'phase_desc',
   'section_asc',
@@ -164,6 +168,8 @@ export const SORT_OPTION_LABELS: Record<SortByDateOption, string> = {
   approval_oldest: 'Approval (Oldest)',
   name_asc: 'Name (A-Z)',
   name_desc: 'Name (Z-A)',
+  number_asc: 'Number (001 → 999)',
+  number_desc: 'Number (999 → 001)',
   phase_asc: 'Phase (A-Z)',
   phase_desc: 'Phase (Z-A)',
   section_asc: 'Section (A-Z)',
@@ -182,6 +188,8 @@ export const SORT_OPTION_LABELS: Record<SortByDateOption, string> = {
 
 export const SORT_OPTIONS_GROUPED = [
   { value: 'none' as SortByDateOption, label: 'Default', group: undefined },
+  { value: 'number_asc' as SortByDateOption, label: '001 → 999', group: 'Number' },
+  { value: 'number_desc' as SortByDateOption, label: '999 → 001', group: 'Number' },
   { value: 'name_asc' as SortByDateOption, label: 'A → Z', group: 'Name' },
   { value: 'name_desc' as SortByDateOption, label: 'Z → A', group: 'Name' },
   { value: 'phase_asc' as SortByDateOption, label: 'A → Z', group: 'Phase' },
@@ -492,4 +500,99 @@ export function countActiveFilters(filters: Partial<DocumentFilters>): number {
  */
 export function hasActiveFilters(filters: Partial<DocumentFilters>): boolean {
   return countActiveFilters(filters) > 0;
+}
+
+// ============================================================================
+// Document Number Comparator
+// ============================================================================
+
+/**
+ * Compare two document_number strings by their **trailing numeric segments**
+ * (parent + optional child suffix), ignoring the prefix and sub-prefix so
+ * documents that share a number group together. Examples:
+ *   SOP-QA-001    vs WI-QA-001-1   →  SOP-QA-001 first  (parent SOP before child WI)
+ *   WI-QA-001-1   vs WI-QA-001-2   →  001-1 first
+ *   WI-QA-001-2   vs WI-QA-001-10  →  001-2 first       (numeric, not lexical)
+ *   SOP-QA-002    vs SOP-QA-001    →  001 first
+ *   SOP-QA-001    vs SOP-DE-001    →  QA before DE      (sub-prefix tiebreak)
+ *
+ * Sort priority:
+ *   1. Parent number (the last all-digit segment) — numeric
+ *   2. Child suffix (segments after the parent number) — numeric, missing = -1
+ *      so the parent doc (e.g. SOP-QA-001) sorts above its derived
+ *      children (WI-QA-001-1, -2, ...).
+ *   3. Sub-prefix (e.g. QA, DE) — alphabetical
+ *   4. Prefix (SOP, WI, ...) — alphabetical
+ *   5. Title — alphabetical
+ *
+ * Falls back to title localeCompare when document_number is missing.
+ */
+export function compareDocumentNumber(
+  aNum: string | null | undefined,
+  bNum: string | null | undefined,
+  aName?: string | null,
+  bName?: string | null,
+): number {
+  const a = (aNum ?? '').trim();
+  const b = (bNum ?? '').trim();
+
+  if (!a && !b) {
+    return (aName ?? '').localeCompare(bName ?? '', undefined, { sensitivity: 'base', numeric: true });
+  }
+  if (a && !b) return -1;
+  if (!a && b) return 1;
+
+  const partsA = parseDocNumber(a);
+  const partsB = parseDocNumber(b);
+
+  // 1. Parent number
+  if (partsA.parent !== partsB.parent) return partsA.parent - partsB.parent;
+  // 2. Child suffix (-1 = no child, so parent doc sorts before its children)
+  if (partsA.child !== partsB.child) return partsA.child - partsB.child;
+  // 3. Sub-prefix
+  const sub = partsA.subPrefix.localeCompare(partsB.subPrefix, undefined, { sensitivity: 'base' });
+  if (sub !== 0) return sub;
+  // 4. Prefix
+  const pre = partsA.prefix.localeCompare(partsB.prefix, undefined, { sensitivity: 'base' });
+  if (pre !== 0) return pre;
+  // 5. Title
+  return (aName ?? '').localeCompare(bName ?? '', undefined, { sensitivity: 'base', numeric: true });
+}
+
+/**
+ * Parse a document number like "WI-QA-002-1" or "SOP-001" into its parts.
+ * The parent number is the **last all-digit segment**; anything after it is
+ * the child suffix (joined as a single number, or -1 if absent).
+ */
+function parseDocNumber(num: string): {
+  prefix: string;
+  subPrefix: string;
+  parent: number;
+  child: number;
+} {
+  const segs = num.split('-');
+  // Find the last segment that is all digits — that's the parent number.
+  let parentIdx = -1;
+  for (let i = segs.length - 1; i >= 0; i--) {
+    if (/^\d+$/.test(segs[i])) {
+      // Walk back over any further trailing digit segments to find the
+      // FIRST digit segment of the parent/child block.
+      parentIdx = i;
+      // But the child is anything *after* the first digit segment, so we
+      // actually need the EARLIEST digit segment in the trailing run.
+      while (parentIdx > 0 && /^\d+$/.test(segs[parentIdx - 1])) {
+        parentIdx--;
+      }
+      break;
+    }
+  }
+  if (parentIdx === -1) {
+    return { prefix: segs[0] ?? '', subPrefix: segs[1] ?? '', parent: Number.MAX_SAFE_INTEGER, child: -1 };
+  }
+  const prefix = segs[0] ?? '';
+  const subPrefix = parentIdx >= 2 ? segs.slice(1, parentIdx).join('-') : '';
+  const parent = parseInt(segs[parentIdx], 10);
+  const childSegs = segs.slice(parentIdx + 1).filter(s => /^\d+$/.test(s));
+  const child = childSegs.length === 0 ? -1 : parseInt(childSegs.join(''), 10);
+  return { prefix, subPrefix, parent, child };
 }

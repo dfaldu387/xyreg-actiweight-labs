@@ -53,6 +53,8 @@ interface TeamMemberStats {
   notStarted: number;
   overdue: number;
   complianceRate: number;
+  reading: number;
+  quizFailed: number;
 }
 
 export function TeamCompetencyView({ companyId, disabled = false }: Props) {
@@ -76,6 +78,8 @@ export function TeamCompetencyView({ companyId, disabled = false }: Props) {
       const notStarted = userRecords.filter(r => r.status === 'not_started').length;
       const overdue = userRecords.filter(r => r.status === 'overdue').length;
       const total = userRecords.length;
+      const reading = userRecords.filter((r: any) => r.phase === 'reading' || r.phase === 'quiz_ready' || r.phase === 'sign_ready').length;
+      const quizFailed = userRecords.filter((r: any) => r.phase === 'quiz_failed').length;
       
       return {
         userId: user.id,
@@ -88,6 +92,8 @@ export function TeamCompetencyView({ companyId, disabled = false }: Props) {
         inProgress,
         notStarted,
         overdue,
+        reading,
+        quizFailed,
         complianceRate: total > 0 ? Math.round((completed / total) * 100) : 100,
       };
     });
@@ -280,6 +286,12 @@ export function TeamCompetencyView({ companyId, disabled = false }: Props) {
                       <div className="flex flex-col items-center gap-1">
                         <Progress value={stat.complianceRate} className="w-20 h-2" />
                         <span className="text-xs">{stat.complianceRate}%</span>
+                        <div className="flex items-center gap-1 text-[10px]">
+                          {stat.completed > 0 && <span className="text-emerald-600">●{stat.completed}</span>}
+                          {stat.reading > 0 && <span className="text-blue-600" title="Reading / quiz / signing">▶{stat.reading}</span>}
+                          {stat.quizFailed > 0 && <span className="text-amber-600" title="Quiz failed — trainer review">⚠{stat.quizFailed}</span>}
+                          {stat.overdue > 0 && <span className="text-rose-600" title="Overdue">⊗{stat.overdue}</span>}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="text-center">

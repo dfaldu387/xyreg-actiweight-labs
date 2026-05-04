@@ -41,6 +41,17 @@ import { DocxCommentHighlighter } from '@/components/review/DocxCommentHighlight
 import { useDocxComments } from '@/hooks/useDocxComments';
 import { formatSopDisplayName } from '@/constants/sopAutoSeedTiers';
 import { splitDocPrefix } from '@/utils/templateNameUtils';
+import * as SidebarModule from '@/components/ui/sidebar';
+import { useRightRail } from '@/context/RightRailContext';
+
+/** Safe sidebar access — returns null when no SidebarProvider is mounted. */
+function useSafeSidebar() {
+  try {
+    return SidebarModule.useSidebar();
+  } catch {
+    return null;
+  }
+}
 
 // OnlyOffice constants
 const SUPABASE_URL = "https://wzzkbmmgxxrfhhxggrcl.supabase.co";
@@ -160,6 +171,23 @@ export function DocumentDraftDrawer({
   const [showSaveCIDialog, setShowSaveCIDialog] = useState(false);
   const [isUnsaved, setIsUnsaved] = useState(isNewUnsavedDocument || false);
   const [activeView, setActiveView] = useState<'draft' | 'review' | 'completed'>('draft');
+
+  // When the drawer opens, collapse both the left app sidebar and the right rail
+  // so the authoring surface gets the full screen. Restore prior state on close.
+  const sidebarCtx = useSafeSidebar();
+  const { isRightRailOpen, setRightRailOpen } = useRightRail();
+  useEffect(() => {
+    if (!open) return;
+    const prevSidebarOpen = sidebarCtx?.open ?? null;
+    const prevRightRail = isRightRailOpen;
+    sidebarCtx?.setOpen(false);
+    if (prevRightRail) setRightRailOpen(false);
+    return () => {
+      if (prevSidebarOpen !== null) sidebarCtx?.setOpen(prevSidebarOpen);
+      if (prevRightRail) setRightRailOpen(true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Review inline view state
   const [reviewerGroupIds, setReviewerGroupIds] = useState<string[]>([]);
@@ -833,9 +861,9 @@ export function DocumentDraftDrawer({
         documentControl: {
           sopNumber: '', documentTitle: documentName, version: '1.0',
           effectiveDate: new Date(), documentOwner: '',
-          preparedBy: { name: '', title: '', date: new Date() },
-          reviewedBy: { name: '', title: '', date: new Date() },
-          approvedBy: { name: '', title: '', date: new Date() },
+          preparedBy: { name: '', title: '', date: null },
+          reviewedBy: { name: '', title: '', date: null },
+          approvedBy: { name: '', title: '', date: null },
         },
         metadata: { version: '1.0', lastUpdated: new Date(), estimatedCompletionTime: '30 minutes' },
       });
@@ -886,6 +914,13 @@ export function DocumentDraftDrawer({
             sections = cleanQualityManualSections(sections);
           }
           const docControl = existingDraft.document_control as any;
+          // Sanitize: signature dates must come from the eSign ceremony only.
+          // Clear any legacy auto-stamped dates from the persisted draft.
+          if (docControl) {
+            for (const k of ['preparedBy', 'reviewedBy', 'approvedBy'] as const) {
+              if (docControl[k]) docControl[k].date = null;
+            }
+          }
 
           const loadedTemplate: DocumentTemplate = {
             id: normalizedDocId,
@@ -905,9 +940,9 @@ export function DocumentDraftDrawer({
               version: '1.0',
               effectiveDate: new Date(),
               documentOwner: '',
-              preparedBy: { name: '', title: '', date: new Date() },
-              reviewedBy: { name: '', title: '', date: new Date() },
-              approvedBy: { name: '', title: '', date: new Date() },
+              preparedBy: { name: '', title: '', date: null },
+              reviewedBy: { name: '', title: '', date: null },
+              approvedBy: { name: '', title: '', date: null },
             },
             metadata: existingDraft.metadata as any || {
               version: '1.0',
@@ -939,9 +974,9 @@ export function DocumentDraftDrawer({
               version: '1.0',
               effectiveDate: new Date(),
               documentOwner: '',
-              preparedBy: { name: '', title: '', date: new Date() },
-              reviewedBy: { name: '', title: '', date: new Date() },
-              approvedBy: { name: '', title: '', date: new Date() },
+              preparedBy: { name: '', title: '', date: null },
+              reviewedBy: { name: '', title: '', date: null },
+              approvedBy: { name: '', title: '', date: null },
             },
             metadata: {
               version: '1.0',
@@ -975,9 +1010,9 @@ export function DocumentDraftDrawer({
             version: '1.0',
             effectiveDate: new Date(),
             documentOwner: '',
-            preparedBy: { name: '', title: '', date: new Date() },
-            reviewedBy: { name: '', title: '', date: new Date() },
-            approvedBy: { name: '', title: '', date: new Date() },
+            preparedBy: { name: '', title: '', date: null },
+            reviewedBy: { name: '', title: '', date: null },
+            approvedBy: { name: '', title: '', date: null },
           },
           metadata: {
             version: '1.0',
@@ -1070,6 +1105,7 @@ export function DocumentDraftDrawer({
   }, [existingDraftId, resolvedCompanyId, debouncedDbSave]);
 
   const handleDocumentControlChange = useCallback((field: string, value: string) => {
+    let updated: DocumentTemplate | null = null;
     setTemplate(prev => {
       if (!prev) return prev;
 
@@ -1077,17 +1113,30 @@ export function DocumentDraftDrawer({
 
       if (field === 'documentOwner') {
         dc.documentOwner = value || undefined;
-      } else if (field.startsWith('preparedBy.')) {
-        dc.preparedBy = { ...(dc.preparedBy || {}), name: value || '' };
-      } else if (field.startsWith('reviewedBy.')) {
-        dc.reviewedBy = { ...(dc.reviewedBy || {}), name: value || '' };
-      } else if (field.startsWith('approvedBy.')) {
-        dc.approvedBy = { ...(dc.approvedBy || {}), name: value || '' };
+      } else if (field === 'documentOwnerTitle') {
+        dc.documentOwnerTitle = value || undefined;
+      } else if (field.includes('.')) {
+        const [prefix, sub] = field.split('.');
+        if (['preparedBy', 'reviewedBy', 'approvedBy', 'issuedBy'].includes(prefix) && (sub === 'name' || sub === 'title')) {
+          dc[prefix] = { ...(dc[prefix] || {}), [sub]: value || '' };
+        }
+      } else {
+        dc[field] = value;
       }
 
-      return { ...prev, documentControl: dc };
+      updated = { ...prev, documentControl: dc };
+      return updated;
     });
-  }, []);
+
+    if (updated) {
+      try {
+        DocumentTemplatePersistenceService.saveTemplateToLocalStorage(updated.id, updated);
+      } catch {}
+      if (existingDraftId && resolvedCompanyId) {
+        debouncedDbSave(updated, existingDraftId, resolvedCompanyId);
+      }
+    }
+  }, [existingDraftId, resolvedCompanyId, debouncedDbSave]);
 
   const handleDocumentSaved = useCallback(() => {
     if (isUnsaved) {
@@ -1119,7 +1168,13 @@ export function DocumentDraftDrawer({
       onClose={() => onOpenChange(false)}
       defaultWidthPercent={97}
     >
-      {tabs && (tabs.length > 1 || groupsMenuSlot) && (
+      {(() => {
+        const synthesizedTabs = (tabs && tabs.length > 0)
+          ? tabs
+          : (documentId ? [{ id: documentId, name: formatSopDisplayName(documentName) }] : []);
+        const effectiveActiveId = activeTabId ?? documentId;
+        if (synthesizedTabs.length === 0) return null;
+        return (
         <>
         {selectedTabIds && selectedTabIds.length > 0 && (
           <Box
@@ -1210,9 +1265,9 @@ export function DocumentDraftDrawer({
               {groupsMenuSlot}
             </Box>
           )}
-          {tabs.map(t => {
+          {synthesizedTabs.map(t => {
             const { prefix, title } = splitDocPrefix(t.name);
-            const isActive = t.id === activeTabId;
+            const isActive = t.id === effectiveActiveId;
             const shortTitle = title.length > 24 ? title.slice(0, 22) + '…' : title;
             const isSelected = selectedTabIds?.includes(t.id) ?? false;
             return (
@@ -1264,24 +1319,27 @@ export function DocumentDraftDrawer({
                     <span style={{ fontWeight: 600 }}>{prefix}</span>
                   )}
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{shortTitle}</span>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCloseTab?.(t.id);
-                    }}
-                    sx={{ p: 0.25, ml: 0.25 }}
-                    aria-label={`Close ${t.name}`}
-                  >
-                    <CloseIcon sx={{ fontSize: 14 }} />
-                  </IconButton>
+                  {onCloseTab && (
+                    <IconButton
+                      size="small"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCloseTab?.(t.id);
+                      }}
+                      sx={{ p: 0.25, ml: 0.25 }}
+                      aria-label={`Close ${t.name}`}
+                    >
+                      <CloseIcon sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  )}
                 </Box>
               </Tooltip>
             );
           })}
         </Box>
         </>
-      )}
+        );
+      })()}
       {/* Header */}
       <Box
         sx={{
@@ -2122,6 +2180,7 @@ export function DocumentDraftDrawer({
                         <div className="mt-2 border rounded-lg overflow-hidden" style={{ height: '400px' }}>
                           <DocxCommentSidebar
                             documentId={normalizedDocId}
+                            companyId={resolvedCompanyId}
                             fullWidth
                           />
                         </div>
@@ -2483,6 +2542,7 @@ export function DocumentDraftDrawer({
             {showDocxComments && normalizedDocId && (
               <DocxCommentSidebar
                 documentId={normalizedDocId}
+                companyId={resolvedCompanyId}
                 onClose={() => setShowDocxComments(false)}
               />
             )}

@@ -16,7 +16,10 @@ import {
 import { TrainingModule, TrainingModuleFormData, TrainingModuleType, DeliveryMethod } from '@/types/training';
 import { useCreateTrainingModule, useUpdateTrainingModule } from '@/hooks/useTrainingModules';
 import { useCompanyDocuments } from '@/hooks/useCompanyDocuments';
-import { FileText } from 'lucide-react';
+import { FileText, Lock } from 'lucide-react';
+
+const DEFAULT_ATTESTATION_TEXT =
+  'I attest that I have read, understood, and will comply with the procedure referenced above. I understand my electronic signature is the legally binding equivalent of my handwritten signature (21 CFR Part 11 / EU Annex 11).';
 
 interface Props {
   companyId: string;
@@ -43,6 +46,10 @@ export function TrainingModuleForm({ companyId, module, onSuccess, onCancel }: P
       estimated_minutes: module?.estimated_minutes || null,
       validity_days: module?.validity_days || null,
       version: module?.version || '1.0',
+      requires_quiz: module?.requires_quiz ?? false,
+      minimum_read_seconds: module?.minimum_read_seconds ?? 180,
+      attestation_text: module?.attestation_text ?? DEFAULT_ATTESTATION_TEXT,
+      max_attempts: module?.max_attempts ?? 3,
     },
   });
 
@@ -50,6 +57,8 @@ export function TrainingModuleForm({ companyId, module, onSuccess, onCancel }: P
   const deliveryMethod = watch('delivery_method');
   const requiresSignature = watch('requires_signature');
   const documentId = watch('document_id');
+  const requiresQuiz = watch('requires_quiz');
+  const minReadSeconds = watch('minimum_read_seconds');
 
   const onSubmit = async (data: TrainingModuleFormData) => {
     try {
@@ -214,6 +223,70 @@ export function TrainingModuleForm({ companyId, module, onSuccess, onCancel }: P
           checked={requiresSignature}
           onCheckedChange={(checked) => setValue('requires_signature', checked)}
         />
+      </div>
+
+      <div className="rounded-lg border border-teal-500/30 bg-teal-500/5 p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <Lock className="w-4 h-4 text-teal-600" />
+          <h4 className="font-semibold text-sm">Locked Workflow (Read → Quiz → Sign)</h4>
+        </div>
+        <p className="text-xs text-muted-foreground -mt-2">
+          Enforces a strict, audit-defensible sequence. The Sign button stays disabled until the user has spent the minimum read time and (optionally) passed the quiz.
+        </p>
+
+        <div className="flex items-center justify-between rounded-md bg-background border p-3">
+          <div>
+            <Label htmlFor="requires_quiz" className="font-medium">Require quiz before signature</Label>
+            <p className="text-xs text-muted-foreground">AI-generated multiple-choice based on the linked document.</p>
+          </div>
+          <Switch
+            id="requires_quiz"
+            checked={requiresQuiz}
+            onCheckedChange={(checked) => setValue('requires_quiz', checked)}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="minimum_read_seconds">Minimum read time (seconds)</Label>
+            <Input
+              id="minimum_read_seconds"
+              type="number"
+              min={0}
+              {...register('minimum_read_seconds', { valueAsNumber: true })}
+              placeholder="180"
+            />
+            <p className="text-xs text-muted-foreground">
+              ≈ {Math.max(0, Math.round((Number(minReadSeconds) || 0) / 60))} min. Sign button stays locked until elapsed.
+            </p>
+          </div>
+
+          {requiresQuiz && (
+            <div className="space-y-2">
+              <Label htmlFor="max_attempts">Max quiz attempts</Label>
+              <Input
+                id="max_attempts"
+                type="number"
+                min={1}
+                max={10}
+                {...register('max_attempts', { valueAsNumber: true })}
+                placeholder="3"
+              />
+              <p className="text-xs text-muted-foreground">After max failed attempts, requires manager re-assignment.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="attestation_text">Attestation statement</Label>
+          <Textarea
+            id="attestation_text"
+            {...register('attestation_text')}
+            rows={3}
+            placeholder={DEFAULT_ATTESTATION_TEXT}
+          />
+          <p className="text-xs text-muted-foreground">Shown verbatim at the signature step. 21 CFR Part 11 compliant text recommended.</p>
+        </div>
       </div>
 
       <div className="flex justify-end gap-3 pt-4">

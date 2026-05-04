@@ -1,74 +1,44 @@
-## Problem
+# Generalised role-driven training derivation
 
-The FPD Catalog tab currently only shows metadata (title, rationale, trigger, active toggle). The actual Foundation SOP templates already exist as fully-authored, sectioned content in `src/data/sopContent/sop001to010.ts` … `sop041to051.ts` (SOP-001 through SOP-051, each with 8 sections: Purpose, Scope, References, Definitions, Responsibilities, Procedure, Records, Revision History). A modal popup exposing only `title` adds no value when the real authoring substance lives in those section bodies.
+The previous plan special-cased Marcus. Correcting course: the fix is structural — derive recommended training from each user's defined role on `user_company_access`, and where the role is undefined, force the user to define it before training can be recommended. No per-person backfills.
 
-We need to make the FPD Catalog the actual editing surface for those template bodies — directly, with a lightweight side drawer (no review/approve, no signatures, no CI lifecycle). This is Super Admin master content, not a regulated document instance.
+## Current data reality
+`user_company_access` already carries: `is_internal`, `department` (free text), `functional_area` (enum), `external_role` (enum). For Actiweight today:
+- 2 consultants → `external_role='consultant'`, no department.
+- Marcus → `is_internal=true`, `department='Internal'`, `functional_area=NULL`. "Internal" is a bucket, not a role; no job title is captured anywhere.
 
-## Solution: Section-level editor in a side drawer
+So the gap is universal: there is no field for the **job title / position** (CEO, Quality Manager, R&D Engineer…), and `functional_area` is optional.
 
-### 1. Persist the body in the catalog
+## A. Schema (one migration)
+Add `job_title text` to `user_company_access` (nullable). No data backfill — users (or admins) fill it in via Settings.
 
-Add a `default_sections` JSONB column to `fpd_sop_catalog` (mirrors the existing `SOPSectionContent[]` shape: `{ id, title, content }[]`). One-time backfill from `SOP_FULL_CONTENT` so all 51 rows ship with the current canonical content. The hardcoded files become read-only fallbacks; the DB row is the SSOT.
+## B. Settings — People editor
+In `AddStakeholderUserSheet` and the corresponding edit sheet, add a "Job title" input directly under the Functional Area select, for internal users. External users keep `external_role`.
 
-### 2. Replace the Edit modal with a right-side drawer
+## C. Label composition (`trainingGroups.ts`)
+`getInferredRoleLabel` returns:
+- internal + `job_title` + `functional_area` → `"<FunctionalArea> | <Job title>"` (e.g. `Management | CEO`).
+- internal + only `job_title` → `<Job title>` + amber "Set functional area".
+- internal + only `functional_area` → `<FunctionalArea>` + amber "Add job title".
+- internal + neither (only `department='Internal'`) → amber "Define role" badge with a CTA link to Settings → People for that user.
+- external → existing `external_role` label unchanged.
 
-Click "Edit" (or anywhere on the row) → opens a `Sheet` (right side, `w-[720px]`) instead of the current `Dialog`. The drawer contains:
+`getRecommendedGroupsForUser` keeps using `functional_area` + `external_role` + keyword scan over `department` / `job_title`. Adding `job_title` to the keyword scan is the only behavioural change (so "CEO", "Quality Manager", etc. resolve even when functional_area is empty).
 
-```text
-┌─────────────────────────────────────────────────┐
-│ SOP-001  [Foundation]            [Save] [×]    │
-│ Quality Management System                       │
-│ ─────────────────────────────────────────────── │
-│ Title         [Quality Management System    ]  │
-│ Rationale     [QMS skeleton — ISO 13485…    ]  │
-│ Trigger       [always]            Active [✓]   │
-│ ─────────────────────────────────────────────── │
-│ SECTIONS                              [+ Add]  │
-│  ▸ 1.0 Purpose                          [edit] │
-│  ▸ 2.0 Scope                            [edit] │
-│  ▸ 3.0 References                       [edit] │
-│  …                                              │
-│  ▾ 6.0 Procedure                       [edit] │
-│    ┌──────────────────────────────────────┐   │
-│    │ [Section title input]                │   │
-│    │ [Multi-line textarea — full body]    │   │
-│    │                          [↑][↓][🗑]   │   │
-│    └──────────────────────────────────────┘   │
-└─────────────────────────────────────────────────┘
-```
+## D. Wizard — `PeopleRecommendationTable`
+- Render the new combined label.
+- When a row's role is undefined, disable "Apply" and show inline link "Define role in Settings → People" (deep link to that user's edit sheet).
+- Keep "Apply all" but it skips undefined-role rows and reports "<n> skipped — role undefined".
 
-- Each section is a collapsible card (closed by default — opens on click).
-- Inline title input + tall `Textarea` for the body. Plain text/markdown — no TipTap, no review chrome.
-- Reorder via ↑/↓ buttons; delete with trash; add a new blank section with `+ Add`.
-- Single `Save` writes back the whole `default_sections` array plus metadata in one update.
-- "Reset to library default" link (small, muted) restores from `SOP_FULL_CONTENT[sop_key]` if the admin wants to revert.
-
-Explicitly NOT included: review/approve workflow, signatures, version history UI, comments, CI numbering, status transitions. This is master content authoring.
-
-### 3. Auto-seeding reads from DB first
-
-`sopAutoSeedService` (and any other consumer) gets a small change: when seeding a new company instance, prefer `fpd_sop_catalog.default_sections` if non-empty; fall back to `SOP_FULL_CONTENT[sop_key]` otherwise. Existing companies are unaffected (matches current behavior — edits propagate to *future* onboardings only).
-
-### 4. Row preview in the list
-
-In the FPD Catalog list, add a small `· 8 sections` count next to the trigger badge so admins can see at a glance which entries have body content. Click anywhere on the row opens the drawer.
+## E. Copy fix
+Replace the `§` glyph with the word "Section" in the wizard empty-state alert (the "Russian letters" report — it is the section sign, not Cyrillic; English wording avoids the confusion).
 
 ## Files
+- `supabase/migrations/*` — add `job_title` column.
+- `src/hooks/useCompanyUsers.ts` — select/update `job_title`, expose as `title`.
+- `src/components/settings/AddStakeholderUserSheet.tsx` (+ edit sheet) — Job title input.
+- `src/constants/trainingGroups.ts` — label + recommendation logic.
+- `src/components/training/TrainingSetupWizard.tsx` — disabled state, deep link, skip-count, copy fix.
 
-**Migration (new)**
-- `ALTER TABLE fpd_sop_catalog ADD COLUMN default_sections JSONB NOT NULL DEFAULT '[]'::jsonb;`
-- One-time UPDATE: for each of the 51 `sop_key`s, set `default_sections` = JSON of `SOP_FULL_CONTENT[sop_key].sections` (run via a seed edge function or inline SQL with a generated literal).
-
-**TypeScript**
-- `src/services/fpdSopCatalogService.ts` — add `default_sections: SOPSectionContent[]` to entry type, extend `update()` to accept it, add `resetToLibraryDefault(sopKey)` helper.
-- `src/components/super-admin/FpdCatalogSection.tsx` — replace `Dialog` with `Sheet` from `@/components/ui/sheet`; show section count chip in row.
-- `src/components/super-admin/FpdSopEditDrawer.tsx` (new) — the drawer with collapsible section cards, reorder/add/delete, save handler.
-- `src/services/sopAutoSeedService.ts` — read `default_sections` from catalog row; fall back to `SOP_FULL_CONTENT`.
-
-**No changes** to the existing template upload dialog, CI lifecycle, document studio, or any company-instance code. The bridge (`fpd_sop_key` on `default_document_templates`) keeps working as-is — file uploads still override the boilerplate when present; otherwise the new editable `default_sections` is used.
-
-## Out of scope (intentional)
-
-- No rich text editor — plain textarea per section keeps it fast and matches the tone of "master content, not a regulated draft."
-- No diff against `SOP_FULL_CONTENT` — just a "Reset to library default" button.
-- No bulk export/import of section content (can follow up if needed).
+## Out of scope
+No backfill for Marcus or anyone else, no `company_roles` rewiring, no auth/RLS changes, no new tables.

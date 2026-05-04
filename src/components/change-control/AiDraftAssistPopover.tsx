@@ -170,7 +170,7 @@ export function AiDraftAssistPopover({
             {showContext && (
               <div className="px-3 pb-2 max-h-36 overflow-y-auto text-xs text-muted-foreground whitespace-pre-wrap font-mono">
                 {contextPreview ||
-                  'Title, change type, source, affected documents and product context will be sent. Press Generate to fetch the exact preview.'}
+                  'Title, change type, source, product context, and a short purpose/scope blurb for each attached document will be sent. Press Generate to fetch the exact preview.'}
               </div>
             )}
           </div>

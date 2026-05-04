@@ -20,6 +20,8 @@ import { CompanyCommercialGroup } from './CompanyCommercialGroup';
   import { QualityGovernanceGroup } from './QualityGovernanceGroup';
 // IPManagementGroup removed - now inline
 import { SidebarContextSwitcher } from './SidebarContextSwitcher';
+import { domainTokens } from '@/config/domainColors';
+import { cn } from '@/lib/utils';
 interface CompanyInfo {
   id: string;
   name: string;
@@ -57,6 +59,17 @@ export function SidebarContextualMenu({
   // When subscription is expired and user is not master, lock all menus
   const menusLocked = isSubscriptionExpired && !isMasterPlanUser;
 
+  // Canonical "all devices" URL — points to the company's device portfolio
+  // (cards view). Falls back to the global Client Compass when no company is
+  // available so the link always lands on a real page.
+  const backToDevicesHref = (() => {
+    const companyForLink = productOwnerCompany || currentCompany;
+    if (companyForLink) {
+      return `/app/company/${encodeURIComponent(companyForLink)}/portfolio?view=cards`;
+    }
+    return '/app/clients';
+  })();
+
 
   // Product-specific menu items
   if (currentProductId && userRole !== "viewer") {
@@ -84,7 +97,7 @@ export function SidebarContextualMenu({
                   size="lg" 
                   className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}
                 >
-                  <Link to="/app/devices" className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
+                  <Link to={backToDevicesHref} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
                     <div className="text-muted-foreground">
                       <Layers className="h-5 w-5" />
                     </div>
@@ -103,11 +116,9 @@ export function SidebarContextualMenu({
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <SidebarMenuButton asChild isActive={location.pathname === `/app/product/${currentProductId}`} size="lg" className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}>
+                      <SidebarMenuButton asChild isActive={location.pathname === `/app/product/${currentProductId}`} size="lg" className={cn(state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm", domainTokens('business').button)}>
                         <Link to={`/app/product/${currentProductId}`} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
-                          <div className="text-muted-foreground">
-                            <LayoutDashboard className="h-5 w-5" />
-                          </div>
+                          <LayoutDashboard className="h-5 w-5 !text-amber-600" />
                           {state !== "collapsed" && <span>Device Dashboard</span>}
                         </Link>
                       </SidebarMenuButton>
@@ -134,102 +145,90 @@ export function SidebarContextualMenu({
               {hasDeviceModuleAccess('bill-of-materials') && (
               <SidebarMenuItem>
                 <TooltipProvider delayDuration={300}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                       <SidebarMenuButton
-                        asChild
-                        isActive={location.pathname === `/app/product/${currentProductId}/bom`}
-                        className="px-3 py-2.5 font-medium text-sm"
-                      >
-                        <Link to={`/app/product/${currentProductId}/bom`} className="flex items-center gap-3">
-                          <div className="text-muted-foreground">
-                            <Package className="h-5 w-5" />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                         <SidebarMenuButton
+                          asChild
+                          isActive={location.pathname === `/app/product/${currentProductId}/bom`}
+                          className={cn("px-3 py-2.5 font-medium text-sm", domainTokens('design-risk').button)}
+                        >
+                          <Link to={`/app/product/${currentProductId}/bom`} className="flex items-center gap-3">
+                            <Package className="h-5 w-5 !text-teal-600" />
+                            <span>Bill of Materials</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </TooltipTrigger>
+                      {isoTooltips["Bill of Materials"] && (
+                        <TooltipContent side="right" sideOffset={12} className="max-w-xs p-3">
+                          <div className="space-y-1.5">
+                            <p className="font-semibold text-sm">Bill of Materials</p>
+                            <p className="text-xs text-muted-foreground">{isoTooltips["Bill of Materials"].role}</p>
+                            {isoTooltips["Bill of Materials"].reference && <p className="text-xs font-medium text-primary/80">{isoTooltips["Bill of Materials"].reference}</p>}
                           </div>
-                          <span>Bill of Materials</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </TooltipTrigger>
-                    {isoTooltips["Bill of Materials"] && (
-                      <TooltipContent side="right" sideOffset={12} className="max-w-xs p-3">
-                        <div className="space-y-1.5">
-                          <p className="font-semibold text-sm">Bill of Materials</p>
-                          <p className="text-xs text-muted-foreground">{isoTooltips["Bill of Materials"].role}</p>
-                          {isoTooltips["Bill of Materials"].reference && <p className="text-xs font-medium text-primary/80">{isoTooltips["Bill of Materials"].reference}</p>}
-                        </div>
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
-                </TooltipProvider>
-                {state !== "collapsed" && (
-                  <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
-                    Versioned BOMs with cost rollups and supplier tracking
-                  </p>
-                )}
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                  {state !== "collapsed" && (
+                    <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
+                      Versioned BOMs with cost rollups and supplier tracking
+                    </p>
+                  )}
               </SidebarMenuItem>
               )}
 
               {hasDeviceModuleAccess('development-lifecycle') && (
               <SidebarMenuItem>
-                <div>
-                  <ComplianceInstancesGroup context="product" userRole={userRole} currentProductId={currentProductId} location={location} singleCompanyName={singleCompanyName} />
+                <ComplianceInstancesGroup context="product" userRole={userRole} currentProductId={currentProductId} location={location} singleCompanyName={singleCompanyName} accentClassName={domainTokens('clinical-reg').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Track regulatory documentation, gap analysis, activities, and audit compliance
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
               )}
 
               {hasDeviceModuleAccess('design-risk-controls') && (
               <SidebarMenuItem>
-                <div>
-                  <DesignRiskGroup userRole={userRole} currentProductId={currentProductId} location={location} />
+                <DesignRiskGroup userRole={userRole} currentProductId={currentProductId} location={location} accentClassName={domainTokens('design-risk').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Manage design controls, risk assessment, and product verification
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
               )}
 
               {hasDeviceModuleAccess('device-definition') && (
               <SidebarMenuItem>
-                <div>
-                  <ProductDefinitionGroup userRole={userRole} currentProductId={currentProductId} location={location} />
+                <ProductDefinitionGroup userRole={userRole} currentProductId={currentProductId} location={location} accentClassName={domainTokens('design-risk').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Define device specifications, intended use, indications, and contraindications
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
               )}
 
               {hasDeviceModuleAccess('business-case') && (
               <SidebarMenuItem>
-                <div>
-                  <BusinessCaseGroup userRole={userRole} currentProductId={currentProductId} location={location} />
+                <BusinessCaseGroup userRole={userRole} currentProductId={currentProductId} location={location} accentClassName={domainTokens('business').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Strategic planning tools for market analysis, pricing, and financial projections
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
               )}
 
               {hasDeviceModuleAccess('operations') && (
               <SidebarMenuItem>
-                <div>
-                  <DeviceOperationsGroup userRole={userRole} currentProductId={currentProductId} location={location} />
+                <DeviceOperationsGroup userRole={userRole} currentProductId={currentProductId} location={location} accentClassName={domainTokens('operations').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Manufacturing strategy, supply chain, and production
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
               )}
 
@@ -240,6 +239,7 @@ export function SidebarContextualMenu({
                   context="product"
                   basePath={`/app/product/${currentProductId}`}
                   location={location}
+                  accentClassName={domainTokens('quality').button}
                 />
               </SidebarMenuItem>
               )}
@@ -249,11 +249,9 @@ export function SidebarContextualMenu({
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <SidebarMenuButton asChild isActive={location.pathname === `/app/product/${currentProductId}/design-risk-controls` && location.search.includes('tab=usability-engineering')} size="lg" className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}>
+                      <SidebarMenuButton asChild isActive={location.pathname === `/app/product/${currentProductId}/design-risk-controls` && location.search.includes('tab=usability-engineering')} size="lg" className={cn(state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm", domainTokens('clinical-reg').button)}>
                         <Link to={`/app/product/${currentProductId}/design-risk-controls?tab=usability-engineering`} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
-                          <div className="text-muted-foreground">
-                            <Users className="h-5 w-5" />
-                          </div>
+                          <Users className="h-5 w-5 !text-purple-600" />
                           {state !== "collapsed" && <span>Usability Engineering</span>}
                         </Link>
                       </SidebarMenuButton>
@@ -279,14 +277,12 @@ export function SidebarContextualMenu({
 
               {hasDeviceModuleAccess('development-lifecycle') && (
               <SidebarMenuItem>
-                <div>
-                  <MilestonesGroup userRole={userRole} currentProductId={currentProductId} location={location} />
+                <MilestonesGroup userRole={userRole} currentProductId={currentProductId} location={location} accentClassName={domainTokens('operations').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Timeline tracking of development phases, regulatory submissions, and clinical trials
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
               )}
 
@@ -297,11 +293,9 @@ export function SidebarContextualMenu({
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <SidebarMenuButton asChild isActive={location.pathname === `/app/product/${currentProductId}/post-market-surveillance`} size="lg" className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}>
+                      <SidebarMenuButton asChild isActive={location.pathname === `/app/product/${currentProductId}/post-market-surveillance`} size="lg" className={cn(state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm", domainTokens('clinical-reg').button)}>
                         <Link to={`/app/product/${currentProductId}/post-market-surveillance`} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
-                          <div className="text-muted-foreground">
-                            <Eye className="h-5 w-5" />
-                          </div>
+                          <Eye className="h-5 w-5 !text-purple-600" />
                           {state !== "collapsed" && <span>Post-Market Surveillance</span>}
                         </Link>
                       </SidebarMenuButton>
@@ -329,11 +323,9 @@ export function SidebarContextualMenu({
                   <TooltipProvider delayDuration={300}>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <SidebarMenuButton asChild isActive={location.pathname === `/app/product/${currentProductId}/user-access`} size="lg" className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}>
+                        <SidebarMenuButton asChild isActive={location.pathname === `/app/product/${currentProductId}/user-access`} size="lg" className={cn(state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm", domainTokens('quality').button)}>
                           <Link to={`/app/product/${currentProductId}/user-access`} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
-                            <div className="text-muted-foreground">
-                              <Users className="h-5 w-5" />
-                            </div>
+                            <Users className="h-5 w-5 !text-emerald-600" />
                             {state !== "collapsed" && <span>User Access</span>}
                           </Link>
                         </SidebarMenuButton>
@@ -484,7 +476,7 @@ export function SidebarContextualMenu({
                   size="lg" 
                   className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}
                 >
-                  <Link to="/app/devices" className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
+                  <Link to={backToDevicesHref} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
                     <div className="text-muted-foreground">
                       <Layers className="h-5 w-5" />
                     </div>
@@ -529,41 +521,36 @@ export function SidebarContextualMenu({
               </SidebarMenuItem>
 
               <SidebarMenuItem>
-                <div>
-                  <PortfolioGroup
-                    userRole={userRole}
-                    currentCompany={currentCompany}
-                    location={location}
-                  />
+                <PortfolioGroup
+                  userRole={userRole}
+                  currentCompany={currentCompany}
+                  location={location}
+                  accentClassName={domainTokens('business').button}
+                />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Choose your preferred visualization to explore your device portfolio
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
 
               {/* Compliance Instances Group */}
               <SidebarMenuItem>
-                <div>
-                  <ComplianceInstancesGroup context="company" userRole={userRole} currentCompany={currentCompany} location={location} singleCompanyName={singleCompanyName} />
+                <ComplianceInstancesGroup context="company" userRole={userRole} currentCompany={currentCompany} location={location} singleCompanyName={singleCompanyName} accentClassName={domainTokens('clinical-reg').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Manage documents, gap analysis, activities, and audits across all products
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
 
               <SidebarMenuItem>
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <SidebarMenuButton asChild isActive={location.pathname === `/app/company/${encodeURIComponent(currentCompany)}/milestones`} size="lg" className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}>
+                      <SidebarMenuButton asChild isActive={location.pathname === `/app/company/${encodeURIComponent(currentCompany)}/milestones`} size="lg" className={cn(state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm", domainTokens('operations').button)}>
                         <Link to={`/app/company/${encodeURIComponent(currentCompany)}/milestones`} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
-                          <div className="text-muted-foreground">
-                            <Calendar className="h-5 w-5" />
-                          </div>
+                          <Calendar className="h-5 w-5 !text-blue-600" />
                           {state !== "collapsed" && <span>Enterprise Roadmap</span>}
                         </Link>
                       </SidebarMenuButton>
@@ -587,14 +574,12 @@ export function SidebarContextualMenu({
 
               {/* Operations Group */}
               <SidebarMenuItem>
-                <div>
-                  <OperationsGroup userRole={userRole} currentCompany={currentCompany} location={location} />
+                <OperationsGroup userRole={userRole} currentCompany={currentCompany} location={location} accentClassName={domainTokens('operations').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Suppliers, infrastructure, and calibration management
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
 
               {/* Quality & Governance Group (NC, CAPA, CC, DR) */}
@@ -603,19 +588,18 @@ export function SidebarContextualMenu({
                   context="company"
                   basePath={`/app/company/${encodeURIComponent(currentCompany)}`}
                   location={location}
+                  accentClassName={domainTokens('quality').button}
                 />
               </SidebarMenuItem>
 
               {/* Commercial Intelligence Group */}
               <SidebarMenuItem>
-                <div>
-                  <CompanyCommercialGroup userRole={userRole} currentCompany={currentCompany} location={location} />
+                <CompanyCommercialGroup userRole={userRole} currentCompany={currentCompany} location={location} accentClassName={domainTokens('business').button} />
                   {state !== "collapsed" && (
                     <p className="text-xs text-muted-foreground px-3 mt-1 mb-2">
                       Manage global strategy for categories, platforms, and models. Set target markets, pricing templates, and strategic positioning at the company level.
                     </p>
                   )}
-                </div>
               </SidebarMenuItem>
 
               {/* IP Management - v2024120403 */}
@@ -623,11 +607,9 @@ export function SidebarContextualMenu({
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <SidebarMenuButton asChild isActive={location.pathname.includes('/ip-portfolio')} size="lg" className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}>
+                      <SidebarMenuButton asChild isActive={location.pathname.includes('/ip-portfolio')} size="lg" className={cn(state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm", domainTokens('business').button)}>
                         <Link to={`/app/company/${encodeURIComponent(currentCompany)}/ip-portfolio`} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
-                          <div className="text-muted-foreground">
-                            <Lightbulb className="h-5 w-5" />
-                          </div>
+                          <Lightbulb className="h-5 w-5 !text-amber-600" />
                           {state !== "collapsed" && <span>IP Management</span>}
                         </Link>
                       </SidebarMenuButton>
@@ -653,11 +635,9 @@ export function SidebarContextualMenu({
                 <TooltipProvider delayDuration={300}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <SidebarMenuButton asChild isActive={location.pathname === `/app/company/${encodeURIComponent(currentCompany)}/post-market-surveillance`} size="lg" className={state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm"}>
+                      <SidebarMenuButton asChild isActive={location.pathname === `/app/company/${encodeURIComponent(currentCompany)}/post-market-surveillance`} size="lg" className={cn(state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm", domainTokens('quality').button)}>
                         <Link to={`/app/company/${encodeURIComponent(currentCompany)}/post-market-surveillance`} className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3"}>
-                          <div className="text-muted-foreground">
-                            <Eye className="h-5 w-5" />
-                          </div>
+                          <Eye className="h-5 w-5 !text-emerald-600" />
                           {state !== "collapsed" && <span>Post-Market Surveillance</span>}
                         </Link>
                       </SidebarMenuButton>

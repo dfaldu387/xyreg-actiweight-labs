@@ -1,5 +1,6 @@
 import React, { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import {
   AlertTriangle,
@@ -114,21 +115,33 @@ function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorCli
     const m = s.match(/SOP-(?:[A-Z]{2}-)?(\d{3})/i);
     return m ? m[1] : '';
   };
+  const subPrefixFromSop = (s: string) => {
+    const m = s.match(/SOP-([A-Z]{2})-\d{3}/i);
+    return m ? m[1].toUpperCase() : '';
+  };
 
   const merged: Merged[] = [];
   const usedLinkedIds = new Set<string>();
 
   for (const rec of recommendations) {
     const recNum = numericFromSop(rec.sopNumber);
-    const match = linked.find(
-      (l) => !usedLinkedIds.has(l.id) && numericFromSop(l.name) === recNum,
-    );
+    const recPrefix = subPrefixFromSop(rec.sopNumber);
+    const match = linked.find((l) => {
+      if (usedLinkedIds.has(l.id)) return false;
+      if (numericFromSop(l.name) !== recNum) return false;
+      // If the recommendation specifies a functional sub-prefix (e.g. DE),
+      // the linked doc must carry the same prefix — never let a generic
+      // SOP-006 satisfy a SOP-DE-006 slot.
+      if (recPrefix) return subPrefixFromSop(l.name) === recPrefix;
+      return true;
+    });
     if (match) usedLinkedIds.add(match.id);
-    const status: Merged['status'] = match
-      ? match.status?.toLowerCase() === 'approved'
-        ? 'approved'
-        : 'in-progress'
-      : 'missing';
+    const matchStatus = match?.status?.toLowerCase() ?? '';
+    const status: Merged['status'] = !match
+      ? 'missing'
+      : matchStatus === 'approved'
+      ? 'approved'
+      : 'in-progress';
     const matchedId = match?.name.match(/SOP-[A-Z]{2}-\d{3}/i)?.[0];
     merged.push({
       key: rec.sopNumber,
@@ -144,12 +157,17 @@ function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorCli
   for (const l of linked) {
     if (usedLinkedIds.has(l.id)) continue;
     const id = l.name.match(/SOP-[A-Z]{2}-\d{3}/i)?.[0] || l.name;
+    const ls = l.status?.toLowerCase() ?? '';
+    const lstatus: Merged['status'] =
+      ls === 'approved'
+        ? 'approved'
+        : 'in-progress';
     merged.push({
       key: l.id,
       displayId: id,
       sopNumber: id,
       documentId: l.id,
-      status: l.status?.toLowerCase() === 'approved' ? 'approved' : 'in-progress',
+      status: lstatus,
       title: l.name,
     });
   }
@@ -227,6 +245,27 @@ function HelixNodeLightComponent({ data }: NodeProps) {
   const [autoOpenSop, setAutoOpenSop] = useState<
     { sopNumber: string; documentId?: string } | undefined
   >(undefined);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Ensure the RBR side drawer (driven by ?foundationNode=) is dismissed
+  // whenever we open the SOP popup, so closing the popup doesn't reveal it.
+  const closeFoundationDrawer = () => {
+    if (!searchParams.get('foundationNode')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('foundationNode');
+    setSearchParams(next, { replace: true });
+  };
+
+  // Broadcast that the SOP dialog is interacting, so the wrapping
+  // CompanyHelixMap can suppress accidental node-click drawer opens
+  // that bubble up from the SOP controls or fire after dialog close.
+  const suppressNextNodeClick = () => {
+    try {
+      window.dispatchEvent(new CustomEvent('qmsr:suppress-node-click'));
+    } catch {
+      /* no-op */
+    }
+  };
 
   const trackColor = TRACK_COLORS[nodeData.track];
   const statusStyle = statusConfig[nodeData.status];
@@ -249,11 +288,15 @@ function HelixNodeLightComponent({ data }: NodeProps) {
 
   const handleSOPIndicatorClick = () => {
     setAutoOpenSop(undefined);
+    suppressNextNodeClick();
+    closeFoundationDrawer();
     setSopDialogOpen(true);
   };
 
   const handleChipClick = (target: { sopNumber: string; documentId?: string }) => {
     setAutoOpenSop(target);
+    suppressNextNodeClick();
+    closeFoundationDrawer();
     setSopDialogOpen(true);
   };
 
@@ -458,7 +501,16 @@ function HelixNodeLightComponent({ data }: NodeProps) {
       open={sopDialogOpen}
       onOpenChange={(o) => {
         setSopDialogOpen(o);
-        if (!o) setAutoOpenSop(undefined);
+        if (!o) {
+          setAutoOpenSop(undefined);
+          // Also clear the side-drawer URL param on close so the RBR
+          // drawer cannot be revealed underneath the popup.
+          closeFoundationDrawer();
+          // And suppress the very next node click — Radix dispatches a
+          // synthetic click on close that React Flow can pick up as a
+          // node selection, which would re-open the side drawer.
+          suppressNextNodeClick();
+        }
       }}
       nodeId={nodeData.id}
       nodeLabel={nodeData.label}

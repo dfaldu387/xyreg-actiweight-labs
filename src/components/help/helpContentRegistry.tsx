@@ -2553,7 +2553,21 @@ const CompanyTrainingHelp: React.FC = () => {
             title={lang('help.content.companyTraining.competency.title')}
             description={lang('help.content.companyTraining.competency.description')}
           />
+          <InfoCard
+            title={lang('help.content.companyTraining.lockedWorkflow.title')}
+            description={lang('help.content.companyTraining.lockedWorkflow.description')}
+          />
         </div>
+      </HelpSection>
+
+      <HelpSection title={lang('help.content.companyTraining.phases')}>
+        <StepList steps={[
+          lang('help.content.companyTraining.phaseSteps.step1'),
+          lang('help.content.companyTraining.phaseSteps.step2'),
+          lang('help.content.companyTraining.phaseSteps.step3'),
+          lang('help.content.companyTraining.phaseSteps.step4'),
+          lang('help.content.companyTraining.phaseSteps.step5')
+        ]} />
       </HelpSection>
 
       <HelpSection title={lang('help.content.companyTraining.keyFeatures')}>
@@ -2562,8 +2576,17 @@ const CompanyTrainingHelp: React.FC = () => {
           lang('help.content.companyTraining.features.step2'),
           lang('help.content.companyTraining.features.step3'),
           lang('help.content.companyTraining.features.step4'),
-          lang('help.content.companyTraining.features.step5')
+          lang('help.content.companyTraining.features.step5'),
+          lang('help.content.companyTraining.features.step6')
         ]} />
+      </HelpSection>
+
+      <HelpSection title={lang('help.content.companyTraining.compliance')}>
+        <div className="space-y-2">
+          <InfoCard title="ISO 13485 §6.2.2" description={lang('help.content.companyTraining.complianceItems.iso13485_622')} />
+          <InfoCard title="ISO 13485 §4.2.4" description={lang('help.content.companyTraining.complianceItems.iso13485_424')} />
+          <InfoCard title="21 CFR §11 / EU Annex 11" description={lang('help.content.companyTraining.complianceItems.cfr11')} />
+        </div>
       </HelpSection>
 
       <TipCard>

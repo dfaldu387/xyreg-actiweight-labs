@@ -153,12 +153,15 @@ import {
   GitBranch
 } from 'lucide-react';
 
-export type DomainColor = 'gold' | 'blue' | 'green' | 'purple' | undefined;
+export type DomainColor = 'gold' | 'blue' | 'teal' | 'green' | 'purple' | undefined;
 
 export const DOMAIN_COLOR_CLASSES: Record<string, { border: string; icon: string; iconActive: string; bg: string; bgSolid: string; textSolid: string; ring: string }> = {
   gold:   { border: 'border-l-[#D4AF37]',  icon: 'text-[#D4AF37]',  iconActive: 'text-[#B8960E]',  bg: 'bg-[#D4AF37]/10', bgSolid: 'bg-[#D4AF37]', textSolid: 'text-white', ring: 'ring-[#D4AF37]' },
   blue:   { border: 'border-l-[#3B82F6]',  icon: 'text-[#3B82F6]',  iconActive: 'text-[#2563EB]',  bg: 'bg-[#3B82F6]/10', bgSolid: 'bg-[#3B82F6]', textSolid: 'text-white', ring: 'ring-[#3B82F6]' },
-  green:  { border: 'border-l-[#10B981]',  icon: 'text-[#10B981]',  iconActive: 'text-[#059669]',  bg: 'bg-[#10B981]/10', bgSolid: 'bg-[#10B981]', textSolid: 'text-white', ring: 'ring-[#10B981]' },
+  // Teal shifted to cyan-teal (cooler, blue-leaning) so it reads clearly different from the Quality green
+  teal:   { border: 'border-l-[#0E7490]',  icon: 'text-[#0891B2]',  iconActive: 'text-[#155E75]',  bg: 'bg-[#06B6D4]/20', bgSolid: 'bg-[#0891B2]', textSolid: 'text-white', ring: 'ring-[#0E7490]' },
+  // Green shifted to deeper forest/emerald so it no longer overlaps with teal
+  green:  { border: 'border-l-[#15803D]',  icon: 'text-[#16A34A]',  iconActive: 'text-[#166534]',  bg: 'bg-[#22C55E]/20', bgSolid: 'bg-[#16A34A]', textSolid: 'text-white', ring: 'ring-[#15803D]' },
   purple: { border: 'border-l-[#8B5CF6]',  icon: 'text-[#8B5CF6]',  iconActive: 'text-[#7C3AED]',  bg: 'bg-[#8B5CF6]/10', bgSolid: 'bg-[#8B5CF6]', textSolid: 'text-white', ring: 'ring-[#8B5CF6]' },
 };
 
@@ -380,7 +383,7 @@ export const defaultSidebarConfig: SidebarConfig = {
             { id: 'company-management-review', name: 'Management Review', icon: <FileBarChart className="w-4 h-4" />, route: '/app/company/:companyName/management-review' },
             { id: 'company-nonconformity', name: 'NC Trends', icon: <FileWarning className="w-4 h-4" />, route: '/app/company/:companyName/nonconformity' },
             { id: 'company-capa', name: 'CAPA Trends', icon: <AlertTriangle className="w-4 h-4" />, route: '/app/company/:companyName/capa' },
-            { id: 'company-change-control', name: 'Global Change Control', icon: <FileCheck className="w-4 h-4" />, route: '/app/company/:companyName/change-control' },
+            { id: 'company-change-control', name: 'Change Control', icon: <FileCheck className="w-4 h-4" />, route: '/app/company/:companyName/change-control' },
             { id: 'company-design-review', name: 'Design Review', icon: <ClipboardCheck className="w-4 h-4" />, route: '/app/company/:companyName/design-review' },
           ]
         },
@@ -460,7 +463,7 @@ export const defaultSidebarConfig: SidebarConfig = {
           id: 'device-definition',
           name: 'Device Definition',
           icon: <FileText className="w-5 h-5" />,
-          domainColor: 'blue',
+          domainColor: 'teal',
           children: [
             { id: 'overview', name: 'Overview', icon: <Info className="w-4 h-4" />, route: '/app/product/:id/device-information?tab=overview' },
             { id: 'general', name: 'General', icon: <Settings className="w-4 h-4" />, route: '/app/product/:id/device-information?tab=basics' },
@@ -476,13 +479,13 @@ export const defaultSidebarConfig: SidebarConfig = {
           name: 'Bill of Materials',
           icon: <Package className="w-5 h-5" />,
           route: '/app/product/:id/bom',
-          domainColor: 'blue'
+          domainColor: 'teal'
         },
         {
           id: 'design-risk-controls',
           name: 'Design & Risk Controls',
           icon: <Shield className="w-5 h-5" />,
-          domainColor: 'blue',
+          domainColor: 'teal',
           children: [
             { id: 'requirements', name: 'Requirements', icon: <FileText className="w-4 h-4" />, route: '/app/product/:id/design-risk-controls?tab=requirement-specifications' },
             { id: 'architecture', name: 'Architecture', icon: <Network className="w-4 h-4" />, route: '/app/product/:id/design-risk-controls?tab=system-architecture' },
@@ -516,13 +519,6 @@ export const defaultSidebarConfig: SidebarConfig = {
           ]
         },
         {
-          id: 'clinical-trials',
-          name: 'Clinical Trials',
-          icon: <Microscope className="w-5 h-5" />,
-          route: '/app/product/:id/clinical-trials',
-          domainColor: 'blue'
-        },
-        {
           id: 'quality-governance',
           name: 'Quality Governance',
           icon: <FileWarning className="w-5 h-5" />,
@@ -542,6 +538,13 @@ export const defaultSidebarConfig: SidebarConfig = {
           icon: <FileBarChart className="w-5 h-5" />,
           route: '/app/product/:id/audit-log',
           domainColor: 'green'
+        },
+        {
+          id: 'clinical-trials',
+          name: 'Clinical Trials',
+          icon: <Microscope className="w-5 h-5" />,
+          route: '/app/product/:id/clinical-trials',
+          domainColor: 'purple'
         },
         {
           id: 'compliance-instances',
@@ -851,6 +854,10 @@ export const getCurrentModuleFromRoute = (pathname: string): string | null => {
   if (pathname.includes('/marketplace-preview')) return 'mission-control'; // Must be before /company/ check
   if (pathname.includes('/document-studio') || pathname.includes('/document-composer')) return 'draft-studio';
   if (pathname.includes('/communications')) return 'mission-control';
+  // Standalone CCR detail (`/app/change-control/:ccrId`) is a company-scoped
+  // page — surface the company L2 sidebar (portfolio module) instead of the
+  // empty "Select a Module" placeholder.
+  if (pathname.includes('/app/change-control/')) return 'portfolio';
   if (pathname.includes('/bundle/')) return 'portfolio'; // Bundle routes belong to products module
   if (pathname.includes('/product/')) return 'products';
   // if (pathname.includes('/supplier')) return 'suppliers'; // Commented out - suppliers is part of portfolio module

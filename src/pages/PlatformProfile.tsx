@@ -331,7 +331,7 @@ export default function PlatformProfile() {
                 {linkedProducts.map(product => (
                   <Link
                     key={product.id}
-                    to={`/app/company/${companyName}/products/${product.id}`}
+                    to={`/app/product/${product.id}`}
                     className="block p-3 border rounded-sm hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-center justify-between">

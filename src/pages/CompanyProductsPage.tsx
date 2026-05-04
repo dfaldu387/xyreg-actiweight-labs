@@ -31,7 +31,10 @@ export default function CompanyProductsPage() {
   return (
     <React.Fragment>
       <FullPageLoader />
-      <Navigate to={`/company/${companyName}`} replace={true} />
+      <Navigate
+        to={`/app/company/${companyName}/portfolio?view=cards`}
+        replace={true}
+      />
     </React.Fragment>
   );
 }

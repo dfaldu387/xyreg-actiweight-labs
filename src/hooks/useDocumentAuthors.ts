@@ -7,6 +7,7 @@ export interface AuthorOption {
   name: string;
   email?: string | null;
   type: 'user' | 'custom' | 'pending';
+  title?: string | null;
 }
 
 interface AuthorsData {
@@ -21,6 +22,7 @@ async function fetchAuthorsData(companyId: string): Promise<AuthorsData> {
     .select(`
       user_id,
       access_level,
+      external_role,
       user_profiles!inner(id, first_name, last_name, email)
     `)
     .eq('company_id', companyId);
@@ -28,6 +30,26 @@ async function fetchAuthorsData(companyId: string): Promise<AuthorsData> {
   if (usersError) {
     console.error('Error fetching company users:', usersError);
   }
+
+  // Fetch department-role assignments for title resolution (e.g. "CEO")
+  const userIds = (companyUsers || []).map((u: any) => u.user_id).filter(Boolean);
+  let deptRolesByUser: Record<string, string | null> = {};
+  if (userIds.length > 0) {
+    const { data: deptRows } = await supabase
+      .from('user_department_assignments')
+      .select('user_id, role')
+      .eq('company_id', companyId)
+      .in('user_id', userIds);
+    (deptRows || []).forEach((r: any) => {
+      const roles: string[] = Array.isArray(r.role) ? r.role.filter(Boolean) : [];
+      if (roles.length > 0 && !deptRolesByUser[r.user_id]) {
+        deptRolesByUser[r.user_id] = roles[0];
+      }
+    });
+  }
+
+  const humanize = (s?: string | null) =>
+    s ? s.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : null;
 
   // Fetch all pending invitations (all access levels)
   const { data: pendingInvitations, error: invitationsError } = await supabase
@@ -56,11 +78,16 @@ async function fetchAuthorsData(companyId: string): Promise<AuthorsData> {
     .map(u => {
       const profile = u.user_profiles as any;
       const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.email || 'Unknown User';
+      const title =
+        deptRolesByUser[u.user_id] ||
+        humanize((u as any).external_role) ||
+        humanize((u as any).access_level);
       return {
         id: u.user_id,
         name: fullName,
         email: profile.email,
-        type: 'user' as const
+        type: 'user' as const,
+        title
       };
     });
 

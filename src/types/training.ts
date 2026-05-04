@@ -4,6 +4,37 @@ export type TrainingModuleType = 'sop' | 'video' | 'workshop' | 'course' | 'exte
 export type DeliveryMethod = 'self_paced' | 'live_session' | 'blended';
 export type TrainingStatus = 'not_started' | 'scheduled' | 'in_progress' | 'completed' | 'overdue' | 'expired';
 export type DueType = 'days_after_assignment' | 'days_after_hire' | 'annual' | 'one_time';
+export type TrainingPhase =
+  | 'not_started'
+  | 'reading'
+  | 'quiz_ready'
+  | 'quiz_failed'
+  | 'sign_ready'
+  | 'completed'
+  | 'expired';
+
+export interface TrainingQuizQuestion {
+  id: string;
+  module_id: string;
+  company_id: string;
+  question: string;
+  options: string[];
+  correct_index: number;
+  explanation: string | null;
+  order_index: number;
+}
+
+export interface TrainingQuizAttempt {
+  id: string;
+  record_id: string;
+  module_id: string;
+  user_id: string;
+  company_id: string;
+  answers: Array<{ question_id: string; chosen_index: number; correct: boolean }>;
+  score: number;
+  passed: boolean;
+  attempted_at: string;
+}
 
 export interface TrainingModule {
   id: string;
@@ -20,6 +51,10 @@ export interface TrainingModule {
   version: string;
   is_active: boolean;
   group_name: string | null;
+  requires_quiz: boolean;
+  minimum_read_seconds: number;
+  attestation_text: string | null;
+  max_attempts: number;
   created_at: string;
   updated_at: string;
 }
@@ -85,6 +120,10 @@ export interface TrainingModuleFormData {
   estimated_minutes: number | null;
   validity_days: number | null;
   version: string;
+  requires_quiz: boolean;
+  minimum_read_seconds: number;
+  attestation_text: string;
+  max_attempts: number;
 }
 
 // Stats types

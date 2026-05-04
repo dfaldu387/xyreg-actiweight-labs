@@ -40,17 +40,26 @@ function UserSelect({
   value?: string; 
   authors: AuthorOption[]; 
   placeholder: string;
-  onSelect: (name: string) => void;
+  onSelect: (name: string, title?: string | null) => void;
 }) {
   return (
-    <Select value={value || ''} onValueChange={onSelect}>
+    <Select
+      value={value || ''}
+      onValueChange={(name) => {
+        const match = authors.find((a) => a.name === name);
+        onSelect(name, match?.title ?? null);
+      }}
+    >
       <SelectTrigger className="h-7 text-xs w-full">
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {authors.map((author) => (
           <SelectItem key={author.id} value={author.name}>
-            <span className="text-xs">{author.name}</span>
+            <span className="text-xs">
+              {author.name}
+              {author.title ? <span className="text-muted-foreground"> — {author.title}</span> : null}
+            </span>
           </SelectItem>
         ))}
       </SelectContent>
@@ -60,6 +69,33 @@ function UserSelect({
 
 export function SOPDocumentHeader({ documentControl, companyName, className = '', companyId, companyLogoUrl, onFieldChange, isRecord = false, recordId, nextReviewDate, documentNumber, changeControlRef }: SOPDocumentHeaderProps) {
   const { authors } = useDocumentAuthors(companyId || '');
+
+  // Resolve a title for a stored name when the document doesn't yet have one.
+  const titleForName = (name?: string) => {
+    if (!name) return null;
+    return authors.find((a) => a.name === name)?.title || null;
+  };
+
+  // Treat any non-empty stored value as a valid name. The user can always
+  // click "Change" / ✕ to clear and re-select. Do NOT auto-hide values
+  // just because they don't match the team list — that locks users out
+  // of editing and makes the field appear broken.
+  const hasName = (name?: string) => Boolean(name && name.trim());
+
+  const setNameAndTitle = (prefix: 'preparedBy' | 'reviewedBy' | 'approvedBy', name: string, title?: string | null) => {
+    onFieldChange?.(`${prefix}.name`, name);
+    onFieldChange?.(`${prefix}.title`, title || '');
+    // Do NOT stamp a date here. The date is written only by the eSign
+    // ceremony (see src/components/esign/ESignPopup.tsx), which fires
+    // after all approvers have approved. Clear the date when the name
+    // is removed so a stale signing date never lingers.
+    if (!name) onFieldChange?.(`${prefix}.date`, '');
+  };
+
+  const setOwner = (name: string, title?: string | null) => {
+    onFieldChange?.('documentOwner', name);
+    onFieldChange?.('documentOwnerTitle', title || '');
+  };
 
   if (!documentControl) {
     return null;
@@ -142,7 +178,7 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
                     Executor / Author:
                   </td>
                   <td className="border border-gray-300 px-3 py-2" colSpan={3}>
-                    {documentControl.documentOwner ? (
+                    {hasName(documentControl.documentOwner) ? (
                       <div className="flex items-center gap-2">
                         <span>{documentControl.documentOwner}</span>
                         <button 
@@ -157,7 +193,7 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
                       <UserSelect
                         authors={authors}
                         placeholder="Select executor / author..."
-                        onSelect={(name) => onFieldChange?.('documentOwner', name)}
+                        onSelect={(name, title) => setOwner(name, title)}
                       />
                     )}
                   </td>
@@ -173,13 +209,13 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
               </div>
               <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
                 <div className="text-xs">
-                  {documentControl.preparedBy?.name ? (
+                  {hasName(documentControl.preparedBy?.name) ? (
                     <div className="flex items-center justify-center gap-1">
                       <span>{documentControl.preparedBy.name}</span>
                       <button
                         type="button"
                         className="text-muted-foreground hover:text-foreground underline"
-                        onClick={() => onFieldChange?.('preparedBy.name', '')}
+                        onClick={() => setNameAndTitle('preparedBy', '', '')}
                       >
                         ✕
                       </button>
@@ -188,13 +224,17 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
                     <UserSelect
                       authors={authors}
                       placeholder="Select..."
-                      onSelect={(name) => onFieldChange?.('preparedBy.name', name)}
+                      onSelect={(name, title) => setNameAndTitle('preparedBy', name, title)}
                     />
                   )}
-                  <div className="text-gray-600">{documentControl.preparedBy?.title || '[Title]'}</div>
+                  <div className="text-gray-600">{documentControl.preparedBy?.title || titleForName(documentControl.preparedBy?.name) || '[Title]'}</div>
                 </div>
                 <div className="text-xs text-gray-600">
-                  Date: {safeFormat(documentControl.preparedBy?.date, 'dd MMMM yyyy')}
+                  {hasName(documentControl.preparedBy?.name)
+                    ? (documentControl.preparedBy?.date
+                        ? `Date: ${safeFormat(documentControl.preparedBy?.date, 'dd MMMM yyyy')}`
+                        : 'Date: TBD')
+                    : ''}
                 </div>
               </div>
             </div>
@@ -231,22 +271,22 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
                   Document Owner:
                 </td>
                 <td className="border border-gray-300 px-3 py-2" colSpan={3}>
-                  {documentControl.documentOwner ? (
-                    <div className="flex items-center gap-2">
+                  {hasName(documentControl.documentOwner) ? (
+                    <div className="flex items-center gap-1">
                       <span>{documentControl.documentOwner}</span>
-                      <button 
+                      <button
                         type="button"
                         className="text-xs text-muted-foreground hover:text-foreground underline"
-                        onClick={() => onFieldChange?.('documentOwner', '')}
+                        onClick={() => setOwner('', '')}
                       >
-                        Change
+                        ✕
                       </button>
                     </div>
                   ) : (
                     <UserSelect
                       authors={authors}
                       placeholder="Select document owner..."
-                      onSelect={(name) => onFieldChange?.('documentOwner', name)}
+                      onSelect={(name, title) => setOwner(name, title)}
                     />
                   )}
                 </td>
@@ -279,13 +319,13 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
               </div>
               <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
                 <div className="text-xs">
-                  {documentControl.preparedBy?.name ? (
+                  {hasName(documentControl.preparedBy?.name) ? (
                     <div className="flex items-center justify-center gap-1">
                       <span>{documentControl.preparedBy.name}</span>
                       <button
                         type="button"
                         className="text-muted-foreground hover:text-foreground underline"
-                        onClick={() => onFieldChange?.('preparedBy.name', '')}
+                        onClick={() => setNameAndTitle('preparedBy', '', '')}
                       >
                         ✕
                       </button>
@@ -294,13 +334,17 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
                     <UserSelect
                       authors={authors}
                       placeholder="Select..."
-                      onSelect={(name) => onFieldChange?.('preparedBy.name', name)}
+                      onSelect={(name, title) => setNameAndTitle('preparedBy', name, title)}
                     />
                   )}
-                  <div className="text-gray-600">{documentControl.preparedBy?.title || '[Title]'}</div>
+                  <div className="text-gray-600">{documentControl.preparedBy?.title || titleForName(documentControl.preparedBy?.name) || '[Title]'}</div>
                 </div>
                 <div className="text-xs text-gray-600">
-                  Date: {safeFormat(documentControl.preparedBy?.date, 'dd MMMM yyyy')}
+                  {hasName(documentControl.preparedBy?.name)
+                    ? (documentControl.preparedBy?.date
+                        ? `Date: ${safeFormat(documentControl.preparedBy?.date, 'dd MMMM yyyy')}`
+                        : 'Date: TBD')
+                    : ''}
                 </div>
               </div>
             </div>
@@ -312,13 +356,13 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
               </div>
               <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
                 <div className="text-xs">
-                  {documentControl.reviewedBy?.name ? (
+                  {hasName(documentControl.reviewedBy?.name) ? (
                     <div className="flex items-center justify-center gap-1">
                       <span>{documentControl.reviewedBy.name}</span>
                       <button
                         type="button"
                         className="text-muted-foreground hover:text-foreground underline"
-                        onClick={() => onFieldChange?.('reviewedBy.name', '')}
+                        onClick={() => setNameAndTitle('reviewedBy', '', '')}
                       >
                         ✕
                       </button>
@@ -327,13 +371,17 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
                     <UserSelect
                       authors={authors}
                       placeholder="Select..."
-                      onSelect={(name) => onFieldChange?.('reviewedBy.name', name)}
+                      onSelect={(name, title) => setNameAndTitle('reviewedBy', name, title)}
                     />
                   )}
-                  <div className="text-gray-600">{documentControl.reviewedBy?.title || '[Title]'}</div>
+                  <div className="text-gray-600">{documentControl.reviewedBy?.title || titleForName(documentControl.reviewedBy?.name) || '[Title]'}</div>
                 </div>
                 <div className="text-xs text-gray-600">
-                  Date: {safeFormat(documentControl.reviewedBy?.date, 'dd MMMM yyyy')}
+                  {hasName(documentControl.reviewedBy?.name)
+                    ? (documentControl.reviewedBy?.date
+                        ? `Date: ${safeFormat(documentControl.reviewedBy?.date, 'dd MMMM yyyy')}`
+                        : 'Date: TBD')
+                    : ''}
                 </div>
               </div>
             </div>
@@ -345,13 +393,13 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
               </div>
               <div className="border border-gray-300 border-t-0 p-4 h-24 flex flex-col justify-between">
                 <div className="text-xs">
-                  {documentControl.approvedBy?.name ? (
+                  {hasName(documentControl.approvedBy?.name) ? (
                     <div className="flex items-center justify-center gap-1">
                       <span>{documentControl.approvedBy.name}</span>
                       <button
                         type="button"
                         className="text-muted-foreground hover:text-foreground underline"
-                        onClick={() => onFieldChange?.('approvedBy.name', '')}
+                        onClick={() => setNameAndTitle('approvedBy', '', '')}
                       >
                         ✕
                       </button>
@@ -360,13 +408,17 @@ export function SOPDocumentHeader({ documentControl, companyName, className = ''
                     <UserSelect
                       authors={authors}
                       placeholder="Select..."
-                      onSelect={(name) => onFieldChange?.('approvedBy.name', name)}
+                      onSelect={(name, title) => setNameAndTitle('approvedBy', name, title)}
                     />
                   )}
-                  <div className="text-gray-600">{documentControl.approvedBy?.title || '[Title]'}</div>
+                  <div className="text-gray-600">{documentControl.approvedBy?.title || titleForName(documentControl.approvedBy?.name) || '[Title]'}</div>
                 </div>
                 <div className="text-xs text-gray-600">
-                  Date: {safeFormat(documentControl.approvedBy?.date, 'dd MMMM yyyy')}
+                  {hasName(documentControl.approvedBy?.name)
+                    ? (documentControl.approvedBy?.date
+                        ? `Date: ${safeFormat(documentControl.approvedBy?.date, 'dd MMMM yyyy')}`
+                        : 'Date: TBD')
+                    : ''}
                 </div>
               </div>
             </div>

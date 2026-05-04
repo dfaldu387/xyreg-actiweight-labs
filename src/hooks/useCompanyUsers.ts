@@ -15,6 +15,7 @@ export interface CompanyUser {
   functional_area?: 'research_development' | 'quality_assurance' | 'regulatory_affairs' | 'clinical_affairs' | 'manufacturing_operations' | 'marketing_labeling' | 'management_executive' | 'other_internal';
   external_role?: 'consultant' | 'auditor' | 'contract_manufacturer' | 'distributor' | 'key_opinion_leader' | 'other_external';
   department?: string | null;
+  job_title?: string | null;
   created_at: string;
   permissions: {
     companies: string[];
@@ -51,6 +52,7 @@ export function useCompanyUsers(companyId?: string) {
           functional_area,
           external_role,
           department,
+          job_title,
           created_at,
           user_profiles!inner(
             first_name,
@@ -101,6 +103,7 @@ export function useCompanyUsers(companyId?: string) {
           avatar: access.user_profiles?.avatar_url,
           role: access.department || externalRole || (access.is_internal ? 'Internal' : 'External'),
           department: access.department || null,
+          job_title: access.job_title || null,
           access_level: access.access_level,
           is_internal: access.is_internal,
           is_owner: isOwner,
@@ -158,6 +161,7 @@ export function useCompanyUsers(companyId?: string) {
     is_internal?: boolean;
     functional_area?: 'research_development' | 'quality_assurance' | 'regulatory_affairs' | 'clinical_affairs' | 'manufacturing_operations' | 'marketing_labeling' | 'management_executive' | 'other_internal';
     external_role?: 'consultant' | 'auditor' | 'contract_manufacturer' | 'distributor' | 'key_opinion_leader' | 'other_external';
+    job_title?: string | null;
   }) => {
     if (!companyId) return false;
 
@@ -186,7 +190,8 @@ export function useCompanyUsers(companyId?: string) {
         is_internal: updates.is_internal,
         functional_area: updates.functional_area,
         external_role: updates.external_role,
-        department: updates.role
+        department: updates.role,
+        ...(updates.job_title !== undefined ? { job_title: updates.job_title } : {}),
       };
 
       const { error } = await supabase
@@ -210,6 +215,7 @@ export function useCompanyUsers(companyId?: string) {
                 is_internal: updates.is_internal !== undefined ? updates.is_internal : user.is_internal,
                 functional_area: updates.functional_area !== undefined ? updates.functional_area : user.functional_area,
                 external_role: updates.external_role !== undefined ? updates.external_role : user.external_role,
+                job_title: updates.job_title !== undefined ? updates.job_title : user.job_title,
                 role: updates.role || user.role
               }
             : user

@@ -32,6 +32,7 @@ import { formatSopDisplayId, formatSopDisplayName, getSopTier } from '@/constant
 import { CompanyDocumentViewer } from "./CompanyDocumentViewer";
 import { CompanyDocumentCard } from "./CompanyDocumentCard";
 import { CompanyDocumentListView } from "./CompanyDocumentListView";
+import { StackedClusterView } from "./grouped/StackedClusterView";
 import { DocumentDraftDrawer } from "@/components/product/documents/DocumentDraftDrawer";
 import { BulkDraftEditDialog } from "@/components/product/documents/BulkDraftEditDialog";
 import { DraftTabGroupsMenu } from "@/components/product/documents/DraftTabGroupsMenu";
@@ -40,6 +41,7 @@ import { useAuditLog } from '@/hooks/useAuditLog';
 import { useCompanyDocuments, CompanyDocument } from '@/hooks/useCompanyDocuments';
 import { useDocumentTypes } from '@/hooks/useDocumentTypes';
 import { EnhancedDocumentFilters, SortByDateOption } from '@/components/product/documents/EnhancedDocumentFilters';
+import { compareDocumentNumber } from '@/utils/documentFilterParams';
 import { useDocumentAuthors } from '@/hooks/useDocumentAuthors';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useQuery } from '@tanstack/react-query';
@@ -52,6 +54,12 @@ import { DocumentValidationService } from '@/services/documentValidationService'
 import { appendLanguageSuffix } from '@/utils/documentNumbering';
 import { NoPhaseService } from '@/services/noPhaseService';
 import { parseSopNumber } from '@/constants/sopAutoSeedTiers';
+import {
+  getUserScopedFilters,
+  setUserScopedFilters,
+  clearUserScopedFilters,
+  onUserScopeReady,
+} from '@/lib/userScopedFilterStorage';
 
 interface CompanyDocumentManagerProps {
   companyId: string;
@@ -83,6 +91,33 @@ const serializeArrayParam = (arr: string[]): string | null => {
   return arr.length > 0 ? arr.join(',') : null;
 };
 
+// Shape persisted per user+company so filters survive leaving and returning to the page.
+type PersistedFilters = {
+  searchTerm: string;
+  statusFilter: string[];
+  authorFilter: string[];
+  sectionFilter: string[];
+  tagFilter: string[];
+  refTagFilter: string[];
+  docTypeFilter: string[];
+  tierFilter: string[];
+  sortByDate: SortByDateOption;
+  viewMode: 'card' | 'list' | 'grouped';
+};
+
+const FILTER_URL_KEYS = [
+  URL_PARAM_KEYS.SEARCH,
+  URL_PARAM_KEYS.STATUS,
+  URL_PARAM_KEYS.AUTHORS,
+  URL_PARAM_KEYS.SECTIONS,
+  URL_PARAM_KEYS.TAGS,
+  URL_PARAM_KEYS.REF_TAGS,
+  URL_PARAM_KEYS.DOC_TYPES,
+  URL_PARAM_KEYS.TIERS,
+  URL_PARAM_KEYS.SORT_BY_DATE,
+  URL_PARAM_KEYS.LAYOUT,
+];
+
 export function CompanyDocumentManager({ companyId, disabled = false }: CompanyDocumentManagerProps) {
   const { lang } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -97,7 +132,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
   const [docTypeFilter, setDocTypeFilterState] = useState<string[]>(() => parseArrayParam(searchParams.get(URL_PARAM_KEYS.DOC_TYPES)));
   const [tierFilter, setTierFilterState] = useState<string[]>(() => parseArrayParam(searchParams.get(URL_PARAM_KEYS.TIERS)));
   const [sortByDate, setSortByDateState] = useState<SortByDateOption>(() => (searchParams.get(URL_PARAM_KEYS.SORT_BY_DATE) as SortByDateOption) || 'none');
-  const [viewMode, setViewModeState] = useState<'card' | 'list'>(() => (searchParams.get(URL_PARAM_KEYS.LAYOUT) as 'card' | 'list') || 'list');
+  const [viewMode, setViewModeState] = useState<'card' | 'list' | 'grouped'>(() => (searchParams.get(URL_PARAM_KEYS.LAYOUT) as 'card' | 'list' | 'grouped') || 'list');
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -227,6 +262,43 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
     }, { replace: true });
   }, [setSearchParams]);
 
+  // Filter persistence scope key (per user is handled inside the storage helper).
+  const filterScope = `companyDocs.${companyId}`;
+
+  // Hydrate filters from per-user localStorage on first mount when the URL
+  // contains no filter params (e.g. user navigated back via the sidebar).
+  const hydratedRef = React.useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    const hasAnyUrlFilter = FILTER_URL_KEYS.some(k => searchParams.get(k));
+    if (hasAnyUrlFilter) {
+      hydratedRef.current = true;
+      return;
+    }
+    onUserScopeReady(() => {
+      if (hydratedRef.current) return;
+      const saved = getUserScopedFilters<PersistedFilters>(filterScope);
+      hydratedRef.current = true;
+      if (!saved) return;
+      // Push saved filters into URL; the existing URL→state sync effect will pick them up.
+      updateUrlParams({
+        [URL_PARAM_KEYS.SEARCH]: saved.searchTerm || null,
+        [URL_PARAM_KEYS.STATUS]: serializeArrayParam(saved.statusFilter || []),
+        [URL_PARAM_KEYS.AUTHORS]: serializeArrayParam(saved.authorFilter || []),
+        [URL_PARAM_KEYS.SECTIONS]: serializeArrayParam(saved.sectionFilter || []),
+        [URL_PARAM_KEYS.TAGS]: serializeArrayParam(saved.tagFilter || []),
+        [URL_PARAM_KEYS.REF_TAGS]: serializeArrayParam(saved.refTagFilter || []),
+        [URL_PARAM_KEYS.DOC_TYPES]: serializeArrayParam(saved.docTypeFilter || []),
+        [URL_PARAM_KEYS.TIERS]: serializeArrayParam(saved.tierFilter || []),
+        [URL_PARAM_KEYS.SORT_BY_DATE]:
+          saved.sortByDate && saved.sortByDate !== 'none' ? saved.sortByDate : null,
+        [URL_PARAM_KEYS.LAYOUT]:
+          saved.viewMode && saved.viewMode !== 'list' ? saved.viewMode : null,
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterScope]);
+
   // Sync URL changes to state (browser back/forward)
   useEffect(() => {
     const urlSearch = searchParams.get(URL_PARAM_KEYS.SEARCH) || '';
@@ -238,7 +310,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
     const urlDocTypes = parseArrayParam(searchParams.get(URL_PARAM_KEYS.DOC_TYPES));
     const urlTiers = parseArrayParam(searchParams.get(URL_PARAM_KEYS.TIERS));
     const urlSort = (searchParams.get(URL_PARAM_KEYS.SORT_BY_DATE) as SortByDateOption) || 'none';
-    const urlLayout = (searchParams.get(URL_PARAM_KEYS.LAYOUT) as 'card' | 'list') || 'list';
+    const urlLayout = (searchParams.get(URL_PARAM_KEYS.LAYOUT) as 'card' | 'list' | 'grouped') || 'list';
 
     if (urlSearch !== searchTerm) setSearchTermState(urlSearch);
     if (JSON.stringify(urlStatus) !== JSON.stringify(statusFilter)) setStatusFilterState(urlStatus);
@@ -251,6 +323,35 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
     if (urlSort !== sortByDate) setSortByDateState(urlSort);
     if (urlLayout !== viewMode) setViewModeState(urlLayout);
   }, [searchParams]);
+
+  // Persist current filter snapshot per user+company so it survives leaving the page.
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    setUserScopedFilters<PersistedFilters>(filterScope, {
+      searchTerm,
+      statusFilter,
+      authorFilter,
+      sectionFilter,
+      tagFilter,
+      refTagFilter,
+      docTypeFilter,
+      tierFilter,
+      sortByDate,
+      viewMode,
+    });
+  }, [
+    filterScope,
+    searchTerm,
+    statusFilter,
+    authorFilter,
+    sectionFilter,
+    tagFilter,
+    refTagFilter,
+    docTypeFilter,
+    tierFilter,
+    sortByDate,
+    viewMode,
+  ]);
 
 
   // Wrapper functions that update both state and URL
@@ -299,7 +400,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
     updateUrlParams({ [URL_PARAM_KEYS.SORT_BY_DATE]: value === 'none' ? null : value });
   }, [updateUrlParams]);
 
-  const setViewMode = useCallback((value: 'card' | 'list') => {
+  const setViewMode = useCallback((value: 'card' | 'list' | 'grouped') => {
     setViewModeState(value);
     updateUrlParams({ [URL_PARAM_KEYS.LAYOUT]: value === 'list' ? null : value });
   }, [updateUrlParams]);
@@ -1124,6 +1225,10 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
             return (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
           case 'name_desc':
             return (b.name || '').localeCompare(a.name || '', undefined, { sensitivity: 'base' });
+          case 'number_asc':
+            return compareDocumentNumber(a.document_number, b.document_number, a.name, b.name);
+          case 'number_desc':
+            return compareDocumentNumber(b.document_number, a.document_number, b.name, a.name);
           case 'phase_asc':
             return (a.phase_name || '').localeCompare(b.phase_name || '', undefined, { sensitivity: 'base' });
           case 'phase_desc':
@@ -1201,6 +1306,60 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
 
     return result;
   }, [documents, searchTerm, statusFilter, authorFilter, sectionFilter, tagFilter, refTagFilter, docTypeFilter, tierFilter, sortByDate, refDocTagMap, allAuthorsMap]);
+
+  // === Grouped (SOP -> WI) view: derive parent->child map by document_number ===
+  // Parent SOP "SOP-{SUB}-{NNN}" matches WI "WI-{SUB}-{NNN}-*".
+  const groupedView = useMemo(() => {
+    if (viewMode !== 'grouped') return { docs: filteredDocuments, parentChildMap: undefined as Map<string, string[]> | undefined };
+    const sopByKey = new Map<string, CompanyDocument>(); // key like "QA-001" -> SOP doc
+    const wisByKey = new Map<string, CompanyDocument[]>();
+    const orphans: CompanyDocument[] = [];
+    for (const d of filteredDocuments) {
+      const num = (d.document_number || '').toUpperCase();
+      const sopMatch = num.match(/^SOP-([A-Z]+)-(\d{3})$/);
+      const wiMatch = num.match(/^WI-([A-Z]+)-(\d{3})-\d+$/);
+      if (sopMatch) {
+        sopByKey.set(`${sopMatch[1]}-${sopMatch[2]}`, d);
+      } else if (wiMatch) {
+        const k = `${wiMatch[1]}-${wiMatch[2]}`;
+        if (!wisByKey.has(k)) wisByKey.set(k, []);
+        wisByKey.get(k)!.push(d);
+      } else {
+        orphans.push(d);
+      }
+    }
+    const parentChildMap = new Map<string, string[]>();
+    const ordered: CompanyDocument[] = [];
+    // Walk filteredDocuments order, but emit each parent immediately followed by its children
+    const emittedParentKeys = new Set<string>();
+    for (const d of filteredDocuments) {
+      const num = (d.document_number || '').toUpperCase();
+      const wiMatch = num.match(/^WI-([A-Z]+)-(\d{3})-\d+$/);
+      if (wiMatch) {
+        const k = `${wiMatch[1]}-${wiMatch[2]}`;
+        if (sopByKey.has(k)) continue; // emitted under parent
+        ordered.push(d); // orphan WI (no parent in current filter)
+        continue;
+      }
+      const sopMatch = num.match(/^SOP-([A-Z]+)-(\d{3})$/);
+      if (sopMatch) {
+        const k = `${sopMatch[1]}-${sopMatch[2]}`;
+        if (emittedParentKeys.has(k)) continue;
+        emittedParentKeys.add(k);
+        ordered.push(d);
+        const kids = wisByKey.get(k) ?? [];
+        if (kids.length) {
+          parentChildMap.set(d.id, kids.map(k2 => k2.id));
+          // append children sorted by their document_number suffix
+          kids.sort((a,b) => (a.document_number || '').localeCompare(b.document_number || '', undefined, { numeric: true }));
+          ordered.push(...kids);
+        }
+        continue;
+      }
+      ordered.push(d);
+    }
+    return { docs: ordered, parentChildMap };
+  }, [viewMode, filteredDocuments]);
 
   // Handler for status filter toggle
   const handleStatusFilterChange = useCallback((status: string) => {
@@ -1288,7 +1447,8 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
       [URL_PARAM_KEYS.TIERS]: null,
       [URL_PARAM_KEYS.SORT_BY_DATE]: null,
     });
-  }, [updateUrlParams]);
+    clearUserScopedFilters(filterScope);
+  }, [updateUrlParams, filterScope]);
 
   if (isLoading) {
     return (
@@ -1350,13 +1510,16 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
               type="single"
               className="border rounded-md bg-background"
               value={viewMode}
-              onValueChange={(value) => value && setViewMode(value as 'card' | 'list')}
+              onValueChange={(value) => value && setViewMode(value as 'card' | 'list' | 'grouped')}
             >
               <ToggleGroupItem value="card" aria-label="Card view" className="h-9 px-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
                 <LayoutGrid className="h-4 w-4" />
               </ToggleGroupItem>
               <ToggleGroupItem value="list" aria-label="List view" className="h-9 px-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
                 <List className="h-4 w-4" />
+              </ToggleGroupItem>
+              <ToggleGroupItem value="grouped" aria-label="Grouped view (SOP → WI)" title="Grouped (SOP → WI)" className="h-9 px-3 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
+                <Layers className="h-4 w-4" />
               </ToggleGroupItem>
             </ToggleGroup>
             <Button variant="outline" size="sm" onClick={() => setShowRefreshConfirm(true)} disabled={isRefreshing}>
@@ -1381,7 +1544,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                 </Badge>
               </div>
               <div className="flex items-center gap-2">
-                {viewMode === 'list' && (
+                {(viewMode === 'list' || viewMode === 'grouped') && (
                   <ColumnVisibilitySettings
                     companyId={companyId}
                     module="company_documents"
@@ -1625,11 +1788,27 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
               </div>
             )}
 
+
             {/* Document Cards/List */}
             {filteredDocuments.length > 0 ? (
-              viewMode === 'list' ? (
+              viewMode === 'grouped' ? (
+                <StackedClusterView
+                  documents={groupedView.docs}
+                  parentChildMap={groupedView.parentChildMap}
+                  bulkSelectedDocs={bulkSelectedDocs}
+                  onToggleBulk={(docId: string) => {
+                    setBulkSelectedDocs(prev => {
+                      const next = new Set(prev);
+                      if (next.has(docId)) next.delete(docId); else next.add(docId);
+                      return next;
+                    });
+                  }}
+                  onOpen={handleCreateInStudio}
+                  onEdit={handleCreateInStudio}
+                />
+              ) : viewMode === 'list' ? (
                 <CompanyDocumentListView
-                  documents={filteredDocuments}
+                  documents={groupedView.docs}
                   onView={handleViewDocument}
                   onEdit={handleEditDocument}
                   onDelete={handleDeleteDocument}
@@ -1641,6 +1820,7 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                   companyId={companyId}
                   hiddenColumns={hiddenColumns}
                   externalSortActive={sortByDate !== 'none'}
+                  groupedMode={false}
                   bulkMode={true}
                   bulkSelectedDocs={bulkSelectedDocs}
                   onToggleBulkDoc={(docId: string) => {

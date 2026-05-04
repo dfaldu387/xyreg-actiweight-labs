@@ -4,6 +4,7 @@ import { TrainingModule, TrainingModuleFormData } from '@/types/training';
 import { toast } from 'sonner';
 import { isValidUUID } from '@/utils/uuidValidation';
 import { getGroupForSOP } from '@/constants/trainingGroups';
+import { syncTrainingModulesFromApprovedSOPs } from '@/services/trainingAutoLinkService';
 
 export function useTrainingModules(companyId: string | undefined) {
   return useQuery({
@@ -103,71 +104,34 @@ export function useDeleteTrainingModule(companyId: string | undefined) {
   });
 }
 
-export function useSeedTrainingModulesFromSOPs(companyId: string | undefined) {
+export function useSyncModulesFromApprovedSOPs(companyId: string | undefined) {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async () => {
       if (!companyId) throw new Error('Company ID required');
-      
-      // 1. Fetch all SOP templates from default_document_templates
-      const { data: templates, error: templatesError } = await supabase
-        .from('default_document_templates')
-        .select('name, description')
-        .ilike('name', 'SOP-%')
-        .order('name');
-      
-      if (templatesError) throw templatesError;
-      if (!templates || templates.length === 0) throw new Error('No SOP templates found');
-      
-      // 2. Fetch existing training modules for this company
-      const { data: existing, error: existingError } = await supabase
-        .from('training_modules')
-        .select('name')
-        .eq('company_id', companyId);
-      
-      if (existingError) throw existingError;
-      
-      const existingNames = new Set((existing || []).map(m => m.name));
-      
-      // 3. Filter out already-existing modules
-      const newTemplates = templates.filter(t => !existingNames.has(t.name));
-      
-      if (newTemplates.length === 0) {
-        toast.info('All SOPs are already imported');
-        return { imported: 0 };
-      }
-      
-      // 4. Bulk insert new training modules
-      const modulesToInsert = newTemplates.map(t => ({
-        company_id: companyId,
-        name: t.name,
-        description: t.description || null,
-        type: 'sop' as const,
-        delivery_method: 'self_paced' as const,
-        requires_signature: true,
-        version: '1.0',
-        is_active: true,
-        group_name: getGroupForSOP(t.name),
-      }));
-      
-      const { error: insertError } = await supabase
-        .from('training_modules')
-        .insert(modulesToInsert);
-      
-      if (insertError) throw insertError;
-      
-      return { imported: newTemplates.length };
+      return await syncTrainingModulesFromApprovedSOPs(companyId);
     },
-    onSuccess: (data) => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['training-modules', companyId] });
-      if (data && data.imported > 0) {
-        toast.success(`Imported ${data.imported} SOP training modules`);
+      const reissued = (res as any).reissued ?? 0;
+      if (res.created === 0 && res.updated === 0) {
+        toast.info('Training modules are already in sync with your SOPs');
+      } else {
+        const parts: string[] = [];
+        if (res.created) parts.push(`${res.created} new`);
+        if (res.updated) parts.push(`${res.updated} updated`);
+        if (reissued) parts.push(`${reissued} re-training records issued`);
+        toast.success(`Synced from approved SOPs: ${parts.join(', ')}`);
       }
     },
     onError: (error) => {
-      toast.error('Failed to import SOP modules');
+      toast.error('Failed to sync training modules from SOPs');
       console.error(error);
     },
   });
 }
+
+// Back-compat alias (deprecated): re-export under the old name so any
+// stragglers keep compiling. Prefer useSyncModulesFromApprovedSOPs.
+export const useSeedTrainingModulesFromSOPs = useSyncModulesFromApprovedSOPs;

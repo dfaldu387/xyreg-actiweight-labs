@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Download, Share, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine, Eye, EyeOff, Pencil, ShieldCheck, Bold, Italic, Strikethrough, Link2, List, ListOrdered, Type, ImagePlus, Undo, Redo, Heading1, Heading2, Heading3, Quote, AlignJustify, MessageSquare, MessageSquarePlus, ZoomIn, ZoomOut, PanelRight, Loader2, CheckCircle2, AlertCircle, Minus, Table as TableIcon } from 'lucide-react';
+import { FileText, Download, Share, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine, Eye, EyeOff, Pencil, ShieldCheck, Bold, Italic, Strikethrough, Link2, List, ListOrdered, Type, ImagePlus, Undo, Redo, Heading1, Heading2, Heading3, Quote, AlignJustify, MessageSquare, ZoomIn, ZoomOut, PanelRight, Loader2, CheckCircle2, AlertCircle, Minus, Table as TableIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -648,11 +648,22 @@ export function annotateDocumentReferences(
     // spaces, ampersands, slashes, hyphens) and stops at punctuation/tag
     // boundaries so the WHOLE title becomes part of the chip — not just the
     // first word. Capped at 80 chars to avoid runaway matches.
-    `\\b(${prefixGroup})(?:-([A-Z]{2,4}))?-(\\d{2,4})(?:\\s*[:\\-]?\\s*([A-Z][\\w][\\w &/\\-]{0,78}))?(?=$|[<\\n,;.)\\]])`,
+    //
+    // The numeric segment optionally captures a trailing `-N` (1–3 digits) so
+    // Work Instruction numbers like `WI-SC-030-1` are matched as a single
+    // chip (group 4) instead of being truncated to `WI-SC-030` with a
+    // dangling `-1`.
+    `\\b(${prefixGroup})(?:-([A-Z]{2,4}))?-(\\d{2,4})(-\\d{1,3})?(?:\\s*[:\\-]?\\s*([A-Z][\\w][\\w &/\\-]{0,78}))?(?=$|[<\\n,;.)\\]])`,
     'g',
   );
   const renderReferenceChip = (refCode: string, title: string) => {
-    const legacyCode = refCode.replace(/^([A-Z]{2,5})-[A-Z]{2,4}-(\d{2,4})$/i, '$1-$2');
+    // Drop the functional sub-prefix when computing the legacy fallback so a
+    // chip authored as `SOP-DE-019` still resolves to a row stored as
+    // `SOP-019`, and `WI-SC-030-1` falls back to `WI-030-1`.
+    const legacyCode = refCode.replace(
+      /^([A-Z]{2,5})-[A-Z]{2,4}-(\d{2,4})(-\d{1,3})?$/i,
+      (_m, p, n, suf) => `${p}-${n}${suf || ''}`,
+    );
     const display = title ? `${refCode} ${title}` : refCode;
     const known =
       knownRefs.get(refCode.toLowerCase()) ||
@@ -675,10 +686,11 @@ export function annotateDocumentReferences(
     const chipText = String(text || '').replace(/&quot;/g, '"').trim();
     if (refCode) return renderReferenceChip(refCode, refTitle);
 
-    const parsed = chipText.match(new RegExp(`^(${prefixGroup})(?:-([A-Z]{2,4}))?-(\\d{2,4})(?:\\s+(.+))?$`, 'i'));
+    const parsed = chipText.match(new RegExp(`^(${prefixGroup})(?:-([A-Z]{2,4}))?-(\\d{2,4})(-\\d{1,3})?(?:\\s+(.+))?$`, 'i'));
     if (!parsed) return _match;
-    const [, prefix, sub, num, tail] = parsed;
-    return renderReferenceChip(sub ? `${prefix}-${sub}-${num}` : `${prefix}-${num}`, (tail || '').trim());
+    const [, prefix, sub, num, suffix, tail] = parsed;
+    const base = sub ? `${prefix}-${sub}-${num}` : `${prefix}-${num}`;
+    return renderReferenceChip(suffix ? `${base}${suffix}` : base, (tail || '').trim());
   });
 
   // Skip text inside tags (between < and >) and inside known chip/anchor wrappers.
@@ -717,10 +729,9 @@ export function annotateDocumentReferences(
     const rawChunk = lt === -1 ? html.slice(i) : html.slice(i, lt);
     const textChunk = expandRanges(rawChunk);
     // Substitute references in this text segment.
-    out += textChunk.replace(re, (_m, prefix, sub, num, tail) => {
-      const refCode = sub
-        ? `${prefix}-${sub}-${num}`
-        : `${prefix}-${num}`;
+    out += textChunk.replace(re, (_m, prefix, sub, num, suffix, tail) => {
+      const base = sub ? `${prefix}-${sub}-${num}` : `${prefix}-${num}`;
+      const refCode = suffix ? `${base}${suffix}` : base;
       const title = (tail || '').trim();
       return renderReferenceChip(refCode, title);
     });
@@ -1081,17 +1092,12 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
     typeof window !== 'undefined' ? window.innerWidth < 900 : false
   );
   const [narrowRightOpen, setNarrowRightOpen] = useState(false);
-  // Document Outline open/closed state persists across sessions so users
-  // returning to a document see the same layout they left.
-  const [outlineCollapsed, setOutlineCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem('xyreg.outline.collapsed') !== '0'; } catch { return true; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem('xyreg.outline.collapsed', outlineCollapsed ? '1' : '0'); } catch { /* ignore */ }
-  }, [outlineCollapsed]);
+  // Document Outline always starts collapsed when opening a draft.
+  // Per-session toggle only — users explicitly disliked it auto-opening.
+  const [outlineCollapsed, setOutlineCollapsed] = useState<boolean>(true);
   const [narrowOutlineOpen, setNarrowOutlineOpen] = useState(false);
   const [rightPanelOpen, setRightPanelOpen] = useState<boolean>(() => {
-    try { return localStorage.getItem('xyreg.rightPanel.open') !== '0'; } catch { return true; }
+    try { return localStorage.getItem('xyreg.rightPanel.open') === '1'; } catch { return false; }
   });
   useEffect(() => {
     try { localStorage.setItem('xyreg.rightPanel.open', rightPanelOpen ? '1' : '0'); } catch { /* ignore */ }
@@ -1139,7 +1145,11 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
     // Capture both legacy two-part (SOP-019) and three-part functional
     // sub-prefix (SOP-DE-019) formats. The optional middle group must be
     // 2–4 uppercase letters to mirror the chip-side regex above.
-    const refRe = /\b([A-Z]{2,5}(?:-[A-Z]{2,4})?-\d{2,4})\b/;
+    // Capture WI/SOP-style codes including the optional WI suffix
+    // (e.g. WI-SC-030-1) so each Work Instruction is indexed under its full
+    // document_number — without this, all WIs sharing a parent SOP collapse
+    // onto the same key and get marked ambiguous.
+    const refRe = /\b([A-Z]{2,5}(?:-[A-Z]{2,4})?-\d{2,4}(?:-\d{1,3})?)\b/;
     const addKey = (raw: string | undefined, id: string, name: string) => {
       if (!raw) return;
       const code = raw.trim().toUpperCase();
@@ -1150,17 +1160,24 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       } else if (existing.id && existing.id !== id) {
         m.set(key, { name: existing.name, ambiguous: true });
       }
-      // Also index the two-part legacy fallback (SOP-DE-019 → SOP-019) so
-      // older references in existing content still resolve.
+      // Also index the two-part legacy fallback (SOP-DE-019 → SOP-019,
+      // WI-SC-030-1 → WI-030-1) so older references in existing content
+      // still resolve.
       const parts = code.split('-');
-      if (parts.length === 3) {
-        const legacyKey = `${parts[0]}-${parts[2]}`.toLowerCase();
-        const existingLegacy = m.get(legacyKey);
+      const indexLegacy = (legacyKey: string) => {
+        const k = legacyKey.toLowerCase();
+        const existingLegacy = m.get(k);
         if (!existingLegacy) {
-          m.set(legacyKey, { id, name, ambiguous: false });
+          m.set(k, { id, name, ambiguous: false });
         } else if (existingLegacy.id && existingLegacy.id !== id) {
-          m.set(legacyKey, { name: existingLegacy.name, ambiguous: true });
+          m.set(k, { name: existingLegacy.name, ambiguous: true });
         }
+      };
+      if (parts.length === 3) {
+        indexLegacy(`${parts[0]}-${parts[2]}`);
+      } else if (parts.length === 4) {
+        // e.g. WI-SC-030-1 → WI-030-1
+        indexLegacy(`${parts[0]}-${parts[2]}-${parts[3]}`);
       }
     };
     for (const it of refDocItems) {
@@ -2105,6 +2122,20 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
     if (html && !/^\s*<(p|ul|ol|h[1-6]|table|blockquote|pre|div)\b/i.test(html)) {
       html = `<p>${html}</p>`;
     }
+    // Strip empty <p></p> blocks that would render as blank rows between the
+    // heading and the inserted content.
+    html = html.replace(/<p>\s*(?:<br\s*\/?>)?\s*<\/p>/gi, '');
+
+    // Preserve scroll position across the entire apply — TipTap's focus()
+    // scrolls the cursor (placed at end of inserted content) into view, which
+    // can jump the viewport away from where the user was reading.
+    const __scrollEl = document.getElementById('draft-editor-scroll-container');
+    const __savedScroll = __scrollEl?.scrollTop ?? 0;
+    const __restoreScroll = () => {
+      requestAnimationFrame(() => {
+        if (__scrollEl) __scrollEl.scrollTop = __savedScroll;
+      });
+    };
 
     const editorEl = editorContainerRef.current;
     if (editorEl && sectionName && mode === 'replace') {
@@ -2124,7 +2155,8 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
           const from = unifiedEditor.view.posAtDOM(h2.nextElementSibling || last, 0);
           const afterLast = unifiedEditor.view.posAtDOM(last, 0) + (last.textContent?.length || 0) + 1;
           const to = Math.max(from, afterLast);
-          unifiedEditor.chain().focus().deleteRange({ from, to }).insertContentAt(from, html).run();
+          unifiedEditor.chain().deleteRange({ from, to }).insertContentAt(from, html).run();
+          __restoreScroll();
           return;
         } catch { /* fall through to insert-at-end */ }
       }
@@ -2140,7 +2172,15 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
             if (next) {
               try {
                 const pos = unifiedEditor.view.posAtDOM(next, 0);
-                unifiedEditor.chain().focus().setTextSelection(pos).insertContent(html).run();
+                // If the placeholder right after the heading is an empty <p>,
+                // delete it so the inserted content doesn't sit below a blank row.
+                if (next.tagName === 'P' && !next.textContent?.trim()) {
+                  const endPos = pos + (next.textContent?.length || 0) + 1;
+                  unifiedEditor.chain().setTextSelection(pos).deleteRange({ from: pos, to: endPos }).insertContentAt(pos, html).run();
+                } else {
+                  unifiedEditor.chain().setTextSelection(pos).insertContent(html).run();
+                }
+                __restoreScroll();
                 return;
               } catch { /* fall through */ }
             }
@@ -2152,13 +2192,16 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
         if (next && next.tagName === 'P' && (!next.textContent?.trim())) {
           try {
             const pos = unifiedEditor.view.posAtDOM(next, 0);
-            unifiedEditor.chain().focus().setTextSelection(pos).insertContent(html).run();
+            const endPos = pos + (next.textContent?.length || 0) + 1;
+            unifiedEditor.chain().setTextSelection(pos).deleteRange({ from: pos, to: endPos }).insertContentAt(pos, html).run();
+            __restoreScroll();
             return;
           } catch { /* fall through */ }
         }
       }
     }
-    unifiedEditor.chain().focus('end').insertContent(html).run();
+    unifiedEditor.chain().insertContent(html).run();
+    __restoreScroll();
   }, [unifiedEditor]);
 
   // Track the template ID and sections content to detect external changes
@@ -2318,6 +2361,27 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       );
     }, 30);
   }, []);
+
+  // Bubble-menu action: dispatch a request to add a comment anchored to the
+  // current selection. Listened to by DocxCommentSidebar (in the drawer).
+  const handleAddSelectionAsComment = useCallback(() => {
+    const editor = editorInstanceRef.current;
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) {
+      toast.error('Please select some text first');
+      return;
+    }
+    const text = editor.state.doc.textBetween(from, to, '\n').trim();
+    if (!text) return;
+    const docId = editingDocumentId || currentDocumentId || undefined;
+    window.dispatchEvent(
+      new CustomEvent('xyreg:add-document-comment', {
+        detail: { docId, quotedText: text, anchor: { from, to } },
+      }),
+    );
+    toast.success('Add your comment in the Comments panel');
+  }, [editingDocumentId, currentDocumentId]);
 
   // Bubble-menu action: capture selection snapshot and open the inline AI
   // edit popover. Uses the click target's bounding rect as anchor — rock-solid
@@ -2487,9 +2551,17 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   };
 
   const handleAIContentGenerated = (newContent: string) => {
-    // Insert AI-generated content into the unified editor at cursor position
+    // Insert AI-generated content without stealing focus / scrolling.
+    // Calling .focus() after a modal cycle re-focuses at the last selection
+    // (often doc end) and Tiptap scrolls the viewport there — dumping the
+    // user at the bottom of the page. Preserve scroll position instead.
     if (unifiedEditor) {
-      unifiedEditor.chain().focus().insertContent(newContent).run();
+      const scrollEl = document.getElementById('draft-editor-scroll-container');
+      const savedScroll = scrollEl?.scrollTop ?? 0;
+      unifiedEditor.chain().insertContent(newContent).run();
+      requestAnimationFrame(() => {
+        if (scrollEl) scrollEl.scrollTop = savedScroll;
+      });
     }
     setShowAIModal(false);
     setSelectedSection(null);
@@ -3284,11 +3356,21 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
                       variant="ghost"
                       size="sm"
                       onMouseDown={(e) => { e.preventDefault(); handleAddSelectionToChat(); }}
-                      className="h-7 px-2 gap-1"
-                      title="Add to AI chat"
+                      className="h-7 px-2 gap-1 text-primary hover:bg-primary/10"
+                      title="Ask AI about selection"
                     >
-                      <MessageSquarePlus className="w-3.5 h-3.5" />
-                      <span className="text-xs font-medium">Add to Chat</span>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span className="text-xs font-medium">Ask AI</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onMouseDown={(e) => { e.preventDefault(); handleAddSelectionAsComment(); }}
+                      className="h-7 px-2 gap-1"
+                      title="Comment on selection"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span className="text-xs font-medium">Comment</span>
                     </Button>
                   </BubbleMenu>
                 </>

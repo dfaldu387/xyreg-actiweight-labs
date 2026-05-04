@@ -1665,25 +1665,44 @@
         "trainingSystem": "Training System",
         "modules": {
           "title": "Training Modules",
-          "description": "Define training content including SOPs, work instructions, and external certifications."
+          "description": "Auto-generated from approved SOPs and Work Instructions. Display IDs use the Xyreg 3-part convention (e.g. SOP-QA-001) while storage stays canonical (SOP-001) so seeders and cross-references don't break."
         },
         "roleBased": {
           "title": "Role-Based Assignment",
-          "description": "Automatically assign required training based on job roles and responsibilities."
+          "description": "When a role gets a training requirement, training_records fan out to every user holding that role. Mission Control shows phase-specific labels (Take quiz, Sign to complete)."
         },
         "competency": {
           "title": "Competency Tracking",
-          "description": "Track completion status, due dates, and training effectiveness."
+          "description": "Per-user phase ring (●completed · ▶in-flight · ⚠quiz-failed · ⊗overdue) shows where people are stuck — not just whether they're done."
+        },
+        "lockedWorkflow": {
+          "title": "Locked Workflow (Read → Quiz → Sign)",
+          "description": "Strict sequence enforced by trainingPhaseService and a Postgres validation trigger. Sign button stays disabled until minimum read time elapses and (optionally) the AI-generated quiz is passed at ≥80%. Re-authentication produces a 21 CFR Part 11 signature_hash bound to the document version read."
+        },
+        "phases": "Phase Machine",
+        "phaseSteps": {
+          "step1": "not_started → reading: user opens the SOP in TrainingReader (idle detection pauses the timer).",
+          "step2": "reading → quiz_ready: minimum_read_seconds elapsed (≈ word count / 200 wpm).",
+          "step3": "quiz_ready → sign_ready: TrainingQuizRunner pass; failures retry up to max_attempts then lock for manager re-assignment.",
+          "step4": "sign_ready → completed: TrainingAttestation re-prompts password, writes signature_hash + attestation_text snapshot.",
+          "step5": "Document version bump → completed records flip to expired and re-issue automatically."
         },
         "keyFeatures": "Key Features",
         "features": {
-          "step1": "Create training modules linked to SOPs and procedures",
-          "step2": "Define role-based training requirements",
-          "step3": "Auto-assign training when users are assigned roles",
-          "step4": "Track completion and send reminders for overdue training",
-          "step5": "Re-issue training when documents are updated"
+          "step1": "Auto-sync modules from approved SOPs/WIs (idempotent on source_document_id)",
+          "step2": "Per-module Locked Workflow: requires_quiz, minimum_read_seconds, max_attempts, attestation_text",
+          "step3": "Role-based fan-out + auto re-issue when SOP version bumps",
+          "step4": "AI-generated quizzes via gemini-2.5-flash grounded in the linked document",
+          "step5": "21 CFR Part 11 / EU Annex 11 compliant signature_hash bound to the version read",
+          "step6": "Mission Control surfaces every overdue / quiz_failed / sign_ready item on login"
         },
-        "tip": "ISO 13485 requires documented evidence of training effectiveness. Use assessments or practical demonstrations to verify competency."
+        "compliance": "Compliance Mapping",
+        "complianceItems": {
+          "iso13485_622": "ISO 13485 §6.2.2 — quiz score is documented evidence of training effectiveness, not just sign-off.",
+          "iso13485_424": "ISO 13485 §4.2.4 — version-bump auto-expiry prevents signatures against obsolete revisions.",
+          "cfr11": "21 CFR §11.10(j) / EU Annex 11 — re-authentication + immutable signature_hash + verbatim attestation."
+        },
+        "tip": "Default Tier A (Foundation) SOPs to requires_quiz=true. Custom modules without a SOP key fall through unchanged."
       },
       "companySuppliers": {
         "description": "Supplier Management helps you qualify, monitor, and control suppliers of materials, components, and services critical to product quality.",
@@ -2640,7 +2659,7 @@
       "company-portfolio": "Portfolio Management",
       "company-nc-trends": "NC Trends (Enterprise)",
       "company-capa-trends": "CAPA Trends (Enterprise)",
-      "company-change-control": "Global Change Control",
+      "company-change-control": "Change Control",
       "company-design-review": "Design Review (Enterprise)",
       "company-management-review": "Management Review",
       "company-infrastructure": "Infrastructure Management",

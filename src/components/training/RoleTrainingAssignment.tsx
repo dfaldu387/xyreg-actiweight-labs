@@ -86,13 +86,18 @@ export function RoleTrainingAssignment({ companyId, open, onOpenChange, onSwitch
 
     const roleRequirements = requirements.filter(r => r.role_id === selectedRoleId);
     const newConfigs = new Map<string, ModuleConfig>();
+    const selectedRole = roles?.find(r => r.id === selectedRoleId);
+    const hasExistingReqs = roleRequirements.length > 0;
 
     modules.forEach(module => {
       const existingReq = roleRequirements.find(r => r.training_module_id === module.id);
+      const recommended = !hasExistingReqs && selectedRole
+        ? isModuleRecommendedForRole(module.name, selectedRole.role_name)
+        : false;
       
       newConfigs.set(module.id, {
         moduleId: module.id,
-        selected: !!existingReq,
+        selected: !!existingReq || recommended,
         is_mandatory: existingReq?.is_mandatory ?? true,
         due_type: (existingReq?.due_type as DueType) ?? 'days_after_assignment',
         due_days: existingReq?.due_days ?? 30,
@@ -102,7 +107,7 @@ export function RoleTrainingAssignment({ companyId, open, onOpenChange, onSwitch
     });
 
     setModuleConfigs(newConfigs);
-  }, [modules, requirements, selectedRoleId]);
+  }, [modules, requirements, selectedRoleId, roles]);
 
   const updateModuleConfig = (moduleId: string, updates: Partial<ModuleConfig>) => {
     setModuleConfigs(prev => {

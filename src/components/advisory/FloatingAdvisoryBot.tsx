@@ -6,7 +6,9 @@ import { AlertCircle } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, X, Volume2, VolumeX, Users, ClipboardList, Plus, ArrowLeft, Trash2, Minimize2, Maximize2, Mic, MicOff } from 'lucide-react';
+import { Send, Loader2, X, Volume2, VolumeX, Users, ClipboardList, Plus, ArrowLeft, Trash2, Minimize2, Maximize2, Mic, MicOff, GripVertical } from 'lucide-react';
+import { useVerticalDragPosition } from '@/hooks/useVerticalDragPosition';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ReactMarkdown from 'react-markdown';
@@ -310,7 +312,16 @@ export function FloatingAdvisoryBot() {
   const [showHistory, setShowHistory] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isCompact, setIsCompact] = useState(false);
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem('xyreg.advisoryBot.pos');
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (typeof p?.x === 'number' && typeof p?.y === 'number') return p;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
   const [isListening, setIsListening] = useState(false);
   const [conversationMode, setConversationMode] = useState(false);
   const [apiKeyMissing, setApiKeyMissing] = useState(false);
@@ -826,6 +837,7 @@ export function FloatingAdvisoryBot() {
       const x = Math.max(0, Math.min(window.innerWidth - currentWidth, ev.clientX - dragOffset.current.x));
       const y = Math.max(0, Math.min(window.innerHeight - currentHeight, ev.clientY - dragOffset.current.y));
       setPosition({ x, y });
+      try { localStorage.setItem('xyreg.advisoryBot.pos', JSON.stringify({ x, y })); } catch { /* ignore */ }
     };
     const handleMouseUp = () => {
       isDragging.current = false;
@@ -848,23 +860,44 @@ export function FloatingAdvisoryBot() {
     window.dispatchEvent(new CustomEvent('prof-xyreg-launch-intent'));
   }, []);
 
+  // Vertical drag for the collapsed FAB. Default 5.5rem (88px) above viewport bottom.
+  // Nudge up by 70px if the feedback button is at its default to avoid overlap.
+  const fabDrag = useVerticalDragPosition({
+    storageKey: 'xyreg.advisoryBot.fabY',
+    defaultBottomPx: 88 + 70,
+    buttonHeight: 56,
+  });
+
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        onPointerDown={(e) => {
-          announceLaunchIntent();
-          e.stopPropagation();
-        }}
-        onMouseDown={(e) => e.stopPropagation()}
-        style={{ right: railRightCss }}
-        className="fixed bottom-[5.5rem] z-[100] h-14 w-14 rounded-full bg-[#D4AF37] text-white shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-200 flex items-center justify-center group"
-        title="Technical Advisory Board"
-        data-prof-xyreg-root
-      >
-        <Users className="h-6 w-6 group-hover:scale-110 transition-transform" />
-        <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white animate-pulse" />
-      </button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => setOpen(true)}
+              onPointerDown={(e) => {
+                announceLaunchIntent();
+                e.stopPropagation();
+              }}
+              onMouseDown={(e) => { e.stopPropagation(); fabDrag.onMouseDown(e); }}
+              onClickCapture={(e) => { if (fabDrag.wasDragged()) { e.preventDefault(); e.stopPropagation(); } }}
+              onContextMenu={(e) => { if (fabDrag.hasCustomY) { e.preventDefault(); fabDrag.reset(); } }}
+              style={{ right: 24, ...fabDrag.style }}
+              className={`fixed z-[100] h-14 w-14 rounded-full bg-[#D4AF37] text-white shadow-lg hover:shadow-xl transition-shadow duration-200 flex items-center justify-center group ${fabDrag.dragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+              aria-label="Professor XyReg — Technical Advisory Board"
+              data-prof-xyreg-root
+            >
+              <GripVertical className="h-3 w-3 absolute -left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-70 transition-opacity text-white" />
+              <Users className="h-6 w-6 group-hover:scale-110 transition-transform" />
+              <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-green-500 border-2 border-white animate-pulse" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="max-w-xs">
+            <p>Professor XyReg — Technical Advisory Board</p>
+            <p className="text-[10px] opacity-70 mt-0.5">Drag vertically to move • Right-click to reset</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   }
 
@@ -882,8 +915,10 @@ export function FloatingAdvisoryBot() {
       <div
         className="flex items-center justify-between px-4 py-3 border-b bg-muted/30 shrink-0 cursor-grab active:cursor-grabbing"
         onMouseDown={handleDragStart}
+        title="Drag to move"
       >
         <div className="flex items-center gap-2">
+          <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
           {showHistory && (
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowHistory(false)}>
               <ArrowLeft className="h-4 w-4" />

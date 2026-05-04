@@ -26,11 +26,16 @@ import {
 } from '@/services/sopAutoSeedService';
 import { eagerSeedCompanyWorkInstructions } from '@/services/eagerSeedCompanyWIsClient';
 import { TIER_A_AUTO_SEED, TIER_B_CONDITIONAL } from '@/constants/sopAutoSeedTiers';
+import { resyncSeededSopContent, resyncWiReferences } from '@/services/resyncSeededSopContentService';
+
+const RESYNC_MARKER_PREFIX = 'xyreg.sopDefRefsResync.v1.';
+const WI_REF_RESYNC_MARKER_PREFIX = 'xyreg.wiRefBackfill.v1.';
 
 export interface EnsureSeedingResult {
   tierAInserted: number;
   tierBInserted: number;
   wiCreated: number;
+  sopSectionsResynced: number;
   errors: string[];
 }
 
@@ -47,6 +52,7 @@ export async function ensureCompanySeedingComplete(
     tierAInserted: 0,
     tierBInserted: 0,
     wiCreated: 0,
+    sopSectionsResynced: 0,
     errors: [],
   };
   if (!companyId || !companyName) return result;
@@ -98,6 +104,53 @@ export async function ensureCompanySeedingComplete(
     }
   } catch (err) {
     result.errors.push(`WI top-up: ${(err as Error).message}`);
+  }
+
+  // 5. One-time backfill: re-sync References + Definitions sections on
+  //    existing seeded SOP drafts so they pick up edits made to the static
+  //    SOP content library after the company was originally seeded
+  //    (e.g. added WI references, SOP/WI/DCO/ECO abbreviations).
+  //    Gated by a per-company localStorage marker to keep mounts cheap.
+  try {
+    const markerKey = `${RESYNC_MARKER_PREFIX}${companyId}`;
+    const alreadyDone =
+      typeof window !== 'undefined' && window.localStorage?.getItem(markerKey) === 'done';
+    if (!alreadyDone) {
+      const r = await resyncSeededSopContent(companyId, companyName);
+      result.sopSectionsResynced = r.updated;
+      if (r.failed > 0) {
+        result.errors.push(`${r.failed} SOP section resync(s) failed`);
+      }
+      try {
+        window.localStorage?.setItem(markerKey, 'done');
+      } catch {
+        /* localStorage unavailable; safe to retry next mount */
+      }
+    }
+  } catch (err) {
+    result.errors.push(`SOP section resync: ${(err as Error).message}`);
+  }
+
+  // 6. One-time backfill: inject the parent SOP number into each WI's
+  //    "5. Reference" paragraph so the LiveEditor renders it as a clickable
+  //    chip. Gated by a per-company localStorage marker.
+  try {
+    const wiMarkerKey = `${WI_REF_RESYNC_MARKER_PREFIX}${companyId}`;
+    const wiAlreadyDone =
+      typeof window !== 'undefined' && window.localStorage?.getItem(wiMarkerKey) === 'done';
+    if (!wiAlreadyDone) {
+      const r = await resyncWiReferences(companyId);
+      if (r.failed > 0) {
+        result.errors.push(`${r.failed} WI reference backfill(s) failed`);
+      }
+      try {
+        window.localStorage?.setItem(wiMarkerKey, 'done');
+      } catch {
+        /* localStorage unavailable; safe to retry next mount */
+      }
+    }
+  } catch (err) {
+    result.errors.push(`WI reference backfill: ${(err as Error).message}`);
   }
 
   if (result.errors.length > 0) {

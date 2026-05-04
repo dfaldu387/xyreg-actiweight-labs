@@ -6,14 +6,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { useSidebarState } from "@/hooks/useSidebarState";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { isoTooltips } from "@/constants/isoTooltips";
+import { cn } from "@/lib/utils";
 
 interface PortfolioGroupProps {
   userRole: string | null;
   currentCompany: string;
   location: { pathname: string };
+  accentClassName?: string;
 }
 
-export function PortfolioGroup({ userRole, currentCompany, location }: PortfolioGroupProps) {
+export function PortfolioGroup({ userRole, currentCompany, location, accentClassName }: PortfolioGroupProps) {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const { expandedMenus, toggleMenuExpansion, setAutoExpansion } = useSidebarState();
@@ -68,10 +70,10 @@ export function PortfolioGroup({ userRole, currentCompany, location }: Portfolio
           asChild
           isActive={isPortfolioLandingActive}
           tooltip="Portfolio Management"
-          className="flex-1 px-3 py-2.5 font-medium text-sm"
+          className={cn("flex-1 px-3 py-2.5 font-medium text-sm", accentClassName)}
         >
           <Link to={`${baseUrl}/portfolio-landing?tab=portfolio`} className="flex items-center gap-3">
-            <div className={`text-muted-foreground ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? { marginLeft: '-9px' } : {}}>
+            <div className={`text-amber-600 [&_svg]:!text-amber-600 ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? { marginLeft: '-9px' } : {}}>
               <Layers className="h-5 w-5" />
             </div>
             <span>Portfolio Management</span>
@@ -103,7 +105,7 @@ export function PortfolioGroup({ userRole, currentCompany, location }: Portfolio
                           className="px-6 py-2 text-sm"
                         >
                           <Link to={item.path} className="flex items-center gap-3">
-                            <div className="text-muted-foreground">
+                            <div className="text-amber-500">
                               <item.icon className="h-5 w-5" />
                             </div>
                             <span>{item.title}</span>

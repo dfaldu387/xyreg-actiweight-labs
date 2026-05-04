@@ -56,10 +56,10 @@ export const GLOBAL_WI_CATALOG_SPEC: Readonly<Record<string, readonly GlobalWiSp
     { slug: 'capture-minutes',  focus: 'Capturing Management Review minutes, decisions and action items', roles: ['Quality Manager', 'Top Management'] },
   ],
   'SOP-004': [
-    { slug: 'add-training-req', focus: 'Adding a training requirement for a controlled document or role', roles: ['Quality Manager', 'Department Head'] },
-    { slug: 'record-completion', focus: 'Recording training completion for an employee', roles: ['Trainer', 'Quality Manager'] },
-    { slug: 'reassign-on-revision', focus: 'Reassigning training when a controlled document is revised', roles: ['Quality Manager'] },
-    { slug: 'effectiveness-check', focus: 'Performing a training effectiveness check', roles: ['Trainer', 'Department Head'] },
+    { slug: 'end-user-locked-workflow', focus: 'End-user: complete a Locked Workflow training (Read → Quiz → Sign) from Mission Control', roles: ['All Personnel'] },
+    { slug: 'admin-config-locked-workflow', focus: 'Admin: sync the Training Library from approved SOPs and configure Locked Workflow fields (requires_quiz, minimum_read_seconds, max_attempts, attestation_text)', roles: ['Quality Manager'] },
+    { slug: 'quiz-failure-remediation', focus: 'Handle quiz failure and remediation when max attempts is reached', roles: ['Trainer', 'Department Head', 'Quality Manager'] },
+    { slug: 'version-bump-reissue', focus: 'Re-issue training automatically on controlled document version bump and verify completion across prior signers', roles: ['Quality Manager'] },
   ],
   'SOP-021': [
     { slug: 'intake-complaint', focus: 'Recording the intake of a new customer complaint', roles: ['Customer Service', 'Quality Manager'] },

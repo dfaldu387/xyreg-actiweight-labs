@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { toast as sonnerToast } from 'sonner';
 import { useTranslation } from '@/hooks/useTranslation';
 import { DocumentTemplateFileService } from '@/services/documentTemplateFileService';
 import { TemplateFilters, TemplateUploadData } from '@/types/templateManagement';
@@ -33,6 +34,7 @@ import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraf
 import {
   listGlobalWIsForSop,
   materializeGlobalWIForCompany,
+  materializeGlobalWIForCompanyDetailed,
   type GlobalWI,
 } from '@/services/globalWorkInstructionsService';
 import { 
@@ -152,10 +154,15 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
   };
 
   const handleOpenGlobalWI = async (wi: GlobalWI) => {
-    if (!companyId) return;
+    console.info('[WI Open] click', wi.wi_number, wi.id);
+    if (!companyId) {
+      sonnerToast.error('No active company in context');
+      return;
+    }
     setOpeningWiId(wi.id);
     try {
       // Resolve a phase id (first company phase) to anchor the materialized CI.
+      let phaseId: string | undefined;
       const { data: phase } = await supabase
         .from('company_phases')
         .select('id')
@@ -163,26 +170,40 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
         .order('order_index', { ascending: true })
         .limit(1)
         .maybeSingle();
-      const phaseId = (phase as { id?: string } | null)?.id;
+      phaseId = (phase as { id?: string } | null)?.id;
+
+      // Fallback: borrow any phase already used by another company doc.
       if (!phaseId) {
-        toast({
-          title: lang('common.error'),
-          description: 'No company phase found to anchor this Work Instruction.',
-          variant: 'destructive',
-        });
+        const { data: anyDoc } = await supabase
+          .from('phase_assigned_document_template')
+          .select('phase_id')
+          .eq('company_id', companyId)
+          .not('phase_id', 'is', null)
+          .limit(1)
+          .maybeSingle();
+        phaseId = (anyDoc as { phase_id?: string } | null)?.phase_id;
+      }
+
+      if (!phaseId) {
+        sonnerToast.error('No company phase found to anchor this Work Instruction.');
         return;
       }
-      const ciId = await materializeGlobalWIForCompany({
+
+      const result = await materializeGlobalWIForCompanyDetailed({
         globalWiId: wi.id,
         companyId,
         phaseId,
       });
-      if (!ciId) {
-        toast({ title: lang('common.error'), description: 'Failed to open Work Instruction.', variant: 'destructive' });
+      if (result.ok === false) {
+        sonnerToast.error(`Failed to open ${wi.wi_number}: ${result.reason}`);
         return;
       }
-      setDraftDrawerDoc({ id: ciId, name: wi.title, type: 'WI' });
+      setDraftDrawerDoc({ id: result.ciId, name: wi.title, type: 'WI' });
+      sonnerToast.success(`Opened ${wi.wi_number}`);
       await loadDraftNames();
+    } catch (e) {
+      console.error('[WI Open] unexpected error', e);
+      sonnerToast.error(`Failed to open ${wi.wi_number}: ${(e as Error).message}`);
     } finally {
       setOpeningWiId(null);
     }

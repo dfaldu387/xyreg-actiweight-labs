@@ -34,6 +34,10 @@ import { format } from 'date-fns';
 import { useTranslation } from '@/hooks/useTranslation';
 import { AiAssistPopover } from '@/components/change-control/AiAssistPopover';
 import { CCRAuditLog } from '@/components/change-control/CCRAuditLog';
+import { CCRLinkedDocuments } from '@/components/change-control/CCRLinkedDocuments';
+import { useCCRLinkedDocsDedupedCount } from '@/hooks/useCCRLinkedDocsDedupedCount';
+import { AppNotificationService } from '@/services/appNotificationService';
+import { ESignPopup } from '@/components/esign/ESignPopup';
 
 // ---------------------------------------------------------------------------
 // Inline edit helpers (Draft-only)
@@ -165,6 +169,12 @@ export default function ChangeControlDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [impactEditOpen, setImpactEditOpen] = useState(false);
   const [submitForReviewOpen, setSubmitForReviewOpen] = useState(false);
+  const [esignGate, setEsignGate] = useState<null | 'technical' | 'quality' | 'regulatory'>(null);
+  const [visibleDocCount, setVisibleDocCount] = useState<number | null>(null);
+  const dedupedDocsCount = useCCRLinkedDocsDedupedCount(
+    ccr?.id ?? '',
+    Array.isArray(ccr?.affected_documents) ? ccr.affected_documents : []
+  );
   const [transitionDialog, setTransitionDialog] = useState<{
     open: boolean;
     title: string;
@@ -264,13 +274,32 @@ export default function ChangeControlDetailPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const currentlyApproved = ccr[`${field}_approved` as const];
+    if (currentlyApproved) {
+      // Un-approval (reversal) — no e-signature required, just clear the gate.
+      await updateCCR.mutateAsync({
+        id: ccr.id,
+        [`${field}_approved`]: false,
+        [`${field}_approved_by`]: null,
+        [`${field}_approved_at`]: null,
+      } as any);
+      return;
+    }
+    // Granting approval → require 21 CFR Part 11 e-signature via the existing module.
+    setEsignGate(field);
+  };
+
+  const handleGateSigned = async () => {
+    if (!esignGate) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const nowIso = new Date().toISOString();
     await updateCCR.mutateAsync({
       id: ccr.id,
-      [`${field}_approved`]: !currentlyApproved,
-      [`${field}_approved_by`]: !currentlyApproved ? user.id : null,
-      [`${field}_approved_at`]: !currentlyApproved ? nowIso : null,
+      [`${esignGate}_approved`]: true,
+      [`${esignGate}_approved_by`]: user.id,
+      [`${esignGate}_approved_at`]: nowIso,
     } as any);
+    setEsignGate(null);
   };
 
   const handleSubmitForReview = async (payload: CCRSubmitForReviewPayload) => {
@@ -298,6 +327,47 @@ export default function ChangeControlDetailPage() {
       userId: user.id,
       reason: namedReason,
     });
+    // 4. Notify the three assigned reviewers (in-app; surfaces in Mission Control)
+    try {
+      const actorName =
+        companyUsers.find((u) => u.id === user.id)?.name ?? 'A teammate';
+      const actionUrl = `/app/change-control/${ccr.id}`;
+      const reviewers: Array<{ id: string; gate: string }> = [
+        { id: payload.technical_reviewer_id, gate: 'Technical' },
+        { id: payload.quality_reviewer_id, gate: 'Quality' },
+        { id: payload.regulatory_reviewer_id, gate: 'Regulatory' },
+      ];
+      // Group by user so a reviewer assigned to multiple gates gets one notice
+      const byUser = new Map<string, string[]>();
+      reviewers.forEach((r) => {
+        if (!r.id) return;
+        const arr = byUser.get(r.id) ?? [];
+        arr.push(r.gate);
+        byUser.set(r.id, arr);
+      });
+      const notifications = Array.from(byUser.entries()).map(([userId, gates]) => ({
+        user_id: userId,
+        actor_id: user.id,
+        actor_name: actorName,
+        company_id: ccr.company_id,
+        product_id: ccr.product_id ?? undefined,
+        category: 'review' as const,
+        action: 'ccr_review_assigned' as const,
+        title: `Review requested: ${ccr.ccr_id}`,
+        message: `${actorName} assigned you as ${gates.join(' & ')} reviewer on "${ccr.title}". Approve & e-sign in the CCR detail page.`,
+        priority: 'high' as const,
+        entity_type: 'change_control_request',
+        entity_id: ccr.id,
+        entity_name: ccr.ccr_id,
+        action_url: actionUrl,
+        metadata: { gates, reason: payload.reason },
+      }));
+      if (notifications.length > 0) {
+        await new AppNotificationService().createBulkNotifications(notifications);
+      }
+    } catch (e) {
+      console.error('Failed to notify CCR reviewers', e);
+    }
   };
 
   const renderWorkflowActions = () => {
@@ -491,6 +561,17 @@ export default function ChangeControlDetailPage() {
           <TabsList>
             <TabsTrigger value="details">{lang('changeControl.detailsTab')}</TabsTrigger>
             <TabsTrigger value="impact">{lang('changeControl.impactAssessmentTab')}</TabsTrigger>
+            <TabsTrigger value="documents">
+              Documents
+              {(() => {
+                const count = dedupedDocsCount;
+                return count > 0 ? (
+                  <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-xs">
+                    {count}
+                  </Badge>
+                ) : null;
+              })()}
+            </TabsTrigger>
             <TabsTrigger value="implementation">{lang('changeControl.implementationTab')}</TabsTrigger>
             <TabsTrigger value="history">{lang('changeControl.historyTab')}</TabsTrigger>
           </TabsList>
@@ -816,6 +897,10 @@ export default function ChangeControlDetailPage() {
             )}
           </TabsContent>
 
+          <TabsContent value="documents" className="space-y-4">
+            <CCRLinkedDocuments ccr={ccr} onVisibleCountChange={setVisibleDocCount} />
+          </TabsContent>
+
           <TabsContent value="implementation" className="space-y-4">
             <Card>
               <CardHeader>
@@ -957,6 +1042,16 @@ export default function ChangeControlDetailPage() {
         onOpenChange={setImpactEditOpen}
         ccr={ccr}
       />
+
+      {esignGate && (
+        <ESignPopup
+          open={!!esignGate}
+          onOpenChange={(o) => { if (!o) setEsignGate(null); }}
+          documentId={ccr.id}
+          documentName={`${ccr.ccr_id} — ${esignGate[0].toUpperCase() + esignGate.slice(1)} Approval`}
+          onComplete={handleGateSigned}
+        />
+      )}
 
       <CCRSubmitForReviewDialog
         open={submitForReviewOpen}

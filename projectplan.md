@@ -191,3 +191,24 @@ Implement a phase-aware risk calculation model that differentiates between devel
 
 ### Result
 Full digital thread: **BOM Item → Component → Feature → User Need → System Req → HW/SW Req → Hazard → Risk Control → Test Case**
+
+---
+
+# Project Plan — Devices nav opens Mission Control
+
+## Goal
+Clicking the Devices L1 module should always open the device area, not leave the user on Mission Control. Product pages must also stop crashing on a broken dynamic import.
+
+## Todo
+- [x] Make L1 Devices click navigate to a real device page when no last device exists
+- [x] Replace dead `/app/devices` links with the canonical company portfolio URL
+- [x] Fix CompanyProductsPage redirect target so it lands on a real `/app/...` route
+- [x] Lazy-load the heavy GanttChartV23 inside DualPhaseGanttChart so the broken `@svar-ui/*` chain no longer breaks ProductDashboard
+- [ ] Verify Devices click + product page load in preview
+
+## Review (after implementation)
+- AppLayout `handleModuleSelect("products")` now navigates to `/app/company/:companyName/portfolio?view=cards` (or `/app/clients` if no company) when no last product is stored.
+- Sidebar "Back to all devices" links and the `CompanyCommercialGroup` Strategic Horizon fallback now use the canonical `/app/company/:companyName/portfolio?view=cards`.
+- Mission Control's Compliance Journey strip and `CompanyProductsPage` redirect now use the same canonical route.
+- `PlatformProfile` linked products now navigate to `/app/product/:id` instead of the non-existent `/app/company/:companyName/products/:id`.
+- `DualPhaseGanttChart` now lazy-loads `GanttChartV23` so the local gantt source (which imports several missing `@svar-ui/*` transitive packages) is no longer pulled into the ProductDashboard bundle. The readonly branch wraps it in `Suspense` with a small loader.

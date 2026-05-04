@@ -8,8 +8,9 @@ import { useDeviceModuleAccess } from '@/hooks/useDeviceModuleAccess';
 const DOMAIN_LABELS: Record<string, string> = {
   gold: 'Strategy',
   blue: 'Operations',
+  teal: 'Design & Risk',
   green: 'Quality',
-  purple: 'Regulatory',
+  purple: 'Clinical & Regulatory',
 };
 
 function getDomainTooltip(name: string, domainColor?: DomainColor): string {

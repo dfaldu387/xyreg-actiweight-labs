@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, Grid3X3, BookOpen, Award } from 'lucide-react';
+import { Users, Grid3X3, BookOpen, Award, Sparkles } from 'lucide-react';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useCompanyId } from '@/hooks/useCompanyId';
 import { ConsistentPageHeader } from '@/components/layout/ConsistentPageHeader';
@@ -16,6 +16,9 @@ import { MOCK_ROLE_REQUIREMENTS } from '@/components/competency-matrix/competenc
 
 const TrainingModuleLibrary = lazy(() => 
   import('@/components/training/TrainingModuleLibrary').then(m => ({ default: m.TrainingModuleLibrary }))
+);
+const TrainingSetupWizard = lazy(() => 
+  import('@/components/training/TrainingSetupWizard').then(m => ({ default: m.TrainingSetupWizard }))
 );
 const TeamCompetencyView = lazy(() => 
   import('@/components/training/TeamCompetencyView').then(m => ({ default: m.TeamCompetencyView }))
@@ -89,8 +92,12 @@ export default function CompanyTrainingPage() {
           />
 
           {isRestricted && <RestrictedPreviewBanner />}
-          <Tabs defaultValue="matrix" className="space-y-6">
-          <TabsList className="grid w-full max-w-2xl grid-cols-4">
+          <Tabs defaultValue="setup" className="space-y-6">
+          <TabsList className="grid w-full max-w-2xl grid-cols-5">
+            <TabsTrigger value="setup" className="flex items-center gap-2" disabled={isRestricted}>
+              <Sparkles className="h-4 w-4" />
+              <span className="hidden sm:inline">Setup</span>
+            </TabsTrigger>
             <TabsTrigger value="team" className="flex items-center gap-2" disabled={isRestricted}>
               <Users className="h-4 w-4" />
               <span className="hidden sm:inline">{lang('training.tabs.team')}</span>
@@ -108,6 +115,16 @@ export default function CompanyTrainingPage() {
               <span className="hidden sm:inline">{lang('training.tabs.competency')}</span>
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="setup" className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              One-click setup: apply Xyreg's recommended training set to every role defined
+              in your company Settings.
+            </p>
+            <Suspense fallback={<LoadingSpinner />}>
+              <TrainingSetupWizard companyId={companyId} disabled={isRestricted} />
+            </Suspense>
+          </TabsContent>
 
           <TabsContent value="team" className="space-y-4">
             <p className="text-sm text-muted-foreground">

@@ -1549,9 +1549,9 @@ Rules:
             <div
               aria-hidden
               className="absolute inset-0 px-3 py-2 text-sm whitespace-pre-wrap break-words pointer-events-none overflow-hidden rounded-md border border-input"
-              style={{ lineHeight: '1.25rem', color: '#0f172a', background: 'hsl(var(--secondary))' }}
+              style={{ lineHeight: '1.25rem', color: '#0f172a', background: 'hsl(var(--secondary))', minHeight: 64 }}
             >
-              {input ? renderWithMentions(input, 'onLight') : <span className="text-muted-foreground">Ask about your document... (type @ to reference context)</span>}
+              {input ? renderWithMentions(input, 'onLight') : <span className="text-muted-foreground">Ask about your document… (@ to reference)</span>}
             </div>
             <Textarea
               ref={textareaRef}
@@ -1559,9 +1559,9 @@ Rules:
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
               placeholder=""
-              className="min-h-[40px] max-h-[120px] resize-none text-sm w-full relative"
+              className="min-h-[64px] max-h-[140px] resize-none text-sm w-full relative"
               style={{ color: 'transparent', caretColor: '#0f172a', lineHeight: '1.25rem', background: 'transparent' }}
-              rows={1}
+              rows={2}
             />
             {mentionOpen && filteredMentions.length > 0 && (
               <div

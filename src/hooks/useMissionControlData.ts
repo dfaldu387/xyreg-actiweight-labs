@@ -352,10 +352,11 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
             status,
             due_date,
             company_id,
+            phase,
             training_module:training_modules(id, name, type)
           `)
           .eq('user_id', user.id)
-          .in('status', ['overdue', 'not_started', 'scheduled', 'in_progress'])
+          .neq('status', 'completed')
           .limit(10);
 
         if (trainingCompanyIds.length > 0) {
@@ -364,13 +365,28 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
 
         const { data: trainingData } = await trainingQuery;
         trainingData?.forEach((record: any) => {
-          const isOverdue = record.status === 'overdue';
+          const phase = record.phase ?? 'not_started';
+          const isOverdue = record.status === 'overdue' || (record.due_date && new Date(record.due_date) < new Date());
+          const quizFailed = phase === 'quiz_failed';
+          const isHigh = isOverdue || quizFailed;
+          const phaseLabel: Record<string, string> = {
+            not_started: 'Start training',
+            reading: 'Continue reading',
+            quiz_ready: 'Take quiz',
+            quiz_failed: 'Trainer review needed',
+            sign_ready: 'Sign to complete',
+            expired: 'Re-training required',
+          };
           actionItems.push({
             id: `training-${record.id}`,
             title: `Training: ${record.training_module?.name || 'Unknown'}`,
-            description: isOverdue ? 'Training is overdue' : `Training ${record.status.replace('_', ' ')}`,
+            description: quizFailed
+              ? 'Quiz failed — trainer follow-up required'
+              : isOverdue
+                ? `Overdue — ${phaseLabel[phase] ?? 'Action required'}`
+                : (phaseLabel[phase] ?? 'Action required'),
             type: 'training',
-            priority: isOverdue ? 'high' : 'medium',
+            priority: isHigh ? 'high' : (phase === 'sign_ready' || phase === 'quiz_ready' ? 'medium' : 'medium'),
             dueDate: record.due_date ? new Date(record.due_date) : undefined,
           });
         });
@@ -546,6 +562,36 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
           }
 
           // Author-assigned documents are shown in the My Documents widget, not here
+        }
+      }
+
+      // Fetch document comments assigned to me OR mentioning me (unresolved)
+      if (user?.id) {
+        const targetCompanyIdForComments = options.companyId && options.companyId !== 'all'
+          ? options.companyId
+          : (userCompanyIds[0] || null);
+        if (targetCompanyIdForComments) {
+          const { data: myComments } = await supabase
+            .from('document_user_comments')
+            .select('id, content, document_id, assignee_id, mentioned_user_ids, author_name, created_at, is_resolved, company_id')
+            .eq('company_id', targetCompanyIdForComments)
+            .eq('is_resolved', false)
+            .or(`assignee_id.eq.${user.id},mentioned_user_ids.cs.{${user.id}}`)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+          (myComments || []).forEach((c: any) => {
+            const assignedToMe = c.assignee_id === user.id;
+            const snippet = (c.content || '').slice(0, 120);
+            actionItems.push({
+              id: `doc-comment-${c.id}`,
+              title: assignedToMe ? 'Comment assigned to you' : 'You were mentioned in a comment',
+              description: `${c.author_name || 'Someone'}: ${snippet}`,
+              type: 'review',
+              priority: assignedToMe ? 'high' : 'medium',
+              dueDate: c.created_at ? new Date(c.created_at) : undefined,
+            });
+          });
         }
       }
 

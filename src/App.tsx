@@ -54,6 +54,7 @@ const ProductDeviceInformationPage = lazy(() => import("@/pages/ProductDeviceInf
 const ProductDesignRiskControlsPage = lazy(() => import("@/pages/ProductDesignRiskControlsPage"));
 const ProductDesignRiskLandingPage = lazy(() => import("@/pages/ProductDesignRiskLandingPage"));
 const CompanyDocumentsPage = lazy(() => import("@/pages/CompanyDocumentsPage"));
+const MyTrainingPage = lazy(() => import("@/pages/MyTrainingPage"));
 const CompanyAuditsPage = lazy(() => import("@/pages/CompanyAuditsPage"));
 const CompanyGapAnalysisPage = lazy(() => import("@/pages/CompanyGapAnalysisPage"));
 const EHDSDataVaultPage = lazy(() => import("@/pages/EHDSDataVaultPage"));
@@ -723,6 +724,16 @@ function App() {
                   <ErrorBoundary level="component">
                     <CompanyRouteGuard>
                       <CompanyDocumentsPage />
+                    </CompanyRouteGuard>
+                  </ErrorBoundary>
+                </Suspense>
+              } />
+
+              <Route path="company/:companyName/me/training" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary level="component">
+                    <CompanyRouteGuard>
+                      <MyTrainingPage />
                     </CompanyRouteGuard>
                   </ErrorBoundary>
                 </Suspense>

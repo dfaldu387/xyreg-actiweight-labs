@@ -54,7 +54,8 @@ export type TemplateCategory =
   | 'safety-risk-management'
   | 'regulatory-clinical'
   | 'operations-production'
-  | 'forms-logs';
+  | 'forms-logs'
+  | 'work-instructions';
 
 export const TEMPLATE_CATEGORIES = {
   'quality-system-procedures': {
@@ -86,5 +87,10 @@ export const TEMPLATE_CATEGORIES = {
     label: 'Forms & Logs',
     description: 'Individual forms, checklists, and records for QMS',
     examples: ['Document Change Orders', 'Complaint Forms', 'CAPA Logs']
+  },
+  'work-instructions': {
+    label: 'Work Instructions',
+    description: 'Step-by-step instructions derived from foundational SOPs',
+    examples: ['WI-QA-002-1 Create a New Controlled Document']
   }
 } as const;

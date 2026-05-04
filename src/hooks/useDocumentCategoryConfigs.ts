@@ -20,6 +20,7 @@ export function useDocumentCategoryConfigs(companyId: string | undefined) {
       'regulatory-clinical': 'REG',
       'operations-production': 'OPS',
       'forms-logs': 'FORM',
+      'work-instructions': 'WI',
     };
     return prefixMap[key] || label.substring(0, 3).toUpperCase();
   };

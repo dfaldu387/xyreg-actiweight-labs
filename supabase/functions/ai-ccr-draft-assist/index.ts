@@ -79,20 +79,54 @@ serve(async (req) => {
       } catch (_) {}
     }
 
-    // Resolve up to 30 affected document names if only IDs were supplied
-    let docNames = body.affectedDocumentNames ?? [];
-    if ((!docNames || docNames.length === 0) && body.affectedDocumentIds?.length) {
+    // Resolve rich blurbs for each affected Document CI so the AI can
+    // describe what every attached document actually is — not just the title.
+    const truncate = (s: string | null | undefined, n: number) => {
+      const t = (s ?? "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/[#*_`>]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+    };
+
+    const MAX_DOCS = 15;
+    let docBlurbs: string[] = [];
+    let extraDocCount = 0;
+    if (body.affectedDocumentIds?.length) {
       try {
-        const ids = body.affectedDocumentIds.slice(0, 30);
-        const [{ data: cd }, { data: pd }] = await Promise.all([
-          supabase.from("company_documents").select("id, name, document_type").in("id", ids),
-          supabase.from("product_documents").select("id, name, document_type").in("id", ids),
-        ]);
-        docNames = [
-          ...((cd as any[]) ?? []).map((d) => `${d.name} (${d.document_type ?? "doc"})`),
-          ...((pd as any[]) ?? []).map((d) => `${d.name} (${d.document_type ?? "doc"})`),
-        ];
-      } catch (_) {}
+        const allIds = body.affectedDocumentIds;
+        const ids = allIds.slice(0, MAX_DOCS);
+        extraDocCount = Math.max(0, allIds.length - ids.length);
+        const { data: rows } = await supabase
+          .from("phase_assigned_document_template")
+          .select(
+            "id, name, document_number, document_reference, document_type, document_scope, description, brief_summary",
+          )
+          .in("id", ids);
+        const byId = new Map(((rows as any[]) ?? []).map((r) => [r.id, r]));
+        docBlurbs = ids.map((id, i) => {
+          const r: any = byId.get(id);
+          if (!r) {
+            const fallbackName = body.affectedDocumentNames?.[i];
+            return fallbackName ? `- ${fallbackName}` : `- (document ${id})`;
+          }
+          const ref = r.document_number || r.document_reference || "";
+          const refPart = ref && !/^DS-[0-9a-f-]{8,}/i.test(ref) ? `${ref} — ` : "";
+          const typeBits = [r.document_type, r.document_scope].filter(Boolean).join(", ");
+          const typeStr = typeBits ? ` (${typeBits})` : "";
+          const purpose = truncate(r.description || r.brief_summary, 280);
+          const purposeStr = purpose ? ` — ${purpose}` : " — (no description on file)";
+          return `- ${refPart}${r.name ?? "Untitled"}${typeStr}${purposeStr}`;
+        });
+      } catch (e) {
+        console.error("affected docs fetch failed", e);
+      }
+    }
+    // Fallback to plain names if nothing resolved
+    if (docBlurbs.length === 0 && (body.affectedDocumentNames?.length ?? 0) > 0) {
+      docBlurbs = (body.affectedDocumentNames ?? []).slice(0, MAX_DOCS).map((n) => `- ${n}`);
+      extraDocCount = Math.max(0, (body.affectedDocumentNames ?? []).length - MAX_DOCS);
     }
 
     const summaryLines: string[] = [];
@@ -107,9 +141,11 @@ serve(async (req) => {
         `Target Object: ${body.targetObjectType ?? ""} ${body.targetObjectLabel ?? ""}`.trim(),
       );
     }
-    if (docNames.length) {
+    if (docBlurbs.length) {
+      const totalCount = docBlurbs.length + extraDocCount;
+      const moreLine = extraDocCount > 0 ? `\n- (+${extraDocCount} more not shown)` : "";
       summaryLines.push(
-        `Affected Documents (${docNames.length}):\n${docNames.slice(0, 30).map((n) => `- ${n}`).join("\n")}`,
+        `Affected Documents (${totalCount}):\n${docBlurbs.join("\n")}${moreLine}`,
       );
     }
 
@@ -118,7 +154,9 @@ serve(async (req) => {
     const systemPrompt = `You are a senior medical device QA/RA expert specialised in ISO 13485 §7.3.9 change control and 21 CFR 820.30(i).
 Write practical, regulator-ready content tailored to the specific change request below.
 Plain text only — no markdown headers, no code fences, no preamble like "Here is...".
-Be concrete: refer to the actual change and the affected items by name where useful, not generic boilerplate.`;
+Be concrete: refer to the actual change and the affected items by name where useful, not generic boilerplate.
+When a list of Affected Documents with short purposes is provided, briefly characterise what those documents are
+(grouped by theme if many) and how this change touches them — do not just enumerate titles.`;
 
     const trimmedInstructions = (body.userInstructions ?? "").trim();
     const userPrompt = `${contextPreview}

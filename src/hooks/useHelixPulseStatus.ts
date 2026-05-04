@@ -7,6 +7,7 @@ import {
 } from '@/config/helixNodeConfig';
 import type { RBRDocumentPrefix } from '@/types/riskBasedRationale';
 import type { PendingItem } from './useRBRPulseStatus';
+import { NODE_SOP_RECOMMENDATIONS } from '@/data/nodeSOPRecommendations';
 
 export interface LinkedSOPInfo {
   id: string;
@@ -290,7 +291,11 @@ const DEMO_MOCK_DATA: Record<string, Partial<HelixPulseData>> = {
 };
 
 // Fetch real SOP status from qms_node_sop_links table
-async function fetchSOPStatus(companyId: string, nodeId: string): Promise<SOPStatusData> {
+async function fetchSOPStatus(
+  companyId: string,
+  nodeId: string,
+  companyDocs: LinkedSOPInfo[] = [],
+): Promise<SOPStatusData> {
   const emptyResult: SOPStatusData = { 
     status: 'missing', 
     counts: { total: 0, approved: 0, pending: 0 },
@@ -315,15 +320,10 @@ async function fetchSOPStatus(companyId: string, nodeId: string): Promise<SOPSta
 
     if (error) {
       console.error(`Error fetching SOP links for ${nodeId}:`, error);
-      return emptyResult;
-    }
-
-    if (!data || data.length === 0) {
-      return emptyResult;
     }
 
     // Extract linked SOPs with their info
-    const linkedSOPs: LinkedSOPInfo[] = data
+    const explicit: LinkedSOPInfo[] = (data || [])
       .map((link: any) => {
         const doc = link.phase_assigned_document_template;
         if (!doc) return null;
@@ -334,6 +334,20 @@ async function fetchSOPStatus(companyId: string, nodeId: string): Promise<SOPSta
         };
       })
       .filter((s): s is LinkedSOPInfo => s !== null);
+
+    // Also infer chip-level matches from the company SOP pool by recommendation
+    // numbers — even when no explicit qms_node_sop_links row exists yet.
+    const recs = NODE_SOP_RECOMMENDATIONS[nodeId] || [];
+    const numericFromSop = (s: string) => {
+      const m = s.match(/SOP-(?:[A-Z]{2}-)?(\d{3})/i);
+      return m ? m[1] : '';
+    };
+    const recNums = new Set(recs.map((r) => numericFromSop(r.sopNumber)).filter(Boolean));
+    const explicitIds = new Set(explicit.map((l) => l.id));
+    const inferred: LinkedSOPInfo[] = companyDocs.filter(
+      (d) => !explicitIds.has(d.id) && recNums.has(numericFromSop(d.name)),
+    );
+    const linkedSOPs = [...explicit, ...inferred];
 
     const total = linkedSOPs.length;
     const approved = linkedSOPs.filter(s => s.status?.toLowerCase() === 'approved').length;
@@ -352,6 +366,26 @@ async function fetchSOPStatus(companyId: string, nodeId: string): Promise<SOPSta
   } catch (err) {
     console.error(`Error processing SOP status for ${nodeId}:`, err);
     return emptyResult;
+  }
+}
+
+// Fetch the company's SOP document pool once so chip matchers across all
+// nodes can resolve drafts/approvals even when qms_node_sop_links is empty.
+async function fetchCompanySOPPool(companyId: string): Promise<LinkedSOPInfo[]> {
+  try {
+    const { data, error } = await supabase
+      .from('phase_assigned_document_template')
+      .select('id, name, status')
+      .eq('company_id', companyId)
+      .ilike('name', 'SOP-%');
+    if (error) {
+      console.error('Error fetching company SOP pool:', error);
+      return [];
+    }
+    return (data || []).map((d: any) => ({ id: d.id, name: d.name || '', status: d.status }));
+  } catch (err) {
+    console.error('Error in fetchCompanySOPPool:', err);
+    return [];
   }
 }
 
@@ -559,11 +593,12 @@ export function useHelixPulseStatus(companyId: string, useMockData: boolean = tr
       }
 
       // Fetch status for all nodes in parallel, including real SOP status
+      const companyDocs = await fetchCompanySOPPool(companyId);
       const pulseData = await Promise.all(
         HELIX_NODE_CONFIGS.map(async (config) => {
           const nodeStatus = await fetchNodeStatus(companyId, config, useMockData);
           // Always fetch real SOP status from database
-          const sopStatus = await fetchSOPStatus(companyId, config.id);
+          const sopStatus = await fetchSOPStatus(companyId, config.id, companyDocs);
           // Real SOP approval data trumps mock/computed status for the dot
           const reconciledStatus = reconcileStatusWithSOPs(nodeStatus.status, sopStatus);
           // Keep nestedRBR status in sync if it was mirroring the node status

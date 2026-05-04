@@ -7,6 +7,7 @@ import { UserRole } from '@/types/documentTypes';
 import { useSidebarState } from '@/hooks/useSidebarState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { isoTooltips } from '@/constants/isoTooltips';
+import { cn } from '@/lib/utils';
 
 interface ComplianceInstancesGroupProps {
   context: 'company' | 'product' | 'standard';
@@ -18,6 +19,7 @@ interface ComplianceInstancesGroupProps {
     search: string;
   };
   singleCompanyName: string | null;
+  accentClassName?: string;
 }
 
 export function ComplianceInstancesGroup({
@@ -26,7 +28,8 @@ export function ComplianceInstancesGroup({
   currentProductId,
   currentCompany,
   location,
-  singleCompanyName
+  singleCompanyName,
+  accentClassName,
 }: ComplianceInstancesGroupProps) {
   const { expandedMenus, toggleMenuExpansion, setAutoExpansion } = useSidebarState();
   const { state: sidebarState } = useSidebar();
@@ -118,10 +121,10 @@ export function ComplianceInstancesGroup({
           asChild
           isActive={isComplianceInstancesActive}
           tooltip="Enterprise Compliance"
-          className="flex-1 px-3 py-2.5 font-medium text-sm"
+          className={cn("flex-1 px-3 py-2.5 font-medium text-sm", accentClassName)}
         >
           <Link to={complianceInstancesPath} className="flex items-center gap-3">
-            <div className={`text-muted-foreground ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
+            <div className={`text-purple-600 [&_svg]:!text-purple-600 ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
               <ShieldCheck className="h-5 w-5" />
             </div>
             <span>Enterprise Compliance</span>
@@ -154,7 +157,7 @@ export function ComplianceInstancesGroup({
                           className="px-6 py-2 text-sm"
                         >
                           <Link to={fullPath} className="flex items-center gap-3">
-                            <div className="text-muted-foreground">
+                            <div className="text-purple-500">
                               <item.icon className="h-5 w-5" />
                             </div>
                             <span>{item.title}</span>

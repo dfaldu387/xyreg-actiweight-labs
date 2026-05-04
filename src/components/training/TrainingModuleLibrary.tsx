@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, FileText, Video, Users, BookOpen, ExternalLink, MoreVertical, Pencil, Trash2, Clock, RefreshCw, Download, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, FileText, Video, Users, BookOpen, ExternalLink, MoreVertical, Pencil, Trash2, Clock, RefreshCw, Download, ChevronDown, ChevronRight, Lock, Brain, PenLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,10 +21,19 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
-import { useTrainingModules, useDeleteTrainingModule, useSeedTrainingModulesFromSOPs } from '@/hooks/useTrainingModules';
+import { useTrainingModules, useDeleteTrainingModule, useSyncModulesFromApprovedSOPs } from '@/hooks/useTrainingModules';
 import { TrainingModule, TrainingModuleType } from '@/types/training';
 import { TrainingModuleForm } from './TrainingModuleForm';
 import { GROUP_ORDER } from '@/constants/trainingGroups';
+import { formatSopDisplayId, parseSopNumber, stripSopPrefix } from '@/constants/sopAutoSeedTiers';
+
+function formatModuleDisplayName(name: string): string {
+  const sopKey = parseSopNumber(name);
+  if (!sopKey) return name;
+  const display = formatSopDisplayId(sopKey);
+  const tail = stripSopPrefix(name);
+  return tail ? `${display} ${tail}` : display;
+}
 
 interface Props {
   companyId: string;
@@ -67,7 +76,7 @@ export function TrainingModuleLibrary({ companyId, disabled = false }: Props) {
 
   const { data: modules = [], isLoading } = useTrainingModules(companyId);
   const deleteModule = useDeleteTrainingModule(companyId);
-  const seedModules = useSeedTrainingModulesFromSOPs(companyId);
+  const syncModules = useSyncModulesFromApprovedSOPs(companyId);
 
   useEffect(() => {
     return () => { cleanupDialogPortals(); };
@@ -155,15 +164,22 @@ export function TrainingModuleLibrary({ companyId, disabled = false }: Props) {
         <div>
           <h2 className="text-2xl font-bold">{lang('training.library.title')}</h2>
           <p className="text-muted-foreground">{lang('training.library.subtitle')}</p>
+          {modules.length > 0 && (
+            <p className="text-xs text-teal-700 dark:text-teal-300 mt-1 flex items-center gap-1.5">
+              <Lock className="w-3 h-3" />
+              {modules.filter(m => m.requires_quiz || (m.minimum_read_seconds ?? 0) > 0 || m.requires_signature).length} of {modules.length} modules use the locked Read → Quiz → Sign workflow
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => seedModules.mutate()} 
-            disabled={disabled || seedModules.isPending}
+          <Button
+            variant="outline"
+            onClick={() => syncModules.mutate()}
+            disabled={disabled || syncModules.isPending}
+            title="Create / refresh a training module for every approved SOP in your QMS"
           >
-            <Download className="w-4 h-4 mr-2" />
-            {seedModules.isPending ? lang('training.library.importing') : lang('training.library.importSOPs')}
+            <RefreshCw className={`w-4 h-4 mr-2 ${syncModules.isPending ? 'animate-spin' : ''}`} />
+            {syncModules.isPending ? 'Syncing…' : 'Sync from approved SOPs'}
           </Button>
           <Button onClick={handleCreateNew} disabled={disabled}>
             <Plus className="w-4 h-4 mr-2" />
@@ -183,11 +199,11 @@ export function TrainingModuleLibrary({ companyId, disabled = false }: Props) {
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                onClick={() => seedModules.mutate()}
-                disabled={disabled || seedModules.isPending}
+                onClick={() => syncModules.mutate()}
+                disabled={disabled || syncModules.isPending}
               >
-                <Download className="w-4 h-4 mr-2" />
-                {seedModules.isPending ? lang('training.library.importing') : lang('training.library.importSOPs')}
+                <RefreshCw className={`w-4 h-4 mr-2 ${syncModules.isPending ? 'animate-spin' : ''}`} />
+                {syncModules.isPending ? 'Syncing…' : 'Sync from approved SOPs'}
               </Button>
               <Button onClick={handleCreateNew} disabled={disabled}>
                 <Plus className="w-4 h-4 mr-2" />
@@ -230,7 +246,7 @@ export function TrainingModuleLibrary({ companyId, disabled = false }: Props) {
                                 <Icon className="w-5 h-5" />
                               </div>
                               <div>
-                                <CardTitle className="text-base">{module.name}</CardTitle>
+                                <CardTitle className="text-base">{formatModuleDisplayName(module.name)}</CardTitle>
                                 <Badge variant="outline" className="mt-1 text-xs">
                                   v{module.version}
                                 </Badge>
@@ -280,6 +296,28 @@ export function TrainingModuleLibrary({ companyId, disabled = false }: Props) {
                                 <RefreshCw className="w-3 h-3" />
                                 {lang('training.library.validity').replace('{{days}}', String(module.validity_days))}
                               </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {(module.requires_quiz || (module.minimum_read_seconds ?? 0) > 0 || module.requires_signature) && (
+                              <Badge variant="outline" className="text-[10px] gap-1 border-teal-500/40 text-teal-700 dark:text-teal-300">
+                                <Lock className="w-2.5 h-2.5" /> Locked workflow
+                              </Badge>
+                            )}
+                            {(module.minimum_read_seconds ?? 0) > 0 && (
+                              <Badge variant="outline" className="text-[10px] gap-1">
+                                <Clock className="w-2.5 h-2.5" /> Read ≥ {Math.round((module.minimum_read_seconds ?? 0) / 60)} min
+                              </Badge>
+                            )}
+                            {module.requires_quiz && (
+                              <Badge variant="outline" className="text-[10px] gap-1 border-purple-500/40 text-purple-700 dark:text-purple-300">
+                                <Brain className="w-2.5 h-2.5" /> Quiz
+                              </Badge>
+                            )}
+                            {module.requires_signature && (
+                              <Badge variant="outline" className="text-[10px] gap-1 border-green-500/40 text-green-700 dark:text-green-300">
+                                <PenLine className="w-2.5 h-2.5" /> Signature
+                              </Badge>
                             )}
                           </div>
                           {!module.is_active && (

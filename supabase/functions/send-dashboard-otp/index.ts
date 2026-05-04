@@ -83,18 +83,19 @@ serve(async (req) => {
   }
 
   try {
-    const { action, email, userId, code, companyName, userName: clientUserName } = await req.json();
+    const { action, email, userId, code, companyName, companyId, userName: clientUserName, rememberMinutes } = await req.json();
 
-    if (!email) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // check and get-preference don't need email
+    if (!email && action !== "check" && action !== "get-preference") {
       return new Response(
         JSON.stringify({ success: false, message: "Email is required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
       );
     }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // --- SEND OTP ---
     if (action === "send") {
@@ -133,6 +134,7 @@ serve(async (req) => {
           code: otpCode,
           expires_at: expiresAt,
           used: false,
+          company_id: companyId || null,
         });
 
       if (insertError) {
@@ -226,13 +228,19 @@ serve(async (req) => {
         );
       }
 
-      // Mark as used
+      // Mark as used + store remember preferences
+      const updatePayload: Record<string, any> = { used: true };
+      if (rememberMinutes && typeof rememberMinutes === "number" && rememberMinutes > 0) {
+        updatePayload.remember_minutes = rememberMinutes;
+        updatePayload.last_redirect_at = new Date().toISOString();
+      }
+
       await supabase
         .from("esign_otp_codes")
-        .update({ used: true })
+        .update(updatePayload)
         .eq("id", otpRecord.id);
 
-      console.log(`Dashboard OTP verified for ${email}`);
+      console.log(`Dashboard OTP verified for ${email}${rememberMinutes ? ` (remember ${rememberMinutes}min)` : ""}`);
 
       return new Response(
         JSON.stringify({ verified: true, message: "Code verified successfully" }),
@@ -240,8 +248,84 @@ serve(async (req) => {
       );
     }
 
+    // --- GET PREFERENCE ---
+    if (action === "get-preference") {
+      if (!userId || !companyId) {
+        return new Response(
+          JSON.stringify({ remember_minutes: null }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: prefRow } = await supabase
+        .from("esign_otp_codes")
+        .select("remember_minutes")
+        .eq("user_id", userId)
+        .eq("company_id", companyId)
+        .eq("used", true)
+        .not("remember_minutes", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return new Response(
+        JSON.stringify({ remember_minutes: prefRow?.remember_minutes || null }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // --- CHECK REMEMBER ---
+    if (action === "check") {
+      if (!userId || !companyId) {
+        return new Response(
+          JSON.stringify({ remembered: false }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: otpRow } = await supabase
+        .from("esign_otp_codes")
+        .select("created_at, remember_minutes")
+        .eq("user_id", userId)
+        .eq("company_id", companyId)
+        .eq("used", true)
+        .not("remember_minutes", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!otpRow || !otpRow.remember_minutes) {
+        return new Response(
+          JSON.stringify({ remembered: false }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const verifiedAt = new Date(otpRow.created_at).getTime();
+      const expiresAt = verifiedAt + otpRow.remember_minutes * 60 * 1000;
+      const remembered = Date.now() < expiresAt;
+
+      // Update last_redirect_at if still remembered
+      if (remembered) {
+        await supabase
+          .from("esign_otp_codes")
+          .update({ last_redirect_at: new Date().toISOString() })
+          .eq("user_id", userId)
+          .eq("company_id", companyId)
+          .eq("used", true)
+          .not("remember_minutes", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(1);
+      }
+
+      return new Response(
+        JSON.stringify({ remembered }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
-      JSON.stringify({ success: false, message: "Invalid action. Use 'send' or 'verify'" }),
+      JSON.stringify({ success: false, message: "Invalid action. Use 'send', 'verify', or 'check'" }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
     );
   } catch (error) {

@@ -10,9 +10,44 @@ import {
   InputOTPGroup,
   InputOTPSlot,
 } from "@/components/ui/input-otp";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+
+const REMEMBER_OPTIONS = [
+  { value: "30", label: "30 minutes" },
+  { value: "60", label: "60 minutes" },
+  { value: "120", label: "2 hours" },
+  { value: "480", label: "8 hours" },
+  { value: "1440", label: "24 hours" },
+] as const;
+
+/**
+ * Check if OTP is still remembered for this user.
+ * Looks at the latest used OTP code with remember_minutes set.
+ * Returns true if created_at + remember_minutes > now.
+ */
+export async function isOtpRemembered(userId: string, companyId: string): Promise<boolean> {
+  try {
+    // Check via edge function (service_role) — no direct DB access needed
+    const { data, error } = await supabase.functions.invoke("send-dashboard-otp", {
+      body: { action: "check", userId, companyId, email: "" },
+    });
+
+    if (error || !data) return false;
+    return data.remembered === true;
+  } catch {
+    return false;
+  }
+}
 
 interface DashboardOtpDialogProps {
   open: boolean;
@@ -22,6 +57,7 @@ interface DashboardOtpDialogProps {
   userId: string;
   userName?: string;
   companyName: string;
+  companyId: string;
 }
 
 export function DashboardOtpDialog({
@@ -32,12 +68,27 @@ export function DashboardOtpDialog({
   userId,
   userName,
   companyName,
+  companyId,
 }: DashboardOtpDialogProps) {
   const [otpCode, setOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMinutes, setRememberMinutes] = useState("60");
+
+  // Load user's last preferred duration via edge function
+  useEffect(() => {
+    if (!open || !userId || !companyId) return;
+    supabase.functions.invoke("send-dashboard-otp", {
+      body: { action: "get-preference", userId, companyId, email: "" },
+    }).then(({ data }) => {
+      if (data?.remember_minutes) {
+        setRememberMinutes(String(data.remember_minutes));
+      }
+    });
+  }, [open, userId, companyId]);
 
   const sendOtp = useCallback(async () => {
     setSending(true);
@@ -51,6 +102,7 @@ export function DashboardOtpDialog({
             email: userEmail,
             userId,
             companyName,
+            companyId,
             userName,
           },
         }
@@ -90,6 +142,7 @@ export function DashboardOtpDialog({
     setLoading(true);
     setError("");
     try {
+      const parsedMinutes = rememberMe ? parseInt(rememberMinutes, 10) : undefined;
       const { data, error: fnError } = await supabase.functions.invoke(
         "send-dashboard-otp",
         {
@@ -97,6 +150,7 @@ export function DashboardOtpDialog({
             action: "verify",
             email: userEmail,
             code: otpCode,
+            rememberMinutes: parsedMinutes,
           },
         }
       );
@@ -155,6 +209,43 @@ export function DashboardOtpDialog({
           {error && (
             <p className="text-sm text-destructive text-center">{error}</p>
           )}
+
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="otp-remember"
+                checked={rememberMe}
+                onCheckedChange={(checked) => setRememberMe(checked === true)}
+              />
+              <label
+                htmlFor="otp-remember"
+                className="text-sm text-muted-foreground cursor-pointer select-none"
+              >
+                Don't ask again for
+              </label>
+              <Select
+                value={rememberMinutes}
+                onValueChange={setRememberMinutes}
+                disabled={!rememberMe}
+              >
+                <SelectTrigger className="h-7 w-[130px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {REMEMBER_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {rememberMe && (
+              <p className="text-[11px] text-muted-foreground/70 pl-6">
+                Applies to this company — no OTP needed for {REMEMBER_OPTIONS.find(o => o.value === rememberMinutes)?.label || rememberMinutes + " min"}
+              </p>
+            )}
+          </div>
 
           <Button
             className="w-full"

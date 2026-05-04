@@ -6,6 +6,7 @@ import { SidebarMenuButton, SidebarMenuSub, SidebarMenuSubItem, useSidebar } fro
 import { UserRole } from '@/types/documentTypes';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useSidebarState } from '@/hooks/useSidebarState';
+import { cn } from '@/lib/utils';
 
 interface BusinessCaseGroupProps {
   userRole: UserRole;
@@ -14,6 +15,7 @@ interface BusinessCaseGroupProps {
     pathname: string;
     search: string;
   };
+  accentClassName?: string;
 }
 
 // Helper to extract tab param from a path or search string
@@ -26,7 +28,8 @@ const getTabFromPath = (pathOrSearch: string): string | null => {
 export function BusinessCaseGroup({
   userRole,
   currentProductId,
-  location
+  location,
+  accentClassName,
 }: BusinessCaseGroupProps) {
   const baseUrl = `/app/product/${currentProductId}`;
   const { expandedMenus, toggleMenuExpansion, setAutoExpansion } = useSidebarState();
@@ -147,10 +150,10 @@ export function BusinessCaseGroup({
           asChild
           isActive={isBusinessCaseLandingActive}
           tooltip="Business Case"
-          className="flex-1 px-3 py-2.5 font-medium text-sm"
+          className={cn("flex-1 px-3 py-2.5 font-medium text-sm", accentClassName)}
         >
           <Link to={businessCasePath} className="flex items-center gap-3">
-            <div className={`text-muted-foreground ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
+            <div className={`text-amber-600 [&_svg]:!text-amber-600 ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
               <ChartBar className="h-5 w-5" />
             </div>
             <span>Business Case</span>
@@ -182,7 +185,7 @@ export function BusinessCaseGroup({
                     data-testid={`business-case-item-${itemTab}`}
                   >
                     <Link to={item.path} className="flex items-center gap-3">
-                      <div className="text-muted-foreground">
+                      <div className="text-amber-500">
                         <item.icon className="h-5 w-5" />
                       </div>
                       <span>{item.title}</span>

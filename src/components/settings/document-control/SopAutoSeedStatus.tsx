@@ -17,6 +17,7 @@ import { GLOBAL_WI_CATALOG_TOTAL } from '@/constants/globalWiCatalogSpec';
 import { SopBreakdownDialog } from './SopBreakdownDialog';
 import { seedGlobalWorkInstructions } from '@/services/seedGlobalWorkInstructionsClient';
 import { eagerSeedCompanyWorkInstructions } from '@/services/eagerSeedCompanyWIsClient';
+import { backfillWiParentSopLinksForCompany } from '@/services/backfillWiParentSopLinks';
 import { supabase } from '@/integrations/supabase/client';
 
 type Variant = 'complete' | 'partial' | 'empty';
@@ -83,6 +84,7 @@ export function SopAutoSeedStatus({ companyId, companyName, onSeeded, variant = 
   const [globalWICount, setGlobalWICount] = useState<number | null>(null);
   const [isMaterializingWI, setIsMaterializingWI] = useState(false);
   const [materializeProgress, setMaterializeProgress] = useState<{ done: number; total: number } | null>(null);
+  const [isLinkingWI, setIsLinkingWI] = useState(false);
   const [companyWICount, setCompanyWICount] = useState<number | null>(null);
   const [dialog, setDialog] = useState<'A' | 'B' | null>(null);
   const queryClient = useQueryClient();
@@ -258,6 +260,34 @@ export function SopAutoSeedStatus({ companyId, companyName, onSeeded, variant = 
     }
   };
 
+  const handleBackfillWiSopLinks = async () => {
+    if (!companyId) return;
+    setIsLinkingWI(true);
+    try {
+      const r = await backfillWiParentSopLinksForCompany(companyId);
+      if (r.linked > 0) {
+        toast.success(`Linked ${r.linked} WI${r.linked === 1 ? '' : 's'} to parent SOP`);
+      } else if (r.alreadyLinked === r.scanned && r.scanned > 0) {
+        toast.info(`All ${r.scanned} WIs already linked to a parent SOP`);
+      } else if (r.scanned === 0) {
+        toast.info('No WIs to link');
+      }
+      if (r.unresolved > 0) {
+        toast.warning(`${r.unresolved} WI${r.unresolved === 1 ? '' : 's'} could not be matched to a SOP`);
+        console.warn('[SopAutoSeedStatus] Unresolved WI numbers:', r.unresolvedNumbers);
+      }
+      if (r.failed > 0) toast.error(`${r.failed} update${r.failed === 1 ? '' : 's'} failed`);
+      queryClient.invalidateQueries({ queryKey: ['phase-assigned-document-template'] });
+      queryClient.invalidateQueries({ queryKey: ['company-documents'] });
+      onSeeded?.();
+    } catch (err) {
+      toast.error('Failed to backfill WI → SOP links');
+      console.error(err);
+    } finally {
+      setIsLinkingWI(false);
+    }
+  };
+
   const variantA = variantFor(countA ?? 0, totalA);
   const variantB = variantFor(countB ?? 0, totalB);
   const variantWI = variantFor(globalWICount ?? 0, totalWI);
@@ -324,6 +354,22 @@ export function SopAutoSeedStatus({ companyId, companyName, onSeeded, variant = 
             <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />Regenerating…</>
           ) : (
             <><ListChecks className="h-3 w-3 mr-1.5" />Regenerate WI catalog</>
+          )}
+        </Button>
+      )}
+      {isAdmin && (companyWICount ?? 0) > 0 && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={handleBackfillWiSopLinks}
+          disabled={isLinkingWI}
+          className="h-8"
+          title="Hard-link every WI to its parent SOP via Reference Documents"
+        >
+          {isLinkingWI ? (
+            <><Loader2 className="h-3 w-3 animate-spin mr-1.5" />Linking…</>
+          ) : (
+            <>Link WIs → SOPs</>
           )}
         </Button>
       )}

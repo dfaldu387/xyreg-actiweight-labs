@@ -746,9 +746,16 @@ export default function AppLayout() {
 
         validateAndNavigate();
       } else {
-        // No stored state - show all device families
+        // No stored state - send the user to the company's device portfolio.
+        // Without an explicit navigation here, clicking Devices would just
+        // toggle sidebar state and leave the user on whatever page they were
+        // on (e.g. Mission Control), which feels like Devices "does nothing".
         setSelectedProduct(null);
-        // console.log("[AppLayout] L1 Device icon clicked - showing all device families");
+        if (targetCompany) {
+          navigate(`/app/company/${encodeURIComponent(targetCompany)}/portfolio?view=cards`);
+        } else {
+          navigate("/app/clients");
+        }
       }
     } else if (moduleId === "portfolio") {
       // Check if there's a stored company route to restore

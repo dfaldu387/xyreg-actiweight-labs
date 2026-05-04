@@ -12,6 +12,7 @@ interface QualityGovernanceGroupProps {
   context: 'product' | 'company';
   basePath: string;
   location: { pathname: string };
+  accentClassName?: string;
 }
 
 const items = [
@@ -22,7 +23,7 @@ const items = [
   { id: 'design-review', label: 'Design Review', icon: ClipboardCheck, path: '/design-review' },
 ];
 
-export function QualityGovernanceGroup({ context, basePath, location }: QualityGovernanceGroupProps) {
+export function QualityGovernanceGroup({ context, basePath, location, accentClassName }: QualityGovernanceGroupProps) {
   const { state } = useSidebar();
   const isAnyActive = items.some(i => location.pathname.includes(`${basePath}${i.path}`));
 
@@ -34,17 +35,18 @@ export function QualityGovernanceGroup({ context, basePath, location }: QualityG
           size="lg"
           className={cn(
             state === "collapsed" ? "px-0 justify-center font-medium text-sm" : "px-3 font-medium text-sm",
-            isAnyActive && "text-primary"
+            isAnyActive && "text-primary",
+            accentClassName
           )}
         >
           <div className={state === "collapsed" ? "flex items-center justify-center w-full -ml-1.5" : "flex items-center gap-3 w-full"}>
-            <div className="text-muted-foreground">
+            <div className="text-emerald-600">
               <FileWarning className="h-5 w-5" />
             </div>
             {state !== "collapsed" && (
               <>
                 <span className="flex-1">Quality Governance</span>
-                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                <ChevronDown className="h-4 w-4 text-emerald-600 transition-transform duration-200 group-data-[state=open]:rotate-180" />
               </>
             )}
           </div>

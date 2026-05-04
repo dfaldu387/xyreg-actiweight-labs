@@ -8,6 +8,7 @@ import { useSidebarState } from '@/hooks/useSidebarState';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { isoTooltips } from '@/constants/isoTooltips';
 import { useDeviceModuleAccess } from '@/hooks/useDeviceModuleAccess';
+import { cn } from '@/lib/utils';
 
 interface DeviceOperationsGroupProps {
   userRole: UserRole;
@@ -16,12 +17,14 @@ interface DeviceOperationsGroupProps {
     pathname: string;
     search: string;
   };
+  accentClassName?: string;
 }
 
 export function DeviceOperationsGroup({
   userRole,
   currentProductId,
-  location
+  location,
+  accentClassName,
 }: DeviceOperationsGroupProps) {
   const baseUrl = `/app/product/${currentProductId}`;
   const { expandedMenus, toggleMenuExpansion, setAutoExpansion } = useSidebarState();
@@ -65,10 +68,10 @@ export function DeviceOperationsGroup({
       <div className="flex items-center gap-3 w-full">
         <SidebarMenuButton
           tooltip="Operations"
-          className="flex-1 px-3 py-2.5 font-medium text-sm cursor-pointer"
+          className={cn("flex-1 px-3 py-2.5 font-medium text-sm cursor-pointer", accentClassName)}
         >
           <div className="flex items-center gap-3">
-            <div className={`text-muted-foreground ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
+            <div className={`text-blue-600 [&_svg]:!text-blue-600 ${isCollapsed ? '-ml-2' : ''}`} style={isCollapsed ? {marginLeft: '-9px'} : {}}>
               <Factory className="h-5 w-5" />
             </div>
             <span>Operations</span>
@@ -104,7 +107,7 @@ export function DeviceOperationsGroup({
                           className="px-6 py-2 text-sm"
                         >
                           <Link to={item.path} className="flex items-center gap-3">
-                            <div className="text-muted-foreground">
+                            <div className="text-blue-500">
                               <item.icon className="h-5 w-5" />
                             </div>
                             <span>{item.title}</span>
