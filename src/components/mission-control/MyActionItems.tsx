@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useCompanyRole } from "@/context/CompanyRoleContext";
 import { formatDistanceToNow, isToday, isYesterday, format } from "date-fns";
+import { DocumentDraftDrawer } from "@/components/product/documents/DocumentDraftDrawer";
 
 // Parse Supabase timestamp as UTC (Supabase returns UTC without 'Z' suffix)
 function parseUTCTimestamp(timestamp: string): Date {
@@ -57,6 +58,8 @@ export interface ActionItem {
   companyName?: string;
   url?: string;
   threadId?: string;
+  documentId?: string;
+  commentId?: string;
 }
 
 interface MyActionItemsProps {
@@ -138,6 +141,16 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
   const [selectedTrainingRecordId, setSelectedTrainingRecordId] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const [doneIds, setDoneIds] = useState<string[]>([]);
+  const [commentDoc, setCommentDoc] = useState<{
+    id: string;
+    name: string;
+    type: string;
+    companyId?: string;
+    companyName?: string;
+    productId?: string;
+    documentReference?: string;
+    focusCommentId?: string;
+  } | null>(null);
 
   // Fetch dismissed items from DB
   useEffect(() => {
@@ -303,6 +316,52 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
         .replace(/^review-phase-/, '')
         .replace(/^review-doc-/, '');
       navigate(`/app/company/${encodeURIComponent(currentCompanyName)}/review?highlight=${docId}&autoopen=true&t=${Date.now()}`);
+      return;
+    }
+
+    // Document comment items → open the source document in the draft drawer
+    if (item.id.startsWith("doc-comment-") && item.documentId) {
+      try {
+        // Comment notifications are usually attached to CI-backed docs in
+        // phase_assigned_document_template. Try that first; fall back to
+        // the regular `documents` table only if nothing matches.
+        const { data: ciDoc } = await supabase
+          .from('phase_assigned_document_template')
+          .select('id, name, document_type, document_number, document_reference, product_id, company_id')
+          .eq('id', item.documentId)
+          .maybeSingle();
+        let doc: any = ciDoc || null;
+        if (!doc) {
+          const { data: regDoc } = await supabase
+            .from('documents')
+            .select('id, name, document_type, document_reference, product_id, company_id')
+            .eq('id', item.documentId)
+            .maybeSingle();
+          doc = regDoc || null;
+        }
+        if (doc) {
+          setCommentDoc({
+            id: doc.id,
+            name: doc.name || item.title,
+            type: (doc as any).document_type || 'Document',
+            companyId: (doc as any).company_id || companyId,
+            companyName: currentCompanyName,
+            productId: (doc as any).product_id || undefined,
+            documentReference:
+              (doc as any).document_reference ||
+              (doc as any).document_number ||
+              undefined,
+            focusCommentId: item.commentId,
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn('[MyActionItems] Failed to load document for comment item', err);
+      }
+      // Fallback: navigate to review page with the document highlighted
+      if (currentCompanyName) {
+        navigate(`/app/company/${encodeURIComponent(currentCompanyName)}/review?highlight=${item.documentId}&autoopen=true&t=${Date.now()}`);
+      }
       return;
     }
 
@@ -499,6 +558,21 @@ export function MyActionItems({ className, productId, companyId, showDeadlinesOn
         open={!!selectedTrainingRecordId}
         onOpenChange={(open) => { if (!open) setSelectedTrainingRecordId(null); }}
         trainingRecordId={selectedTrainingRecordId}
+      />
+
+      {/* Document draft drawer for comment action items */}
+      <DocumentDraftDrawer
+        open={!!commentDoc}
+        onOpenChange={(open) => { if (!open) setCommentDoc(null); }}
+        documentId={commentDoc?.id || ''}
+        documentName={commentDoc?.name || ''}
+        documentType={commentDoc?.type || ''}
+        companyId={commentDoc?.companyId}
+        companyName={commentDoc?.companyName}
+        productId={commentDoc?.productId}
+        documentReference={commentDoc?.documentReference}
+        openCommentsOnLoad={!!commentDoc?.focusCommentId}
+        focusCommentId={commentDoc?.focusCommentId}
       />
     </>
   );

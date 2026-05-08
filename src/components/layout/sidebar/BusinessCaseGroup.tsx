@@ -1,4 +1,4 @@
-import { BarChart3, Calculator, DollarSign, Map, Crosshair, Target, Shield, LayoutGrid } from 'lucide-react';
+import { BarChart3, Calculator, DollarSign, Map, Target, Shield, LayoutGrid, Compass } from 'lucide-react';
 import React, { useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ChartBar, ChevronRight } from 'lucide-react';
@@ -36,7 +36,7 @@ export function BusinessCaseGroup({
   const { state: sidebarState, toggleSidebar } = useSidebar();
   const menuName = "Business Case";
   const isCollapsed = sidebarState === "collapsed";
-  
+
   // Current tab from URL (semantic matching)
   const currentTab = useMemo(() => getTabFromPath(location.search), [location.search]);
 
@@ -47,6 +47,12 @@ export function BusinessCaseGroup({
   }, [location.search]);
   
   const businessCaseItems = [
+    {
+      title: "Overview",
+      path: `${baseUrl}/business-case?tab=overview`,
+      icon: Compass,
+      visible: true
+    },
     {
       title: "Venture Blueprint",
       path: `${baseUrl}/business-case?tab=venture-blueprint`,
@@ -81,12 +87,6 @@ export function BusinessCaseGroup({
       title: "rNPV Analysis",
       path: `${baseUrl}/business-case?tab=rnpv`,
       icon: Calculator,
-      visible: true
-    },
-    {
-      title: "XyReg Genesis",
-      path: `${baseUrl}/business-case?tab=genesis`,
-      icon: Crosshair,
       visible: true
     },
     // Pitch Builder moved to Genesis Home
@@ -140,8 +140,9 @@ export function BusinessCaseGroup({
 
   const isOpen = expandedMenus[menuName] ?? isBusinessCaseActive;
 
-  const businessCasePath = `${baseUrl}/business-case?tab=venture-blueprint`;
-  const isBusinessCaseLandingActive = isGenesisActive;
+  // Navigate the parent row to the dedicated landing hub route (matches DesignRiskGroup / ProductDefinitionGroup pattern).
+  const businessCasePath = `${baseUrl}/business-case-landing`;
+  const isBusinessCaseLandingActive = location.pathname === businessCasePath;
 
   return (
     <Collapsible open={isOpen} onOpenChange={() => toggleMenuExpansion(menuName)}>

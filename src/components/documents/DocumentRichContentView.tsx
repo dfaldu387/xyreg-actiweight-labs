@@ -124,7 +124,11 @@ export function DocumentRichContentView({ documentName, documentReference }: Doc
                 [&_.wi-note]:my-2 [&_.wi-note]:rounded-md [&_.wi-note]:border [&_.wi-note]:border-blue-200 [&_.wi-note]:bg-blue-50 [&_.wi-note]:p-2 [&_.wi-note]:text-sm [&_.wi-note]:text-blue-900
                 [&_.wi-caution]:my-2 [&_.wi-caution]:rounded-md [&_.wi-caution]:border [&_.wi-caution]:border-amber-300 [&_.wi-caution]:bg-amber-50 [&_.wi-caution]:p-2 [&_.wi-caution]:text-sm [&_.wi-caution]:text-amber-900
                 [&_.wi-note_ul]:list-disc [&_.wi-note_ul]:pl-5 [&_.wi-note_ul]:my-1
-                [&_.wi-caution_ul]:list-disc [&_.wi-caution_ul]:pl-5 [&_.wi-caution_ul]:my-1"
+                [&_.wi-caution_ul]:list-disc [&_.wi-caution_ul]:pl-5 [&_.wi-caution_ul]:my-1
+                [&_.wi-image-placeholder]:my-3 [&_.wi-image-placeholder]:flex [&_.wi-image-placeholder]:flex-col [&_.wi-image-placeholder]:items-center [&_.wi-image-placeholder]:justify-center [&_.wi-image-placeholder]:gap-1 [&_.wi-image-placeholder]:rounded-md [&_.wi-image-placeholder]:border-2 [&_.wi-image-placeholder]:border-dashed [&_.wi-image-placeholder]:border-muted-foreground/30 [&_.wi-image-placeholder]:bg-muted/30 [&_.wi-image-placeholder]:p-4 [&_.wi-image-placeholder]:text-center [&_.wi-image-placeholder]:text-sm [&_.wi-image-placeholder]:text-muted-foreground
+                [&_.wi-image-placeholder__label]:font-medium [&_.wi-image-placeholder__label]:text-foreground/70
+                [&_.wi-image-placeholder__hint]:italic [&_.wi-image-placeholder__hint]:max-w-md
+                [&_.wi-image-placeholder__cta]:text-xs [&_.wi-image-placeholder__cta]:text-primary"
               dangerouslySetInnerHTML={{ __html: section.content }}
             />
           </div>

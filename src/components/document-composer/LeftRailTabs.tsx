@@ -23,6 +23,8 @@ interface LeftRailTabsProps {
   onIsRecordChange?: (isRecord: boolean) => void;
   /** When provided AND no documentId exists, the Configure tab renders a template-level view. */
   template?: DocumentTemplate | null;
+  /** When true, hides the Configure document icon button entirely (Super Admin "normal draft" mode). */
+  hideConfigure?: boolean;
 }
 
 export function LeftRailTabs({
@@ -38,8 +40,17 @@ export function LeftRailTabs({
   onCollapsedChange,
   onIsRecordChange,
   template,
+  hideConfigure = false,
 }: LeftRailTabsProps) {
   const [activeTab, setActiveTab] = useState<Tab>('outline');
+
+  // If the configure tab is hidden, force-pin to outline so we never get
+  // stuck on a hidden tab.
+  useEffect(() => {
+    if (hideConfigure && activeTab === 'configure') {
+      setActiveTab('outline');
+    }
+  }, [hideConfigure, activeTab]);
 
   // Reset to outline whenever a different document is opened.
   useEffect(() => {
@@ -80,18 +91,20 @@ export function LeftRailTabs({
         >
           <List className="w-4 h-4" />
         </button>
-        <button
-          onClick={() => handleIconClick('configure')}
-          className={cn(
-            'p-1.5 rounded-md transition-colors',
-            !collapsed && activeTab === 'configure'
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
-          )}
-          title={!collapsed && activeTab === 'configure' ? 'Hide configure panel' : 'Configure document'}
-        >
-          <Settings2 className="w-4 h-4" />
-        </button>
+        {!hideConfigure && (
+          <button
+            onClick={() => handleIconClick('configure')}
+            className={cn(
+              'p-1.5 rounded-md transition-colors',
+              !collapsed && activeTab === 'configure'
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+            )}
+            title={!collapsed && activeTab === 'configure' ? 'Hide configure panel' : 'Configure document'}
+          >
+            <Settings2 className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Active panel — hidden when collapsed, but icon strip stays visible */}

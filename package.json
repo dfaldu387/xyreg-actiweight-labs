@@ -125,6 +125,7 @@
     "react-device-detect": "^2.2.3",
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.3.8",
+    "react-easy-crop": "^5.5.7",
     "react-flow-renderer": "^10.3.17",
     "react-hook-form": "^7.61.1",
     "react-inner-image-zoom": "^4.0.1",
@@ -168,5 +169,8 @@
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.0.1",
     "vite": "^5.4.1"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.3"
   }
 }

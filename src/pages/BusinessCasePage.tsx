@@ -56,6 +56,9 @@ import { extractFDASearchParameters } from "@/utils/fdaSearchDisplay";
 import { FDAProductCodeService } from "@/services/fdaProductCodeService";
 import { useViabilityFunnelProgress } from "@/hooks/useViabilityFunnelProgress";
 import { GenesisLaunchStepsSidebar } from '@/components/investor-share/GenesisLaunchStepsSidebar';
+import { BusinessCaseHub, HUB_CARD_DEFS, type HubCardConfig } from "@/components/product/business-case/BusinessCaseHub";
+import { BlueprintStepBadge } from "@/components/product/business-case/BlueprintStepBadge";
+import { INVESTOR_ESSENTIAL_TOTAL, parseBlueprintTrack, type BlueprintTrack } from "@/config/investorEssentialKeys";
 
 // Map tab values to readiness checklist keys for completion status
 const TAB_COMPLETION_MAP: Record<string, string> = {
@@ -78,25 +81,53 @@ const TAB_CONFIG = [
     description: 'Track your product\'s strategic planning progress with comprehensive phase-based activities and completion metrics.',
     investorRelevant: true,
   },
-{
+  {
     value: 'business-canvas',
     label: 'Business Canvas',
     menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_CANVAS,
-    description: 'Visualize and plan your product\'s business model with the Business Canvas framework.',
+    description: 'Lean business model canvas for the device.',
     investorRelevant: true,
   },
-   {
+  {
     value: 'team-profile',
     label: 'Team',
     menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_TEAM,
-    description: 'Manage and showcase your team members and their roles.',
+    description: 'Team composition, roles, and gaps.',
     investorRelevant: true,
   },
   {
     value: 'market-analysis',
     label: 'Market Analysis',
     menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_COMPETITION,
-    description: 'Analyze market sizing (TAM/SAM/SOM) and track competitors via manual entry, EUDAMED database, FDA clearances, and global registrations.',
+    description: 'Market sizing (TAM/SAM/SOM) and competitive landscape.',
+    investorRelevant: true,
+  },
+  {
+    value: 'rnpv',
+    label: 'rNPV',
+    menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_RNPV,
+    description: 'Risk-adjusted Net Present Value analysis.',
+    investorRelevant: true,
+  },
+  {
+    value: 'reimbursement',
+    label: 'Reimbursement',
+    menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_REIMBURSEMENT,
+    description: 'Reimbursement strategy, codes, and health economics.',
+    investorRelevant: true,
+  },
+  {
+    value: 'use-of-proceeds',
+    label: 'Use of Proceeds',
+    menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_CANVAS,
+    description: 'Allocation of investment capital across categories.',
+    investorRelevant: true,
+  },
+  {
+    value: 'ip-strategy',
+    label: 'IP Strategy',
+    menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_CANVAS,
+    description: 'Intellectual property assets and strategy.',
     investorRelevant: true,
   },
   {
@@ -106,13 +137,6 @@ const TAB_CONFIG = [
     description: 'Go-to-market channels, territory priority, and sales cycle planning.',
     investorRelevant: true,
   },
-  {
-    value: 'use-of-proceeds',
-    label: 'Use of Proceeds',
-    menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_CANVAS,
-    description: 'Allocation of raise across R&D, regulatory, team, commercial, and operations.',
-    investorRelevant: true,
-  },
   // {
   //   value: 'manufacturing',
   //   label: 'Manufacturing',
@@ -120,20 +144,6 @@ const TAB_CONFIG = [
   //   description: 'Manufacturing stage, strategy, and capacity planning.',
   //   investorRelevant: true,
   // },
-  {
-    value: 'rnpv',
-    label: 'rNPV',
-    menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_RNPV,
-    description: 'Calculate risk-adjusted net present value to evaluate product investment potential.',
-    investorRelevant: false,
-  },
-  {
-    value: 'reimbursement',
-    label: 'Reimbursement',
-    menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_REIMBURSEMENT,
-    description: 'Track reimbursement codes, coverage policies, and payer landscape for your target markets.',
-    investorRelevant: true,
-  },
   {
     value: 'pricing-strategy',
     label: 'Pricing',
@@ -147,13 +157,6 @@ const TAB_CONFIG = [
     label: 'Strategic Horizon',
     menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_CANVAS,
     description: 'Define your strategic path: M&A, Independent Growth, IPO, Licensing, or PE.',
-    investorRelevant: true,
-  },
-  {
-    value: 'ip-strategy',
-    label: 'IP Strategy',
-    menuAccessKey: DEVICES_MENU_ACCESS.BUSINESS_CASE_CANVAS,
-    description: 'Map your IP protection strategy, ownership status, and FTO risk.',
     investorRelevant: true,
   },
 ];
@@ -222,10 +225,23 @@ export default function BusinessCasePage() {
   };
 
   // Only apply investor flow styling when data is loaded - also hide tabs on Genesis landing
-  const activeTab = searchParams.get('tab') || 'venture-blueprint';
+  const activeTab = searchParams.get('tab') || 'overview';
   const isGenesisTab = activeTab === 'genesis';
   const isGenesisFlow = returnTo === 'genesis' || returnTo === 'venture-blueprint';
   const isInvestorFlow = (returnTo === 'investor-share' && !isProgressLoading) || isGenesisTab;
+
+  // Phase out XyReg Genesis: redirect xyreg-genesis tab → venture-blueprint
+  useEffect(() => {
+    if (activeTab === 'xyreg-genesis' || activeTab === 'genesis') {
+      const next = new URLSearchParams(searchParams);
+      next.set('tab', 'venture-blueprint');
+      setSearchParams(next, { replace: true });
+    }
+  }, [activeTab, searchParams, setSearchParams]);
+
+  // NOTE: Previously redirected legacy tabs (rnpv, reimbursement, business-canvas,
+  // team-profile, market-analysis, use-of-proceeds, ip-strategy) into Venture
+  // Blueprint steps. Removed — those original pages must remain accessible.
 
   // Auto-scroll to first checklist item when navigating from Genesis sidebar
   const genesisScrollTargets: Record<string, string> = {
@@ -453,11 +469,40 @@ export default function BusinessCasePage() {
   }, [product, selectedEmdnCode]);
 
   // Map URL tab parameter to internal tab value
-  const tabFromUrl = searchParams.get('tab') || 'venture-blueprint';
+  const tabFromUrl = searchParams.get('tab') || 'overview';
   // Handle legacy tab values for backwards compatibility
   const currentTab = tabFromUrl === 'market-sizing' || tabFromUrl === 'competition' || tabFromUrl === 'competitors' 
     ? 'market-analysis' 
     : tabFromUrl;
+
+  // Hub overview is shown when ?tab=overview
+  const isHubOverview = currentTab === 'overview';
+
+  // Blueprint progress for the hero strip (derived from readiness checklist)
+  const completedCount = readinessChecklist.filter(r => r.complete).length;
+  const totalCount = readinessChecklist.length || 1;
+  const investorTotal = INVESTOR_ESSENTIAL_TOTAL;
+  const investorComplete = Math.min(investorTotal, completedCount);
+  const blueprintTrack: BlueprintTrack = parseBlueprintTrack(searchParams.get('track'));
+
+  const handleTrackChange = (track: BlueprintTrack) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('track', track);
+    setSearchParams(next, { replace: true });
+  };
+
+  const goToBlueprint = () => {
+    setSearchParams({ tab: 'venture-blueprint', track: blueprintTrack });
+  };
+
+  // Per-card completion (rough mapping to readiness items)
+  const tabComplete = (tabValue: string): number => {
+    return isTabComplete(tabValue) ? 100 : 0;
+  };
+  const hubCards: HubCardConfig[] = HUB_CARD_DEFS.map(def => ({
+    ...def,
+    completion: tabComplete(def.tab),
+  }));
 
   // Sub-tab state for Market Analysis - sync with URL subTab/subtab parameter (support both casings)
   const subTabFromUrl = searchParams.get('subTab') || searchParams.get('subtab');
@@ -651,13 +696,13 @@ export default function BusinessCasePage() {
               overallProgress={Math.round((readinessChecklist.filter(r => r.complete).length / readinessChecklist.length) * 100)}
             />
           )}
-          <div className={`flex-1 overflow-y-auto ${currentTab === 'genesis' && productId && !isProgressLoading && readinessChecklist.length > 0 ? 'mr-[280px] lg:mr-[300px] xl:mr-[320px]' : ''}`}>
+          <div className={`flex-1 overflow-y-auto ${(currentTab === 'genesis' && productId && !isProgressLoading && readinessChecklist.length > 0) || currentTab === 'venture-blueprint' ? 'mr-[280px] lg:mr-[300px] xl:mr-[320px]' : ''}`}>
             <div className="w-full py-6 max-w-none">
               <div className="w-full space-y-6">
                 <TooltipProvider>
                   <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
                     {/* Hide tabs in investor flow - checklist provides navigation */}
-                    {!isInvestorFlow && (
+                    {!isInvestorFlow && !isHubOverview && (
                       <div className="overflow-x-auto w-full bg-muted rounded-md">
                       <TabsList className="inline-flex w-full justify-between gap-2 p-1 bg-transparent">
                         {TAB_CONFIG.map((tab) => {
@@ -715,6 +760,38 @@ export default function BusinessCasePage() {
                       </div>
                     )}
 
+                    {/* Quick "back to overview" link when in any specialist tab */}
+                    {!isInvestorFlow && !isHubOverview && currentTab !== 'venture-blueprint' && (
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setSearchParams({ tab: 'overview' })}
+                          className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                        >
+                          ← Back to Business Case overview
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Hub overview — Venture Blueprint hero + specialist card grid */}
+                    {isHubOverview && (
+                      <div className="pt-2">
+                        <BusinessCaseHub
+                          productId={productId!}
+                          cards={hubCards}
+                          blueprint={{
+                            investorComplete,
+                            investorTotal,
+                            fullComplete: completedCount,
+                            fullTotal: totalCount,
+                            track: blueprintTrack,
+                          }}
+                          onTrackChange={handleTrackChange}
+                          onContinueBlueprint={goToBlueprint}
+                        />
+                      </div>
+                    )}
+
                     {/* Viability Scorecard tab removed - now integrated into Venture Blueprint */}
 
                     <TabsContent value="venture-blueprint" className="space-y-6">
@@ -750,7 +827,10 @@ export default function BusinessCasePage() {
                       })()}
                     </TabsContent>
 
+                    {/* Step badges shown above each specialist tab to communicate
+                        that they are part of the Venture Blueprint guided flow */}
                      <TabsContent value="business-canvas" className="space-y-6">
+                       <BlueprintStepBadge stepLabel="Business Model · Canvas" />
                        {(() => {
                          const tabConfig = getTabConfig('business-canvas');
                          if (!tabConfig) return <BusinessCanvas productId={productId!} isInGenesisFlow={isGenesisFlow} />;
@@ -784,6 +864,7 @@ export default function BusinessCasePage() {
                      </TabsContent>
 
                     <TabsContent value="team-profile" className="space-y-6">
+                      <BlueprintStepBadge stepLabel="Step 23 · Team Composition" />
                       {(() => {
                         const tabConfig = getTabConfig('team-profile');
                         if (!tabConfig) return <TeamProfileTab />;
@@ -835,6 +916,7 @@ export default function BusinessCasePage() {
 
 
                      <TabsContent value="market-analysis" className="space-y-6">
+                       <BlueprintStepBadge stepLabel="Steps 10–11 · Market & Competition" />
                        {(() => {
                          const tabConfig = getTabConfig('market-analysis');
                          
@@ -929,10 +1011,12 @@ export default function BusinessCasePage() {
 
 
                     <TabsContent value="gtm-strategy" className="space-y-6">
+                      <BlueprintStepBadge stepLabel="Go-to-Market Strategy" investorEssential={false} />
                       <GTMStrategyForm productId={productId!} companyId={product.company_id} />
                     </TabsContent>
 
                     <TabsContent value="use-of-proceeds" className="space-y-6">
+                      <BlueprintStepBadge stepLabel="Step 21 · Funding & Use of Proceeds" />
                       <UseOfProceedsForm productId={productId!} companyId={product.company_id} />
                     </TabsContent>
 
@@ -941,6 +1025,7 @@ export default function BusinessCasePage() {
                     </TabsContent> */}
 
                     <TabsContent value="rnpv" className="space-y-6">
+                      <BlueprintStepBadge stepLabel="Step 22 · Revenue Forecast (rNPV)" />
                       {(() => {
                         const tabConfig = getTabConfig('rnpv');
                         if (!tabConfig) return <RNPVAnalysis markets={localMarkets} productId={productId} />;
@@ -974,6 +1059,7 @@ export default function BusinessCasePage() {
                     </TabsContent>
 
                     <TabsContent value="reimbursement" className="space-y-6">
+                      <BlueprintStepBadge stepLabel="Steps 15–16 · Reimbursement & HEOR" />
                       {(() => {
                         const tabConfig = getTabConfig('reimbursement');
                         if (!tabConfig) return (
@@ -1063,6 +1149,7 @@ export default function BusinessCasePage() {
                     </TabsContent>
 
                     <TabsContent value="pricing-strategy" className="space-y-6">
+                      <BlueprintStepBadge stepLabel="Pricing Strategy" investorEssential={false} />
                       {(() => {
                         const tabConfig = getTabConfig('pricing-strategy');
                         if (!tabConfig) return (
@@ -1105,10 +1192,12 @@ export default function BusinessCasePage() {
                     </TabsContent>
 
                     <TabsContent value="exit-strategy" className="space-y-6">
+                      <BlueprintStepBadge stepLabel="Strategic Horizon · Exit Path" />
                       <StrategicHorizonForm productId={productId!} />
                     </TabsContent>
 
                     <TabsContent value="ip-strategy" className="space-y-6">
+                      <BlueprintStepBadge stepLabel="Step 19 · IP Strategy & FTO" />
                       <IPStrategyForm />
                     </TabsContent>
                   </Tabs>

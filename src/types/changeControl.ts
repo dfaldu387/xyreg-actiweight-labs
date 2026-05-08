@@ -31,6 +31,76 @@ export type ChangeType =
 // Risk Impact Level
 export type RiskImpact = 'none' | 'low' | 'medium' | 'high';
 
+// CCR Reviewer Perspectives
+export type CCRPerspective =
+  | 'reviewer'
+  | 'clinical'
+  | 'usability'
+  | 'manufacturing'
+  | 'cybersecurity'
+  | 'supply_chain'
+  | 'labeling'
+  | 'quality'
+  | 'regulatory';
+
+export const CCR_PERSPECTIVE_LABELS: Record<CCRPerspective, string> = {
+  reviewer: 'Reviewer',
+  clinical: 'Clinical',
+  usability: 'Usability / HF',
+  manufacturing: 'Manufacturing',
+  cybersecurity: 'Cybersecurity',
+  supply_chain: 'Supply Chain',
+  labeling: 'Labeling',
+  quality: 'Quality',
+  regulatory: 'Regulatory',
+};
+
+export const CCR_PERSPECTIVE_DESCRIPTIONS: Record<CCRPerspective, string> = {
+  reviewer: 'General reviewer — no specific lens.',
+  clinical: 'Alters clinical performance or requires new clinical data.',
+  usability: 'Affects user interface, IFU, or how the patient interacts with the device.',
+  manufacturing: 'Impacts the build process, tooling, fixtures, or cleanroom validation.',
+  cybersecurity: 'Introduces vulnerabilities or changes encryption (critical for SaMD).',
+  supply_chain: 'Affects vendors, raw materials, sub-components, or lead times.',
+  labeling: 'Changes UDI, symbols on the box, or labeling.',
+  quality: 'QMS guardrail sign-off.',
+  regulatory: 'Regulatory impact sign-off.',
+};
+
+export const CCR_PERSPECTIVE_ORDER: CCRPerspective[] = [
+  'reviewer','clinical','usability','manufacturing','cybersecurity','supply_chain','labeling','quality','regulatory',
+];
+
+export interface CCRReviewerAssignment {
+  id: string;
+  ccr_id: string;
+  user_id: string;
+  perspectives: CCRPerspective[];
+  approved_perspectives: CCRPerspective[];
+  approved_at: string | null;
+  approved_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Suggest perspectives for a CCR based on its change_type + flags. */
+export function suggestCCRPerspectives(input: {
+  change_type: ChangeType;
+  regulatory_impact?: boolean;
+}): CCRPerspective[] {
+  const set = new Set<CCRPerspective>(['quality']);
+  switch (input.change_type) {
+    case 'design': set.add('clinical'); set.add('usability'); break;
+    case 'process': set.add('manufacturing'); break;
+    case 'document': set.add('reviewer'); break;
+    case 'supplier': set.add('supply_chain'); set.add('manufacturing'); break;
+    case 'software': set.add('cybersecurity'); set.add('usability'); break;
+    case 'labeling': set.add('labeling'); set.add('usability'); break;
+  }
+  if (input.regulatory_impact) set.add('regulatory');
+  return CCR_PERSPECTIVE_ORDER.filter((p) => set.has(p));
+}
+
 // Main Change Control Request Interface
 export interface ChangeControlRequest {
   id: string;
@@ -181,6 +251,7 @@ export interface UpdateCCRInput {
 // CCR with related data
 export interface CCRWithRelations extends ChangeControlRequest {
   owner?: { id: string; full_name: string } | null;
+  creator?: { id: string; full_name: string } | null;
   source_capa?: { id: string; capa_id: string; problem_description: string } | null;
   company?: { id: string; name: string } | null;
   product?: { id: string; name: string } | null;

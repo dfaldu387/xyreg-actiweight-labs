@@ -63,7 +63,7 @@ export function DocumentConfigPanel({
         <span>Configure</span>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 [&>div>div]:!block [&>div>div]:w-full">
         {isLoading && !metadata ? (
           <div className="flex items-center justify-center py-10 text-muted-foreground text-xs">
             <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading metadata…
@@ -108,12 +108,12 @@ export function DocumentConfigPanel({
             }}
             disabled={disabled}
           />
-          <div className="px-3 pb-3 pt-1 space-y-2">
-            <div className="border-t pt-3">
+          <div className="px-3 pb-3 pt-1 space-y-2 min-w-0">
+            <div className="border-t pt-3 min-w-0">
               <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-2 px-1">
                 Derive new documents
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <TranslateSection
                   sourceCiId={metadata.id}
                   sourceLanguage={(metadata as any).language ?? 'EN'}

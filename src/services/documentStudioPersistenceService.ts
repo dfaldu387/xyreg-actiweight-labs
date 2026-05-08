@@ -257,26 +257,42 @@ export class DocumentStudioPersistenceService {
         return { success: true, data: undefined };
       }
 
-      let query = supabase
-        .from('document_studio_templates')
-        .select('*')
-        .eq('company_id', companyId)
-        .in('template_id', uniqueTemplateIds);
+      const buildQuery = (column: 'template_id' | 'id') => {
+        let q = supabase
+          .from('document_studio_templates')
+          .select('*')
+          .eq('company_id', companyId)
+          .in(column, uniqueTemplateIds);
+        if (productId) {
+          q = q.eq('product_id', productId);
+        } else {
+          q = q.is('product_id', null);
+        }
+        return q.order('updated_at', { ascending: false });
+      };
 
-      if (productId) {
-        query = query.eq('product_id', productId);
-      } else {
-        query = query.is('product_id', null);
-      }
-
-      const { data: rows, error } = await query.order('updated_at', { ascending: false });
+      const { data: rows, error } = await buildQuery('template_id');
 
       if (error) {
         console.error('Error loading template candidates:', error);
         return { success: false, error: error.message };
       }
 
-      const selectedRecord = this.pickBestTemplateRecord(rows as DocumentStudioData[] | null | undefined, uniqueTemplateIds);
+      // Fallback: legacy / non-SOP studio rows can have a NULL template_id, in
+      // which case the caller hands us the studio row's own primary key
+      // instead. Without this fallback the drawer never finds the draft and
+      // pops a blank "Create Draft" state even though the draft exists.
+      let candidateRows = rows as DocumentStudioData[] | null | undefined;
+      if (!candidateRows || candidateRows.length === 0) {
+        const { data: byIdRows, error: byIdError } = await buildQuery('id');
+        if (byIdError) {
+          console.error('Error loading template candidates by id:', byIdError);
+          return { success: false, error: byIdError.message };
+        }
+        candidateRows = byIdRows as DocumentStudioData[] | null | undefined;
+      }
+
+      const selectedRecord = this.pickBestTemplateRecord(candidateRows, uniqueTemplateIds);
 
       return {
         success: true,

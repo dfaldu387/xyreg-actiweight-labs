@@ -46,6 +46,7 @@ export interface NewPricingCompanyPlan {
   extra_devices: number | null;
   extra_module_slots: number | null;
   ai_booster_packs: number | null;
+  consulting_hours: number | null;
   monthly_total: number | null;
   metadata: Record<string, unknown> | null;
 }

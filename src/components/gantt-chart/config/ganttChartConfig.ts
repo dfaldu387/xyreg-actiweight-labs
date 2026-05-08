@@ -1,22 +1,7 @@
 import { AvatarCell } from "../common/AvatarCell";
 
-// Zoom levels configuration
+// Zoom levels configuration — broadest to narrowest so zoom-in narrows, zoom-out broadens.
 export const zoomLevels = [
-    {
-        name: "Years",
-        minCellWidth: 200,
-        maxCellWidth: 400,
-        scales: [{ unit: "year", step: 1, format: "yyyy" }],
-    },
-    {
-        name: "Half Year",
-        minCellWidth: 200,
-        maxCellWidth: 400,
-        scales: [
-            { unit: "year", step: 1, format: "yyyy" },
-            { unit: "quarter", step: 1, format: "QQQ" },
-        ],
-    },
     {
         name: "Quarters",
         minCellWidth: 220,
@@ -64,8 +49,8 @@ export const zoomLevels = [
     },
 ];
 
-const halfYearLevelIndex = zoomLevels.findIndex(level => level.name === "Half Year");
-export const DEFAULT_ZOOM_LEVEL = halfYearLevelIndex >= 0 ? halfYearLevelIndex : 0;
+const quartersLevelIndex = zoomLevels.findIndex(level => level.name === "Quarters");
+export const DEFAULT_ZOOM_LEVEL = quartersLevelIndex >= 0 ? quartersLevelIndex : 0;
 
 // Get columns with translations
 export const getColumns = (lang: (key: string) => string) => [

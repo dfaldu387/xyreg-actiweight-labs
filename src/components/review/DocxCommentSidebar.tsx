@@ -29,6 +29,8 @@ interface DocxCommentSidebarProps {
   onCommentClick?: (comment: DocxComment) => void;
   initialVersion?: number;
   fullWidth?: boolean;
+  /** Optional user-comment id to scroll to, highlight, and (if it has quoted text) jump to in the document. */
+  focusCommentId?: string;
 }
 
 function formatDate(dateStr: string | null): string {
@@ -120,7 +122,7 @@ function ImportedCard({
 }
 
 function UserCard({
-  comment, replies, onResolve, onDelete, onReply, onJump, onAssign, members, currentUserId,
+  comment, replies, onResolve, onDelete, onReply, onJump, onAssign, members, currentUserId, isHighlighted,
 }: {
   comment: UserComment; replies: UserComment[];
   onResolve: (id: string, resolved: boolean) => void;
@@ -130,6 +132,7 @@ function UserCard({
   onAssign: (id: string, assigneeId: string | null) => void;
   members: CompanyMember[];
   currentUserId?: string | null;
+  isHighlighted?: boolean;
 }) {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState("");
@@ -147,7 +150,8 @@ function UserCard({
 
   return (
     <div
-      className={`border rounded-lg p-3 space-y-2 bg-background ${comment.quoted_text ? "cursor-pointer hover:bg-muted/40 transition-colors" : ""}`}
+      data-user-comment-id={comment.id}
+      className={`border rounded-lg p-3 space-y-2 bg-background transition-all ${comment.quoted_text ? "cursor-pointer hover:bg-muted/40" : ""} ${isHighlighted ? "ring-2 ring-primary ring-offset-2 bg-primary/5" : ""}`}
       onClick={() => { if (comment.quoted_text) onJump?.(comment.quoted_text); }}
     >
       <div className="flex items-center gap-2">
@@ -248,7 +252,7 @@ function UserCard({
 }
 
 export function DocxCommentSidebar({
-  documentId, companyId, onClose, onCommentClick, initialVersion, fullWidth = false,
+  documentId, companyId, onClose, onCommentClick, initialVersion, fullWidth = false, focusCommentId,
 }: DocxCommentSidebarProps) {
   const {
     threadedComments, versions, selectedVersion, setSelectedVersion, isLoading,
@@ -257,6 +261,33 @@ export function DocxCommentSidebar({
   const { members } = useCompanyMembers(companyId);
   const { user } = useAuth();
   const [filter, setFilter] = useState<"open" | "all" | "resolved" | "assigned" | "mentioning">("open");
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+
+  // When asked to focus a specific comment, switch the filter to "all" so
+  // the target row is guaranteed to render (it might be resolved or
+  // unassigned-to-me), then scroll it into view, briefly highlight it, and
+  // — if it carries quoted text — fire the existing jump-to-passage handler.
+  useEffect(() => {
+    if (!focusCommentId) return;
+    if (userLoading) return;
+    const target = userComments.find((c) => c.id === focusCommentId);
+    if (!target) return;
+    setFilter("all");
+    setHighlightedId(focusCommentId);
+    const t = window.setTimeout(() => {
+      const el = document.querySelector(
+        `[data-user-comment-id="${focusCommentId}"]`
+      ) as HTMLElement | null;
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if (target.quoted_text) {
+        onCommentClick?.({ quoted_text: target.quoted_text } as any);
+      }
+    }, 150);
+    const clear = window.setTimeout(() => setHighlightedId(null), 4000);
+    return () => { window.clearTimeout(t); window.clearTimeout(clear); };
+  }, [focusCommentId, userLoading, userComments, onCommentClick]);
 
   // Composer state
   const [composerOpen, setComposerOpen] = useState(false);
@@ -484,7 +515,8 @@ export function DocxCommentSidebar({
                   onResolve={handleResolve} onDelete={handleDelete} onReply={handleReply}
                   onJump={(qt) => onCommentClick?.({ quoted_text: qt } as any)}
                   onAssign={handleAssign}
-                  members={members} currentUserId={user?.id ?? null} />
+                  members={members} currentUserId={user?.id ?? null}
+                  isHighlighted={highlightedId === c.id} />
               ))}
               {threadedComments.map((thread) => (
                 <ImportedCard key={thread.id} comment={thread} replies={thread.replies} onCommentClick={onCommentClick} />

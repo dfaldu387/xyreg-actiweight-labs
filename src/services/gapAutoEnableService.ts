@@ -33,8 +33,16 @@ export async function getCompanyConditions(companyId: string): Promise<Set<strin
       if (markets.some((m: any) => m.code === 'KR' && m.selected)) conditions.add('market_kr');
     }
     const ktc = p.key_technology_characteristics as Record<string, any> | null;
-    if (p.is_software_project || ktc?.isSoftwareAsaMedicalDevice || ktc?.isSoftwareMobileApp) conditions.add('device_samd');
+    const isSamd = !!(p.is_software_project || ktc?.isSoftwareAsaMedicalDevice || ktc?.isSoftwareMobileApp);
+    if (isSamd) conditions.add('device_samd');
     if (p.isActiveDevice) conditions.add('device_active');
+    // DiGA Fast-Track: SaMD targeting Germany (or EU) qualifies for the BfArM directory checklist.
+    if (isSamd && Array.isArray(p.markets)) {
+      const markets = p.markets as any[];
+      if (markets.some((m: any) => (m.code === 'DE' || m.code === 'GER' || m.code === 'GERMANY' || m.code === 'EU') && m.selected)) {
+        conditions.add('germany_samd');
+      }
+    }
   }
 
   // Check patient contact via BOM items

@@ -39,6 +39,7 @@ import { DocumentValidationService, UnresolvedReferenceSource } from '@/services
 import { DocxCommentSidebar } from '@/components/review/DocxCommentSidebar';
 import { DocxCommentHighlighter } from '@/components/review/DocxCommentHighlighter';
 import { useDocxComments } from '@/hooks/useDocxComments';
+import { jumpToQuotedText } from '@/utils/jumpToQuotedText';
 import { formatSopDisplayName } from '@/constants/sopAutoSeedTiers';
 import { splitDocPrefix } from '@/utils/templateNameUtils';
 import * as SidebarModule from '@/components/ui/sidebar';
@@ -115,6 +116,18 @@ interface DocumentDraftDrawerProps {
   /** Tab-group features: render a custom slot (e.g. Groups dropdown) at the start of the tab strip, and a callback for saving the current selection (or all open tabs) as a group. */
   groupsMenuSlot?: React.ReactNode;
   onSaveSelectedAsGroup?: () => void;
+  /** Open the comments sidebar automatically when the drawer mounts. */
+  openCommentsOnLoad?: boolean;
+  /** When provided, the comments sidebar scrolls to and highlights this user comment id. */
+  focusCommentId?: string;
+  /** Super Admin "normal draft" mode — hides lifecycle stepper, AI/header action
+   * icons, Advanced Editor / View in DC / Star icons, and the Configure-document
+   * tab in the left rail. Used when authoring master content (e.g. FPD catalog)
+   * where review/approval and CI tooling don't apply. */
+  normalDraft?: boolean;
+  /** When provided alongside `normalDraft`, these section blocks (id/title/string content)
+   * are rendered directly as the document body, bypassing the company-scoped draft loader. */
+  initialSections?: { id: string; title: string; content: string }[];
 }
 
 export function DocumentDraftDrawer({
@@ -144,6 +157,10 @@ export function DocumentDraftDrawer({
   onBulkEditSelectedTabs,
   groupsMenuSlot,
   onSaveSelectedAsGroup,
+  openCommentsOnLoad,
+  focusCommentId,
+  normalDraft = false,
+  initialSections,
 }: DocumentDraftDrawerProps) {
   const [template, setTemplate] = useState<DocumentTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -220,17 +237,26 @@ export function DocumentDraftDrawer({
   const draftContentRef = useRef<HTMLDivElement>(null);
   const [alreadyApprovedUserIds, setAlreadyApprovedUserIds] = useState<string[]>([]);
 
+  // Auto-open the comments sidebar when launched from a comment notification
+  useEffect(() => {
+    if (open && openCommentsOnLoad) {
+      setShowDocxComments(true);
+    }
+  }, [open, openCommentsOnLoad, focusCommentId]);
+
   const resolvedCompanyId = companyId || activeCompanyRole?.companyId;
 
   useEffect(() => {
     if (!resolvedCompanyId) return;
     supabase
       .from('companies')
-      .select('logo_url')
+      .select('logo_url, document_logo_url')
       .eq('id', resolvedCompanyId)
       .single()
       .then(({ data }) => {
-        if (data?.logo_url) setCompanyLogoUrl(data.logo_url);
+        const d = data as any;
+        const url = d?.document_logo_url || d?.logo_url;
+        if (url) setCompanyLogoUrl(url);
       });
   }, [resolvedCompanyId]);
 
@@ -847,6 +873,43 @@ export function DocumentDraftDrawer({
       return;
     }
 
+    // normalDraft mode (e.g. Super Admin FPD catalog edit): the entry isn't a
+    // CI document, so skip the company-scoped DB loader and render the provided
+    // sections directly. Falls back to a single empty section if none supplied.
+    if (normalDraft && normalizedDocId) {
+      const src = initialSections && initialSections.length > 0
+        ? initialSections
+        : [{ id: 'body', title: 'Content', content: '' }];
+      const sections = src.map((s, i) => ({
+        id: s.id || `section-${i}`,
+        title: s.title || 'Untitled',
+        content: [{
+          id: `${s.id || `section-${i}`}-1`,
+          type: 'paragraph' as const,
+          content: s.content ?? '',
+          isAIGenerated: false,
+        }],
+        order: i,
+      }));
+      setTemplate({
+        id: normalizedDocId,
+        name: documentName,
+        type: documentType,
+        sections,
+        productContext: { id: '', name: '', riskClass: '', phase: '', regulatoryRequirements: [] },
+        documentControl: {
+          sopNumber: '', documentTitle: documentName, version: '1.0',
+          effectiveDate: new Date(), documentOwner: '',
+          preparedBy: { name: '', title: '', date: new Date() },
+          reviewedBy: { name: '', title: '', date: new Date() },
+          approvedBy: { name: '', title: '', date: new Date() },
+        },
+        metadata: { version: '1.0', lastUpdated: new Date(), estimatedCompletionTime: '' },
+      });
+      setExistingDraftId(null);
+      return;
+    }
+
     if (!resolvedCompanyId || !normalizedDocId) return;
 
     // For new unsaved documents, skip DB lookup — just create a blank template
@@ -1028,7 +1091,7 @@ export function DocumentDraftDrawer({
     };
 
     loadOrCreateTemplate();
-  }, [open, normalizedDocId, documentName, documentType, productId, resolvedCompanyId]);
+  }, [open, normalizedDocId, documentName, documentType, productId, resolvedCompanyId, documentReference, normalDraft, initialSections]);
 
   // Debounced DB save for inline content edits
   const debouncedDbSave = React.useMemo(() => {
@@ -1167,6 +1230,7 @@ export function DocumentDraftDrawer({
       open={open}
       onClose={() => onOpenChange(false)}
       defaultWidthPercent={97}
+      topOffsetPx={normalDraft ? 0 : undefined}
     >
       {(() => {
         const synthesizedTabs = (tabs && tabs.length > 0)
@@ -1409,7 +1473,7 @@ export function DocumentDraftDrawer({
           })()}
         </Box>
         {/* Inline compact lifecycle stepper (merged from former row below) */}
-        {(() => {
+        {!normalDraft && (() => {
           const steps = [
             { label: 'Draft', icon: FilePen },
             { label: 'Review & Approve', icon: Eye },
@@ -1489,12 +1553,12 @@ export function DocumentDraftDrawer({
           );
         })()}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0, ml: 'auto' }}>
-          {activeView === 'draft' && !showAdvancedEditor && liveEditorActions && (
+          {!normalDraft && activeView === 'draft' && !showAdvancedEditor && liveEditorActions && (
             <Box sx={{ mr: 0.5 }}>
               <LiveEditorHeaderActions {...liveEditorActions} />
             </Box>
           )}
-          {!showAdvancedEditor && (() => {
+          {!normalDraft && !showAdvancedEditor && (() => {
             const ext = (fileName || filePath || '').split('.').pop()?.toLowerCase();
             return ext === 'doc' || ext === 'docx';
           })() && (
@@ -1508,7 +1572,7 @@ export function DocumentDraftDrawer({
               </IconButton>
             </Tooltip>
           )}
-          {resolvedCompanyId && (
+          {!normalDraft && resolvedCompanyId && (
             <Tooltip title="View in Document Control" arrow>
               <IconButton
                 onClick={() => {
@@ -1525,16 +1589,18 @@ export function DocumentDraftDrawer({
               </IconButton>
             </Tooltip>
           )}
-<Tooltip title={isStarred ? "Unstar document" : "Star document"} arrow>
+          {!normalDraft && (
+            <Tooltip title={isStarred ? "Unstar document" : "Star document"} arrow>
               <IconButton
-              onClick={(e) => { e.stopPropagation(); toggleStar(); }}
-              size="small"
-              disabled={starLoading}
-              sx={{ color: isStarred ? '#eab308' : '#9ca3af', '&:hover': { backgroundColor: 'rgba(234, 179, 8, 0.08)' } }}
-            >
-              <Star style={{ width: 16, height: 16, fill: isStarred ? '#eab308' : 'none' }} />
-            </IconButton>
-          </Tooltip>
+                onClick={(e) => { e.stopPropagation(); toggleStar(); }}
+                size="small"
+                disabled={starLoading}
+                sx={{ color: isStarred ? '#eab308' : '#9ca3af', '&:hover': { backgroundColor: 'rgba(234, 179, 8, 0.08)' } }}
+              >
+                <Star style={{ width: 16, height: 16, fill: isStarred ? '#eab308' : 'none' }} />
+              </IconButton>
+            </Tooltip>
+          )}
           <IconButton onClick={() => onOpenChange(false)} size="small">
             <CloseIcon />
           </IconButton>
@@ -1573,7 +1639,7 @@ export function DocumentDraftDrawer({
             <DocumentEditorSidebar
               collapsed={sidebarCollapsed}
               onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
-              widthClassName="w-[440px] min-w-[400px] max-w-[460px]"
+              widthClassName="w-[560px] min-w-[520px] max-w-[600px]"
               ciDocumentId={normalizedDocId || null}
               ciCompanyId={resolvedCompanyId}
               productId={productId}
@@ -2505,7 +2571,10 @@ export function DocumentDraftDrawer({
                   onDocumentControlChange={handleDocumentControlChange}
                   onPushToDeviceFields={productId ? handlePushToDeviceFields : undefined}
                   onCustomSave={isUnsaved ? () => setShowSaveCIDialog(true) : undefined}
-                  onRegisterHeaderActions={setLiveEditorActions}
+                  onRegisterHeaderActions={normalDraft ? undefined : setLiveEditorActions}
+                  hideConfigure={normalDraft}
+                  disableEmptyStatePrompt={normalDraft}
+                  hideDocumentHeader={normalDraft}
                   isRecord={isRecord}
                   recordId={recordId || undefined}
                   nextReviewDate={nextReviewDate || undefined}
@@ -2544,6 +2613,15 @@ export function DocumentDraftDrawer({
                 documentId={normalizedDocId}
                 companyId={resolvedCompanyId}
                 onClose={() => setShowDocxComments(false)}
+                focusCommentId={focusCommentId}
+                onCommentClick={(comment) => {
+                  // Connect comment → document: scroll to and select the
+                  // quoted passage inside the live editor surface.
+                  jumpToQuotedText(
+                    draftContentRef.current,
+                    (comment as any)?.quoted_text ?? null,
+                  );
+                }}
               />
             )}
             </Box>

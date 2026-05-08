@@ -11,10 +11,11 @@ import {
   type FpdSopCatalogEntry,
   type FpdTier,
 } from '@/services/fpdSopCatalogService';
-import { Search, FileText, Loader2 } from 'lucide-react';
+import { Search, FileText, Loader2, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { FpdSopEditDrawer } from './FpdSopEditDrawer';
+import { DocumentDraftDrawer } from '@/components/product/documents/DocumentDraftDrawer';
 
 type TierFilter = 'all' | FpdTier;
 
@@ -30,6 +31,8 @@ export const FpdCatalogSection: React.FC = () => {
   const [tierFilter, setTierFilter] = useState<TierFilter>('all');
   const [editing, setEditing] = useState<FpdSopCatalogEntry | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [draftEditing, setDraftEditing] = useState<FpdSopCatalogEntry | null>(null);
+  const [draftDrawerOpen, setDraftDrawerOpen] = useState(false);
 
   const load = async () => {
     try {
@@ -73,6 +76,11 @@ export const FpdCatalogSection: React.FC = () => {
   const openEditor = (entry: FpdSopCatalogEntry) => {
     setEditing(entry);
     setDrawerOpen(true);
+  };
+
+  const openDraftEditor = (entry: FpdSopCatalogEntry) => {
+    setDraftEditing(entry);
+    setDraftDrawerOpen(true);
   };
 
   return (
@@ -190,6 +198,18 @@ export const FpdCatalogSection: React.FC = () => {
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
+                      openDraftEditor(entry);
+                    }}
+                    title="Edit"
+                  >
+                    <Edit className="mr-1.5 h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       openEditor(entry);
                     }}
                   >
@@ -212,6 +232,23 @@ export const FpdCatalogSection: React.FC = () => {
         }}
         onSaved={load}
       />
+
+      {/* Normal Draft document modal — Super Admin authoring view, no
+          lifecycle / AI / configure / advanced editor / etc. */}
+      {draftEditing && (
+        <DocumentDraftDrawer
+          open={draftDrawerOpen}
+          onOpenChange={(o) => {
+            setDraftDrawerOpen(o);
+            if (!o) setDraftEditing(null);
+          }}
+          documentId={draftEditing.id}
+          documentName={`${draftEditing.sop_key} — ${draftEditing.title}`}
+          documentType="SOP"
+          normalDraft
+          initialSections={draftEditing.default_sections}
+        />
+      )}
     </div>
   );
 };

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import {
   Coins,
@@ -14,6 +16,9 @@ import {
   Settings,
   ArrowLeft,
   ArrowRight,
+  Pencil,
+  Loader2,
+  Package as PackageIcon,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -88,6 +93,8 @@ const SOURCE_LABELS: Record<string, string> = {
   ai_hardware_requirements: 'Hardware Requirements',
   ai_hazard_analysis: 'Hazard Analysis',
   ai_vv_plan: 'V&V Plan',
+  ai_ccr_draft: 'Change Control — Draft',
+  ai_ccr_impact: 'Change Control — Impact',
 };
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -101,6 +108,8 @@ const SOURCE_COLORS: Record<string, string> = {
   ai_hardware_requirements: '#ef4444',
   ai_hazard_analysis: '#dc2626',
   ai_vv_plan: '#0d9488',
+  ai_ccr_draft: '#facc15',
+  ai_ccr_impact: '#a855f7',
 };
 
 const BAR_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe', '#ede9fe', '#f5f3ff', '#e0e7ff', '#c7d2fe', '#a5b4fc'];
@@ -124,10 +133,128 @@ export default function SuperAdminAiTokenUsage() {
   const [showAllFeatures, setShowAllFeatures] = useState(false);
   const [detailSourceFilter, setDetailSourceFilter] = useState<Set<string>>(new Set());
 
+  // AI Booster Pack (dynamic product)
+  interface BoosterPackInfo {
+    id: string;
+    product_key: string;
+    stripe_product_id: string;
+    stripe_price_id: string;
+    name: string;
+    description: string | null;
+    price_cents: number;
+    currency: string;
+    credits: number;
+  }
+  const [pkg, setPkg] = useState<BoosterPackInfo | null>(null);
+  const [pkgLoading, setPkgLoading] = useState(true);
+  const [pkgEditOpen, setPkgEditOpen] = useState(false);
+  const [pkgEditName, setPkgEditName] = useState('');
+  const [pkgEditDescription, setPkgEditDescription] = useState('');
+  const [pkgEditPrice, setPkgEditPrice] = useState('');
+  const [pkgEditCredits, setPkgEditCredits] = useState('');
+  const [pkgEditSubmitting, setPkgEditSubmitting] = useState(false);
+
+  const loadBoosterPack = async () => {
+    setPkgLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-dynamic-products', {
+        body: { product_key: 'ai_booster' },
+      });
+      if (error) {
+        console.error('Failed to load AI booster pack:', error);
+        return;
+      }
+      const first = data?.products?.[0];
+      if (!first) {
+        setPkg(null);
+        return;
+      }
+      setPkg({
+        id: first.id,
+        product_key: first.product_key,
+        stripe_product_id: first.stripe_product_id,
+        stripe_price_id: first.stripe_price_id,
+        name: first.name,
+        description: first.description ?? null,
+        price_cents: first.price_cents,
+        currency: first.currency,
+        credits: Number(first.metadata?.credits ?? 0),
+      });
+    } catch (err) {
+      console.error('Failed to load AI booster pack:', err);
+    } finally {
+      setPkgLoading(false);
+    }
+  };
+
+  const openPackageEdit = () => {
+    if (!pkg) return;
+    setPkgEditName(pkg.name);
+    setPkgEditDescription(pkg.description ?? '');
+    setPkgEditPrice((pkg.price_cents / 100).toString());
+    setPkgEditCredits(String(pkg.credits));
+    setPkgEditOpen(true);
+  };
+
+  const submitPackageEdit = async () => {
+    if (!pkg) return;
+    const newPriceUnits = parseFloat(pkgEditPrice);
+    const newCredits = parseInt(pkgEditCredits, 10);
+    if (!Number.isFinite(newPriceUnits) || newPriceUnits <= 0) {
+      toast.error('Price must be a positive number');
+      return;
+    }
+    if (!Number.isInteger(newCredits) || newCredits <= 0) {
+      toast.error('Credits per pack must be a positive integer');
+      return;
+    }
+
+    const payload: Record<string, unknown> = { id: pkg.id };
+    if (pkgEditName.trim() && pkgEditName.trim() !== pkg.name) {
+      payload.name = pkgEditName.trim();
+    }
+    if ((pkgEditDescription ?? '') !== (pkg.description ?? '')) {
+      payload.description = pkgEditDescription;
+    }
+    const newPriceCents = Math.round(newPriceUnits * 100);
+    if (newPriceCents !== pkg.price_cents) {
+      payload.price_cents = newPriceCents;
+    }
+    if (newCredits !== pkg.credits) {
+      payload.credits = newCredits;
+    }
+    if (Object.keys(payload).length === 1) {
+      toast.info('No changes to save');
+      return;
+    }
+
+    setPkgEditSubmitting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('update-dynamic-product', {
+        body: payload,
+      });
+      if (error) throw new Error(error.message ?? 'Update failed');
+      if (data?.error) throw new Error(data.error);
+      toast.success('AI Booster Pack updated');
+      setPkgEditOpen(false);
+      await loadBoosterPack();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Update failed';
+      console.error('Booster pack update failed:', err);
+      toast.error(msg);
+    } finally {
+      setPkgEditSubmitting(false);
+    }
+  };
+
   // --- Fetch data ---
   useEffect(() => {
     loadData();
   }, [dateFrom, dateTo]);
+
+  useEffect(() => {
+    loadBoosterPack();
+  }, []);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -290,6 +417,70 @@ export default function SuperAdminAiTokenUsage() {
         </div>
       </div>
 
+      {/* AI Booster Pack Settings */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex items-start gap-3 flex-1 min-w-[260px]">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                <PackageIcon className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-base font-semibold">AI Booster Pack</h2>
+                {pkgLoading ? (
+                  <p className="text-sm text-muted-foreground mt-1">Loading…</p>
+                ) : !pkg ? (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    No active AI Booster Pack configured. Seed a row in <code>dynamic_products</code> with <code>product_key = 'ai_booster'</code>.
+                  </p>
+                ) : (
+                  <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-2 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Name</p>
+                      <p className="font-medium truncate">{pkg.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Price</p>
+                      <p className="font-medium">
+                        {new Intl.NumberFormat('en-US', {
+                          style: 'currency',
+                          currency: pkg.currency.toUpperCase(),
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        }).format(pkg.price_cents / 100)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Credits / pack</p>
+                      <p className="font-medium">{pkg.credits.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Currency</p>
+                      <p className="font-medium uppercase">{pkg.currency}</p>
+                    </div>
+                    {pkg.description && (
+                      <div className="col-span-full">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Description</p>
+                        <p className="text-sm">{pkg.description}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={openPackageEdit}
+              disabled={!pkg || pkgLoading}
+              className="gap-1.5"
+            >
+              <Pencil className="w-3.5 h-3.5" /> Edit
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <SummaryCard icon={<Coins className="w-5 h-5 text-primary" />} label="TOTAL TOKENS" value={formatTokens(totals.tokens)} sub={`${totals.tokens.toLocaleString()} tokens`} />
@@ -448,7 +639,7 @@ export default function SuperAdminAiTokenUsage() {
           {detailOrg && (
             <div className="space-y-4 max-h-[calc(85vh-80px)] flex flex-col overflow-hidden">
               {/* Source breakdown */}
-              <div className="flex gap-3 overflow-x-auto pb-2 shrink-0">
+              <div className="flex gap-3 overflow-x-auto px-1 pt-2 pb-3 shrink-0">
                 {Object.entries(detailOrg.bySource).map(([source, data]) => {
                   const isActive = detailSourceFilter.size === 0 || detailSourceFilter.has(source);
                   return (
@@ -519,6 +710,85 @@ export default function SuperAdminAiTokenUsage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit AI Booster Pack dialog */}
+      <Dialog open={pkgEditOpen} onOpenChange={setPkgEditOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Edit AI Booster Pack</DialogTitle>
+            <DialogDescription>
+              Name, description, and price write to Stripe. Price changes create a new
+              Stripe Price and set it as the Product default; the previous Price is archived.
+              Credits per pack is stored locally.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label htmlFor="ai-pkg-name">Name</Label>
+              <Input
+                id="ai-pkg-name"
+                value={pkgEditName}
+                onChange={(e) => setPkgEditName(e.target.value)}
+                disabled={pkgEditSubmitting}
+              />
+            </div>
+            <div>
+              <Label htmlFor="ai-pkg-desc">Description</Label>
+              <Textarea
+                id="ai-pkg-desc"
+                value={pkgEditDescription}
+                onChange={(e) => setPkgEditDescription(e.target.value)}
+                disabled={pkgEditSubmitting}
+                rows={2}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="ai-pkg-price">
+                  Price ({pkg?.currency.toUpperCase() ?? 'EUR'})
+                </Label>
+                <Input
+                  id="ai-pkg-price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={pkgEditPrice}
+                  onChange={(e) => setPkgEditPrice(e.target.value)}
+                  disabled={pkgEditSubmitting}
+                />
+              </div>
+              <div>
+                <Label htmlFor="ai-pkg-credits">Credits per pack</Label>
+                <Input
+                  id="ai-pkg-credits"
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={pkgEditCredits}
+                  onChange={(e) => setPkgEditCredits(e.target.value)}
+                  disabled={pkgEditSubmitting}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPkgEditOpen(false)}
+              disabled={pkgEditSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button onClick={submitPackageEdit} disabled={pkgEditSubmitting}>
+              {pkgEditSubmitting ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving…</>
+              ) : (
+                <>Save changes</>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

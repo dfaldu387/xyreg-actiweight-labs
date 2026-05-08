@@ -53,6 +53,10 @@ interface WIStep {
   detail: string;
   note?: string;
   caution?: string;
+  /** Optional one-line description of a screenshot that would help illustrate
+   *  this step. The seeder emits a clickable image placeholder after the step
+   *  so a super-admin can upload the screenshot once at the global master level. */
+  screenshotHint?: string;
 }
 interface WIPayload {
   title: string;
@@ -62,6 +66,10 @@ interface WIPayload {
   acceptance: string[];
   notes?: string[];
   cautions?: string[];
+  /** 1-2 sentence statement of why this WI exists (Qualio §1 Purpose). */
+  purpose?: string;
+  /** Short paragraph stating training requirements (Qualio §3 Training). */
+  trainingNote?: string;
 }
 
 function stripFence(s: string) {
@@ -146,7 +154,11 @@ async function generateWI(
     `- Use the top-level "cautions" array for system-wide warnings that don't belong to a single step (e.g. "Once Product Name is saved it cannot be changed without a CCR").\n` +
     `- Output ONLY valid JSON matching the requested shape.\n\n` +
     `JSON SHAPE:\n` +
-    `{ "title": string, "scope": string, "roles": string[], "steps": [{"step": number, "title": string, "detail": string, "note"?: string, "caution"?: string}], "acceptance": string[], "notes"?: string[], "cautions"?: string[] }\n\n` +
+    `{ "title": string, "purpose": string, "scope": string, "trainingNote": string, "roles": string[], "steps": [{"step": number, "title": string, "detail": string, "note"?: string, "caution"?: string, "screenshotHint"?: string}], "acceptance": string[], "notes"?: string[], "cautions"?: string[] }\n\n` +
+    `FIELD GUIDANCE:\n` +
+    `- "purpose": 1-2 sentences stating why this Work Instruction exists and what outcome it ensures. Distinct from "scope".\n` +
+    `- "trainingNote": 1-2 sentences stating who must be trained on this WI before independent execution and the parent SOP that anchors training (per SOP-002 Training).\n` +
+    `- "screenshotHint": OPTIONAL per step. Add ONLY when the step lands on a distinct screen/dialog where a screenshot would meaningfully aid the reader. Max 15 words, describe what the screenshot should show (e.g. "Audit Module landing page with the 'New Audit' button highlighted"). Omit for trivial steps like 'Click Save'.\n\n` +
     `SPECIFIC FOCUS: ${focus}\n\n` +
     `SOURCE SOP TITLE: ${title}\n` +
     `SOURCE SOP CONTENT:\n${sectionsText.slice(0, 14000)}\n\n` +
@@ -168,7 +180,10 @@ function sectionsFromWI(wi: WIPayload, sourceTitle: string, sourceSopNumber: str
   const stepHtml = (s: WIStep) => {
     const note = s.note ? `<div class="wi-note"><strong>Note:</strong> ${escape(s.note)}</div>` : "";
     const caution = s.caution ? `<div class="wi-caution"><strong>Caution:</strong> ${escape(s.caution)}</div>` : "";
-    return `<li><strong>${escape(s.title)}</strong><br/>${escape(s.detail)}${note}${caution}</li>`;
+    const shot = s.screenshotHint && s.screenshotHint.trim().length > 0
+      ? `<figure class="wi-image-placeholder" data-hint="${escape(s.screenshotHint)}" contenteditable="false"><div class="wi-image-placeholder__icon">📷</div><div class="wi-image-placeholder__label">Screenshot needed</div><div class="wi-image-placeholder__hint">${escape(s.screenshotHint)}</div><div class="wi-image-placeholder__cta">Click to upload</div></figure>`
+      : "";
+    return `<li><strong>${escape(s.title)}</strong><br/>${escape(s.detail)}${note}${caution}${shot}</li>`;
   };
   const globalCautions = (wi.cautions ?? []).length > 0
     ? `<div class="wi-caution"><strong>Caution:</strong><ul>${(wi.cautions ?? []).map((c) => `<li>${escape(c)}</li>`).join("")}</ul></div>`
@@ -176,26 +191,35 @@ function sectionsFromWI(wi: WIPayload, sourceTitle: string, sourceSopNumber: str
   const globalNotes = (wi.notes ?? []).length > 0
     ? `<div class="wi-note"><strong>Note:</strong><ul>${(wi.notes ?? []).map((n) => `<li>${escape(n)}</li>`).join("")}</ul></div>`
     : "";
+  const purposeHtml = wi.purpose && wi.purpose.trim().length > 0
+    ? `<p>${escape(wi.purpose)}</p>`
+    : `<p>This Work Instruction translates the parent SOP into concrete, click-by-click steps inside XyReg so the procedure is performed consistently and produces auditable evidence.</p>`;
+  const trainingHtml = wi.trainingNote && wi.trainingNote.trim().length > 0
+    ? `<p>${escape(wi.trainingNote)}</p>`
+    : `<p>All personnel performing this procedure must complete training on this Work Instruction and the parent SOP before independent execution. Training is recorded under <strong>SOP-002 Training</strong>.</p>`;
+  const parentRef = sourceSopNumber
+    ? `<li><strong>${escape(sourceSopNumber)}</strong> — ${escape(sourceTitle)} (parent SOP)</li>`
+    : `<li><strong>${escape(sourceTitle)}</strong> (parent SOP)</li>`;
   return [
-    { id: "scope", title: "1. Scope", content: [para(`<p>${escape(wi.scope ?? "")}</p>`)] },
-    { id: "roles", title: "2. Roles", content: [para(
+    { id: "purpose", title: "1. Purpose", content: [para(purposeHtml)] },
+    { id: "scope", title: "2. Scope", content: [para(`<p>${escape(wi.scope ?? "")}</p>`)] },
+    { id: "training", title: "3. Training", content: [para(trainingHtml)] },
+    { id: "roles", title: "4. Roles & Responsibilities", content: [para(
       `<ul>${(wi.roles ?? []).map((r) => `<li>${escape(r)}</li>`).join("")}</ul>`,
     )] },
-    { id: "procedure", title: "3. Procedure", content: [para(
+    { id: "procedure", title: "5. Procedure", content: [para(
       `${globalCautions}${globalNotes}<ol>${(wi.steps ?? []).map(stepHtml).join("")}</ol>`,
     )] },
-    { id: "acceptance", title: "4. Acceptance Criteria", content: [para(
+    { id: "acceptance", title: "6. Acceptance Criteria", content: [para(
       `<ul>${(wi.acceptance ?? []).map((a) => `<li>${escape(a)}</li>`).join("")}</ul>`,
     )] },
-    { id: "reference", title: "5. Reference", content: [para(
-      sourceSopNumber
-        ? `<p>Derived from foundational SOP: ${escape(sourceSopNumber)} ${escape(sourceTitle)}.</p>`
-        : `<p>Derived from foundational SOP: ${escape(sourceTitle)}.</p>`,
+    { id: "references", title: "7. Document References / Related Documents", content: [para(
+      `<ul>${parentRef}<li><strong>SOP-002</strong> — Training (training records and competency)</li><li><strong>SOP-006</strong> — Change Control (revisions to this WI)</li><li><em>Add additional related documents here</em></li></ul>`,
     )] },
-    { id: "approval", title: "6. Approval & Change Control", content: [para(
+    { id: "approval", title: "8. Approval & Change Control", content: [para(
       `<p>Version 1.0 — Authorised under <strong>CCR-PENDING</strong>. Subsequent revisions require a new Change Control Record (CCR) per SOP-006 Change Control. The authorising CCR number will be linked here once the CCR is approved.</p>`,
     )] },
-    { id: "authority", title: "7. Document Authority Notice", content: [para(
+    { id: "authority", title: "9. Document Authority Notice", content: [para(
       `<p><em>The Master Record for this Work Instruction resides in Xyreg. Printed or exported copies are uncontrolled; if a copy diverges from the digital system, the Xyreg version is authoritative.</em></p>`,
     )] },
   ];

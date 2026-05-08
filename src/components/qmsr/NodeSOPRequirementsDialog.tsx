@@ -514,6 +514,8 @@ export function NodeSOPRequirementsDialog({
     name: string;
     type: string;
     isNew?: boolean;
+    documentReference?: string;
+    productId?: string;
   } | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
 
@@ -524,17 +526,27 @@ export function NodeSOPRequirementsDialog({
     try {
       const { data, error } = await supabase
         .from('phase_assigned_document_template')
-        .select('id, name, document_type')
+        .select('id, name, document_type, document_number, document_reference, product_id')
         .eq('id', documentId)
         .maybeSingle();
       if (error || !data) {
         toast.error('Could not load document');
         return;
       }
+      const row = data as {
+        id: string;
+        name: string | null;
+        document_type: string | null;
+        document_number: string | null;
+        document_reference: string | null;
+        product_id: string | null;
+      };
       setDrawerDoc({
-        id: data.id,
-        name: data.name || 'Document',
-        type: data.document_type || 'SOP',
+        id: row.id,
+        name: row.name || 'Document',
+        type: row.document_type || 'SOP',
+        documentReference: row.document_reference || row.document_number || undefined,
+        productId: row.product_id || undefined,
       });
     } catch {
       toast.error('Could not load document');
@@ -573,15 +585,13 @@ export function NodeSOPRequirementsDialog({
     if (drawerDoc || drawerLoading) return;
     autoOpenedRef.current = key;
 
-    // If status is already resolved and linked, prefer opening the existing
-    // document even when the chip payload did not include the CI id yet.
+    // The chip may carry a stale `documentId` pointing at a legacy duplicate
+    // CI that has no draft. Always prefer the canonical CI resolved by
+    // `useNodeSOPRequirements` (which matches by document_number first), and
+    // only fall back to the chip's `documentId` when status hasn't loaded yet.
     const resolvedStatus = sopStatuses?.find((s) => s.sopNumber === autoOpenSop.sopNumber);
-    const resolvedDocumentId = autoOpenSop.documentId || resolvedStatus?.documentId;
+    const resolvedDocumentId = resolvedStatus?.documentId || autoOpenSop.documentId;
 
-    if (autoOpenSop.documentId) {
-      handleViewInPlace(autoOpenSop.documentId);
-      return;
-    }
     if (resolvedDocumentId) {
       handleViewInPlace(resolvedDocumentId);
     } else {
@@ -701,6 +711,8 @@ export function NodeSOPRequirementsDialog({
             documentId={drawerDoc.id}
             documentName={drawerDoc.name}
             documentType={drawerDoc.type}
+            documentReference={drawerDoc.documentReference}
+            productId={drawerDoc.productId}
             companyId={companyId}
             companyName={companyName}
             isNewUnsavedDocument={drawerDoc.isNew}

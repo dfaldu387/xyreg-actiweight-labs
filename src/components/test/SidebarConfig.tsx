@@ -444,8 +444,8 @@ export const defaultSidebarConfig: SidebarConfig = {
           name: 'Business Case',
           icon: <Briefcase className="w-5 h-5" />,
           domainColor: 'gold',
+          route: '/app/product/:id/business-case-landing',
           children: [
-            { id: 'xyreg-genesis', name: 'XyReg Genesis', icon: <Crosshair className="w-4 h-4" />, route: '/app/product/:id/business-case?tab=genesis' },
             { id: 'venture-blueprint', name: 'Venture Blueprint', icon: <Map className="w-4 h-4" />, route: '/app/product/:id/business-case?tab=venture-blueprint' },
             { id: 'business-canvas', name: 'Business Canvas', icon: <Layers className="w-4 h-4" />, route: '/app/product/:id/business-case?tab=business-canvas' },
             { id: 'team-profile', name: 'Team', icon: <Users className="w-4 h-4" />, route: '/app/product/:id/business-case?tab=team-profile' },
@@ -457,6 +457,7 @@ export const defaultSidebarConfig: SidebarConfig = {
             { id: 'pricing', name: 'Pricing Strategy', icon: <DollarSign className="w-4 h-4" />, route: '/app/product/:id/business-case?tab=pricing-strategy' },
             { id: 'exit-strategy', name: 'Strategic Horizon', icon: <Target className="w-4 h-4" />, route: '/app/product/:id/business-case?tab=exit-strategy' },
             { id: 'ip-strategy', name: 'IP Strategy', icon: <Lightbulb className="w-4 h-4" />, route: '/app/product/:id/business-case?tab=ip-strategy' },
+            { id: 'xyreg-genesis', name: 'XyReg Genesis', icon: <Crosshair className="w-4 h-4" />, route: '/app/product/:id/business-case?tab=genesis' },
           ]
         },
         {

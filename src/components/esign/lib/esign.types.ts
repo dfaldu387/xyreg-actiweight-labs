@@ -57,8 +57,18 @@ export interface AuditLogEntry {
 export interface ESignPopupProps {
   documentId: string;
   documentName: string;
-  onComplete?: (request: ESignRequest) => void;
+  onComplete?: (request: ESignRequest) => void | Promise<void>;
   onClose?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Skip the Add-Signers step and auto-create a single-signer request for the
+   * given user. The signing ceremony is shown immediately. Used for flows like
+   * CCR gate approvals where the signer is implicitly the current user.
+   */
+  selfSigner?: {
+    userId: string;
+    displayName: string;
+    meaning: SignatureMeaning;
+  } | null;
 }

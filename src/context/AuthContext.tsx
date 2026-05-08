@@ -8,6 +8,39 @@ import { authService, AuthUser } from '@/services/authService';
 import { supabase } from '@/integrations/supabase/client';
 import { clearAllUserPreferences } from '@/services/devicePreferenceService';
 import { queryClient } from '@/lib/query-client';
+import { activeTenant } from '@/config/tenants';
+
+const TENANT_ALLOWED_STORAGE_KEY = 'xyreg_tenant_allowed_companies';
+
+type PersistedTenantAllowed = { tenantKey: string; ids: string[] };
+
+// Returns null when no cache exists for the current tenant key — distinct
+// from [] which is a valid "allow all" value (mockup). Lets consumers tell
+// "still loading" apart from "allow all".
+const readPersistedTenantAllowed = (): string[] | null => {
+  try {
+    const raw = sessionStorage.getItem(TENANT_ALLOWED_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedTenantAllowed;
+    if (parsed?.tenantKey === activeTenant.key && Array.isArray(parsed?.ids)) {
+      return parsed.ids;
+    }
+  } catch {
+    // fall through to null
+  }
+  return null;
+};
+
+const writePersistedTenantAllowed = (ids: string[]) => {
+  try {
+    sessionStorage.setItem(
+      TENANT_ALLOWED_STORAGE_KEY,
+      JSON.stringify({ tenantKey: activeTenant.key, ids } satisfies PersistedTenantAllowed)
+    );
+  } catch {
+    // ignore quota errors
+  }
+};
 
 export interface AuthContextType {
   user: AuthUser | null;
@@ -19,6 +52,13 @@ export interface AuthContextType {
   userRole: UserRole;
   isReviewer: boolean; // Cached reviewer status from user_profiles
   isInvestor: boolean; // Cached investor status
+  /**
+   * Company UUIDs the active tenant deployment grants visibility to.
+   * - `null` — not yet loaded (e.g., page reload before AuthContext has refetched).
+   * - `[]`   — "allow all" (mockup) — fall back to user_company_access.
+   * - non-empty — filter the company switcher to these IDs only (genish, arnar, etc.).
+   */
+  tenantAllowedCompanyIds: string[] | null;
   refreshSession: () => Promise<void>;
   setDevUserRole?: (role: UserRole) => void;
   clearDevMode: () => void;
@@ -40,7 +80,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userRole, setUserRole] = useState<UserRole>("viewer");
   const [isReviewer, setIsReviewer] = useState(false);
   const [isInvestor, setIsInvestor] = useState(false);
+  const [tenantAllowedCompanyIds, setTenantAllowedCompanyIds] = useState<string[] | null>(readPersistedTenantAllowed);
   const { isDevMode, selectedRole, resetDevMode } = useDevMode();
+
+  // Update both state and sessionStorage in lockstep so a page reload keeps the
+  // tenant allow list available without a refetch — login already fetched it.
+  const updateTenantAllowedCompanyIds = useCallback((ids: string[]) => {
+    setTenantAllowedCompanyIds(ids);
+    writePersistedTenantAllowed(ids);
+  }, []);
+
+  // Page-reload recovery: if a session is restored but we have no cached
+  // allow list for the current tenant key, fetch it once via the RPC.
+  // Cached hits skip this entirely.
+  useEffect(() => {
+    if (isDevMode) return;
+    if (!user?.id || tenantAllowedCompanyIds !== null) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await (supabase as any).rpc(
+          'get_tenant_allow_company_ids',
+          { tenant_key: activeTenant.key }
+        );
+        if (cancelled) return;
+        if (error) {
+          console.error('Error refetching tenant allow list:', error);
+          return;
+        }
+        updateTenantAllowedCompanyIds(Array.isArray(data) ? data : []);
+      } catch (err) {
+        if (!cancelled) console.error('Tenant allow list refetch failed:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, tenantAllowedCompanyIds, isDevMode, updateTenantAllowedCompanyIds]);
 
   // Memoize user object to prevent unnecessary re-renders
   const stableUser = useMemo(() => user, [user?.id, user?.email, user?.user_metadata?.role]);
@@ -233,12 +311,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const { user: authUser, error, success } = await authService.signIn(email, password);
+      const { user: authUser, error, success, tenantAllowedCompanyIds: allowedIds } = await authService.signIn(email, password);
       if (error) throw error;
       if (!success) {
         setUser(null);
         return { error: error, success: success };
       }
+
+      // authService already fetched the tenant allow list as part of the login
+      // gate — reuse it instead of refetching to keep total login under 2s.
+      updateTenantAllowedCompanyIds(allowedIds ?? []);
 
       // Fetch reviewer and investor status immediately during sign-in
       // This ensures the status is available before navigation
@@ -306,6 +388,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Clear company context on sign out to prevent context bleeding between users
       sessionStorage.removeItem('xyreg_company_context');
+      sessionStorage.removeItem(TENANT_ALLOWED_STORAGE_KEY);
+      setTenantAllowedCompanyIds(null);
 
       // Clear React Query cache to prevent data bleeding between users
       queryClient.clear();
@@ -426,10 +510,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     userRole,
     isReviewer,
     isInvestor,
+    tenantAllowedCompanyIds,
     refreshSession,
     setDevUserRole,
     clearDevMode,
-  }), [stableUser, session, isLoading, userRole, isReviewer, isInvestor, clearDevMode]);
+  }), [stableUser, session, isLoading, userRole, isReviewer, isInvestor, tenantAllowedCompanyIds, clearDevMode]);
 
   return (
     <AuthContext.Provider value={contextValue}>

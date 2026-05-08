@@ -324,19 +324,38 @@ export class ESignService {
       return [];
     }
 
-    // Enrich with user names
-    const userIds = [...new Set((data || []).map(d => d.user_id))];
+    // Enrich with user names — resolve from user_profiles (canonical) and fall
+    // back to profiles for older accounts that pre-date user_profiles.
+    const userIds = [...new Set((data || []).map(d => d.user_id).filter(Boolean))];
     const userNames: Record<string, string> = {};
 
-    for (const uid of userIds) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('first_name, last_name')
-        .eq('id', uid)
-        .maybeSingle();
+    if (userIds.length > 0) {
+      const buildName = (p: { first_name?: string | null; last_name?: string | null; email?: string | null }) => {
+        const full = `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim();
+        return full || p.email || '';
+      };
 
-      if (profile) {
-        userNames[uid] = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Unknown';
+      const { data: userProfiles } = await supabase
+        .from('user_profiles')
+        .select('id, first_name, last_name, email')
+        .in('id', userIds);
+
+      (userProfiles || []).forEach((p: any) => {
+        const name = buildName(p);
+        if (name) userNames[p.id] = name;
+      });
+
+      const missing = userIds.filter((uid) => !userNames[uid]);
+      if (missing.length > 0) {
+        const { data: legacyProfiles } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email')
+          .in('id', missing);
+
+        (legacyProfiles || []).forEach((p: any) => {
+          const name = buildName(p);
+          if (name) userNames[p.id] = name;
+        });
       }
     }
 

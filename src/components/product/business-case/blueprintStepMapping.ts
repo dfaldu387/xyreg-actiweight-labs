@@ -27,6 +27,28 @@ export interface StepConfig {
   moduleLabel: string;
   completionKey: string;
   isNew?: boolean; // For newly added steps
+  /**
+   * Tier A SSOT binding — when present, GenesisStepRow renders an inline editor
+   * bound directly to the product SSOT instead of navigating away. Mirrors the
+   * `IEC_60601_SSOT_FIELD_MAP` pattern used in Gap Analysis.
+   *
+   * `route` is preserved as a fallback "Open full editor" link for power-users
+   * who need the destination page (audit trail, advanced fields, comments).
+   */
+  ssotField?: {
+    /** Currently only `products` is supported in the pilot. */
+    table: 'products';
+    /** Top-level column on `products`. */
+    column: string;
+    inputType: 'text' | 'number';
+    /** Optional bounds for `number` inputs. */
+    min?: number;
+    max?: number;
+    /** Placeholder shown in the inline input. */
+    placeholder?: string;
+    /** Short helper text under the input. */
+    helpText?: string;
+  };
 }
 
 // Phase 1: Opportunity & Definition (Steps 1-12)
@@ -41,6 +63,13 @@ export const PHASE_1_STEPS: StepConfig[] = [
     route: 'device-information?tab=basics&subtab=definition',
     moduleLabel: 'Device Definition',
     completionKey: 'device_name',
+    ssotField: {
+      table: 'products',
+      column: 'name',
+      inputType: 'text',
+      placeholder: 'e.g. Ankle Trainer',
+      helpText: 'Your device\'s official commercial name.',
+    },
   },
   {
     id: '2',
@@ -51,6 +80,15 @@ export const PHASE_1_STEPS: StepConfig[] = [
     route: 'device-information?tab=basics&subtab=technical&section=trl',
     moduleLabel: 'Device Definition',
     completionKey: 'trl_assessment',
+    ssotField: {
+      table: 'products',
+      column: 'trl_level',
+      inputType: 'number',
+      min: 1,
+      max: 9,
+      placeholder: '3-8',
+      helpText: 'TRL 3 = proof of concept, TRL 8 = market ready.',
+    },
   },
   {
     id: '3',

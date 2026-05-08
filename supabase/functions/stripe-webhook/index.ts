@@ -515,6 +515,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
   console.log("Processing checkout expired:", session.id);
 
+  const { data: sessionRow } = await supabase
+    .from("stripe_checkout_sessions")
+    .select("user_id")
+    .eq("session_id", session.id)
+    .single();
+
   await supabase
     .from("stripe_checkout_sessions")
     .update({
@@ -522,6 +528,46 @@ async function handleCheckoutExpired(session: Stripe.Checkout.Session) {
       updated_at: new Date().toISOString(),
     })
     .eq("session_id", session.id);
+
+  // If the user never completed payment and has no other active subscription,
+  // delete the unpaid auth user + any orphaned company they created.
+  const userId = sessionRow?.user_id;
+  if (userId) {
+    const { data: completedSessions } = await supabase
+      .from("stripe_checkout_sessions")
+      .select("session_id")
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .limit(1);
+
+    if (!completedSessions || completedSessions.length === 0) {
+      const { data: accessRows } = await supabase
+        .from("user_company_access")
+        .select("company_id")
+        .eq("user_id", userId);
+
+      const companyIds = (accessRows ?? []).map((r) => r.company_id).filter(Boolean);
+      if (companyIds.length > 0) {
+        await supabase.from("user_company_access").delete().eq("user_id", userId);
+        for (const companyId of companyIds) {
+          const { data: otherUsers } = await supabase
+            .from("user_company_access")
+            .select("user_id")
+            .eq("company_id", companyId)
+            .limit(1);
+          if (!otherUsers || otherUsers.length === 0) {
+            await supabase.from("companies").delete().eq("id", companyId);
+          }
+        }
+      }
+      const { error: delErr } = await (supabase as any).auth.admin.deleteUser(userId);
+      if (delErr) {
+        console.warn("Failed to delete unpaid user from expired session:", delErr);
+      } else {
+        console.log("Unpaid user deleted after checkout.session.expired:", userId);
+      }
+    }
+  }
 
   console.log("Checkout expired processed:", session.id);
 }

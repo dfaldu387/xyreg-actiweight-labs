@@ -816,9 +816,14 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                   </div>
                   <p className="text-white/90 text-sm truncate">{user.email}</p>
                   {/* Only show role for internal users with department assignments OR external users with external_role */}
-                  {displayData.is_internal && departmentAssignments.length > 0 && departmentAssignments[0].role && departmentAssignments[0].role.length > 0 && (
-                    <p className="text-white/80 text-sm font-medium">{departmentAssignments[0].role[0]}</p>
-                  )}
+                  {displayData.is_internal && departmentAssignments.length > 0 && (() => {
+                    const allRoles = Array.from(new Set(
+                      departmentAssignments.flatMap(a => a.role || []).filter(Boolean)
+                    ));
+                    return allRoles.length > 0 ? (
+                      <p className="text-white/80 text-sm font-medium">{allRoles.join(' | ')}</p>
+                    ) : null;
+                  })()}
                   {!displayData.is_internal && displayData.external_role && (
                     <p className="text-white/80 text-sm font-medium">{getExternalRoleDisplayName(displayData.external_role)}</p>
                   )}
@@ -885,9 +890,11 @@ export function CompanyUserPermissions({ user, onRemove, companyId }: CompanyUse
                         </Badge>
                       </div>
                       {assignment.role && assignment.role.length > 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          {assignment.role[0]}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1 justify-end">
+                          {assignment.role.map((r, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">{r}</Badge>
+                          ))}
+                        </div>
                       )}
                     </div>
                   ))}

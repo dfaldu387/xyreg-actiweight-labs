@@ -113,7 +113,10 @@ export function ConsistentPageHeader({
   const isGenesis = !isSubscriptionLoading && (!planName || planName.toLowerCase() === 'genesis');
   const [searchParams] = useSearchParams();
   const isSingleCompany = companyRoles.length <= 1 || isGenesis;
-  const isGenesisTab = searchParams.get('tab') === 'genesis';
+  const tabParam = searchParams.get('tab');
+  const isGenesisTab = tabParam === 'genesis';
+  const isVentureBlueprintTab = tabParam === 'venture-blueprint';
+  const reserveRightRail = isGenesisTab || isVentureBlueprintTab;
 
   // Get translated page name
   const getTranslatedPageName = (pageName: string): string => {
@@ -122,7 +125,7 @@ export function ConsistentPageHeader({
   };
 
   return (
-    <div className={`sticky top-0 z-30 border-b bg-background -mt-4 rounded-lg ${isGenesisTab ? 'mr-[280px] lg:mr-[300px] xl:mr-[320px]' : ''}`}>
+    <div className={`sticky top-0 z-30 border-b bg-background -mt-4 rounded-lg ${reserveRightRail ? 'mr-[280px] lg:mr-[300px] xl:mr-[320px]' : ''}`}>
       <div className="p-6 pt-4">
         {/* Simple Breadcrumb Navigation - hidden for Genesis plan and single company */}
         {(() => {

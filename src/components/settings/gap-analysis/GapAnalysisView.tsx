@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ArrowRight, BarChart2, FileText, Settings, Shield, Activity, Cpu, Zap, Radio, Monitor, Dumbbell } from "lucide-react";
+import { ArrowRight, BarChart2, FileText, Settings, Shield, Activity, Cpu, Zap, Radio, Monitor, Dumbbell, Smartphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { MDRTemplateCard } from "./MDRTemplateCard";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -224,6 +224,31 @@ export function GapAnalysisView({ companyId, companyName }: GapAnalysisViewProps
             </CardHeader>
             <CardContent>
               <Badge variant="outline">IEC</Badge>
+            </CardContent>
+            <CardFooter>
+              <Button variant="ghost" className="w-full" size="sm" onClick={handleViewIso13485}>
+                {lang('common.configure')} <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Smartphone className="h-4 w-4 text-primary" />
+                DiGA Fast-Track
+              </CardTitle>
+              <CardDescription>BfArM §139e SGB V — Digital Health Application listing readiness (Germany)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex flex-wrap gap-1">
+                <Badge variant="outline">DiGAV</Badge>
+                <Badge variant="secondary" className="bg-orange-100 text-orange-800">Product</Badge>
+                <Badge variant="destructive">High</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Auto-enabled for SaMD targeting Germany. 56 checklist items across 9 chapters.
+              </p>
             </CardContent>
             <CardFooter>
               <Button variant="ghost" className="w-full" size="sm" onClick={handleViewIso13485}>

@@ -95,7 +95,7 @@ export const InvitationEmail: React.FC<InvitationEmailProps> = ({
             <Text style={footerText}>
               <strong>Xyreg</strong> - Your Company Management Platform
             </Text>
-            <Text style={footerText}>© 2025 Xyreg. All rights reserved.</Text>
+            <Text style={footerText}>© 2026 Xyreg. All rights reserved.</Text>
             <Text style={footerText}>
               This invitation was sent to {recipientEmail}
             </Text>

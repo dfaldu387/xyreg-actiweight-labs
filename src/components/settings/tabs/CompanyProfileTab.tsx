@@ -270,6 +270,9 @@ export function CompanyProfileTab({
       <CompanyLogoUpload
         companyId={companyId}
         currentLogoUrl={company?.logo_url}
+        currentLogoOriginalUrl={(company as any)?.logo_original_url}
+        currentDocumentLogoUrl={(company as any)?.document_logo_url}
+        currentDocumentLogoOriginalUrl={(company as any)?.document_logo_original_url}
       />
 
 

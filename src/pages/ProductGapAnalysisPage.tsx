@@ -40,8 +40,9 @@ import { ISO_15223_SECTIONS, ISO_15223_GROUPS } from "@/config/gapISO15223Sectio
 import { ISO_20417_SECTIONS, ISO_20417_GROUPS } from "@/config/gapISO20417Sections";
 import { ISO_10993_SECTIONS, ISO_10993_GROUPS } from "@/config/gapISO10993Sections";
 import { PPWR_SECTIONS, PPWR_GROUPS } from "@/config/gapPPWRSections";
+import { DIGA_SECTIONS, DIGA_GROUPS } from "@/config/gapDiGASections";
 
-import { Cpu, Zap, Radio, Monitor, Dumbbell, Shield, ClipboardList, Upload, Users, Tag, FileText, FlaskConical, Package } from "lucide-react";
+import { Cpu, Zap, Radio, Monitor, Dumbbell, Shield, ClipboardList, Upload, Users, Tag, FileText, FlaskConical, Package, Smartphone } from "lucide-react";
 import { ImportChecklistDialog } from "@/components/product/gap-analysis/ImportChecklistDialog";
 import { Button } from "@/components/ui/button";
 import { queryClient as qc } from "@/lib/query-client";
@@ -101,6 +102,7 @@ export default function ProductGapAnalysisPage() {
     ISO_20417: 'ISO 20417',
     ISO_10993: 'ISO 10993-1:2025',
     PPWR: 'PPWR',
+    DIGA_FAST_TRACK: 'DiGA Fast-Track',
   };
 
   // Helper to build sharing toggle for a framework
@@ -153,6 +155,7 @@ export default function ProductGapAnalysisPage() {
   const hasISO20417 = enabledFrameworks?.has("ISO_20417") ?? false;
   const hasISO10993 = enabledFrameworks?.has("ISO_10993") ?? false;
   const hasPPWR = enabledFrameworks?.has("PPWR") ?? false;
+  const hasDiGA = enabledFrameworks?.has("DIGA_FAST_TRACK") ?? false;
 
   // MDR sub-tab visibility
   const hasAnnexI = enabledFrameworks?.has("MDR_ANNEX_I") ?? false;
@@ -222,7 +225,8 @@ export default function ProductGapAnalysisPage() {
     else if (hasISO20417) setActiveTab("iso-20417");
     else if (hasISO10993) setActiveTab("iso-10993");
     else if (hasPPWR) setActiveTab("ppwr");
-  }, [enabledFrameworks, showMDR, hasISO14971Device, hasIEC62304, hasIEC60601, hasIEC20957, hasIEC62366, hasISO15223, hasISO20417, hasISO10993, hasPPWR]);
+    else if (hasDiGA) setActiveTab("diga");
+  }, [enabledFrameworks, showMDR, hasISO14971Device, hasIEC62304, hasIEC60601, hasIEC20957, hasIEC62366, hasISO15223, hasISO20417, hasISO10993, hasPPWR, hasDiGA]);
 
   // If product is IVD but the active tab is 'mdr' (saved in localStorage / URL), fall through.
   useEffect(() => {
@@ -238,8 +242,9 @@ export default function ProductGapAnalysisPage() {
     else if (hasISO20417) setActiveTab('iso-20417');
     else if (hasISO10993) setActiveTab('iso-10993');
     else if (hasPPWR) setActiveTab('ppwr');
+    else if (hasDiGA) setActiveTab('diga');
     else setActiveTab('');
-  }, [activeTab, isIVD, enabledFrameworks, hasISO14971Device, hasIEC62304, hasIEC62366, hasIEC60601, hasIEC20957, hasISO15223, hasISO20417, hasISO10993, hasPPWR]);
+  }, [activeTab, isIVD, enabledFrameworks, hasISO14971Device, hasIEC62304, hasIEC62366, hasIEC60601, hasIEC20957, hasISO15223, hasISO20417, hasISO10993, hasPPWR, hasDiGA]);
 
   // Set default MDR sub-tab — but only if URL hasn't specified one.
   // Prefer Annex I (the user-facing GSPR view, primary deep-link target),
@@ -334,8 +339,9 @@ export default function ProductGapAnalysisPage() {
   const iso20417Items = filterByFramework(gapItems, 'ISO 20417', 'ISO_20417');
   const iso10993Items = filterByFramework(gapItems, 'ISO 10993-1:2025', 'ISO_10993');
   const ppwrItems = filterByFramework(gapItems, 'PPWR');
+  const digaItems = filterByFramework(gapItems, 'DIGA_FAST_TRACK');
 
-  const noFrameworksEnabled = !hasMDR && !hasISO14971Device && !hasIEC62304 && !hasIEC60601 && !hasIEC20957 && !hasIEC62366 && !hasISO15223 && !hasISO20417 && !hasISO10993 && !hasPPWR;
+  const noFrameworksEnabled = !hasMDR && !hasISO14971Device && !hasIEC62304 && !hasIEC60601 && !hasIEC20957 && !hasIEC62366 && !hasISO15223 && !hasISO20417 && !hasISO10993 && !hasPPWR && !hasDiGA;
 
   if (noFrameworksEnabled) {
     return (
@@ -389,6 +395,7 @@ export default function ProductGapAnalysisPage() {
                 {hasISO20417 && <TabsTrigger value="iso-20417">ISO 20417</TabsTrigger>}
                 {hasISO10993 && <TabsTrigger value="iso-10993">ISO 10993-1:2025</TabsTrigger>}
                 {hasPPWR && <TabsTrigger value="ppwr">PPWR</TabsTrigger>}
+                {hasDiGA && <TabsTrigger value="diga">DiGA Fast-Track</TabsTrigger>}
               </TabsList>
 
               {/* EU MDR — with sub-tabs (hidden for IVD products) */}
@@ -840,6 +847,36 @@ export default function ProductGapAnalysisPage() {
                       standardIcon={Package}
                       disabled={isRestricted}
                       framework="PPWR"
+                      productId={productId}
+                    />
+                  </div>
+                </TabsContent>
+              )}
+
+              {/* DiGA Fast-Track — BfArM §139e SGB V */}
+              {hasDiGA && (
+                <TabsContent value="diga">
+                  <div className="relative">
+                    <GenericGapLaunchView
+                      sections={DIGA_SECTIONS}
+                      groups={DIGA_GROUPS}
+                      items={digaItems}
+                      standardName="DiGA Fast-Track — BfArM §139e SGB V"
+                      standardTag="DiGA Fast-Track"
+                      standardIcon={Smartphone}
+                      bannerDescription="BfArM Digital Health Applications (DiGA) listing readiness checklist per §139e SGB V and DiGAV. Covers product qualification, listing application, safety & suitability, data protection, information security, interoperability, further quality requirements, positive healthcare effect, and lifecycle obligations."
+                      disabled={isRestricted}
+                      headerActions={buildSharingToggle('DIGA_FAST_TRACK')}
+                      {...buildScopeProps('DIGA_FAST_TRACK')}
+                    />
+                    <GenericGapSidebar
+                      sections={DIGA_SECTIONS}
+                      groups={DIGA_GROUPS}
+                      items={digaItems}
+                      standardLabel="DiGA Fast-Track"
+                      standardIcon={Smartphone}
+                      disabled={isRestricted}
+                      framework="DIGA_FAST_TRACK"
                       productId={productId}
                     />
                   </div>

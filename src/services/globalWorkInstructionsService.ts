@@ -216,3 +216,65 @@ export async function materializeGlobalWIForCompanyDetailed(opts: {
     return { ok: false, reason: msg };
   }
 }
+
+/**
+ * Super-admin: overwrite the master `sections` for a global WI. Any
+ * subsequent company materialization will copy this content. Existing
+ * materializations are NOT auto-updated — companies opt-in via
+ * `syncCompanyWIFromMaster()`.
+ */
+export async function updateGlobalWISections(
+  globalWiId: string,
+  sections: unknown,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const { error } = await supabase
+    .from('global_work_instructions' as never)
+    .update({ sections: sections as Json } as never)
+    .eq('id', globalWiId);
+  if (error) {
+    console.error('[globalWI] master update failed', error);
+    return { ok: false, reason: error.message };
+  }
+  return { ok: true };
+}
+
+/**
+ * Re-copy the global WI master `sections` over the per-company studio draft.
+ * Used when an existing company wants to pick up master improvements
+ * (e.g. newly uploaded screenshots) made after their initial materialization.
+ */
+export async function syncCompanyWIFromMaster(opts: {
+  ciId: string;
+  companyId: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const { ciId, companyId } = opts;
+  const { data: studio } = await supabase
+    .from('document_studio_templates')
+    .select('metadata')
+    .eq('template_id', ciId)
+    .eq('company_id', companyId)
+    .maybeSingle();
+  const meta = (studio?.metadata ?? {}) as Record<string, unknown>;
+  const globalWiId = meta?.derived_from_global_wi_id as string | undefined;
+  if (!globalWiId) {
+    return { ok: false, reason: 'This document is not derived from a global Work Instruction.' };
+  }
+  const { data: gwi, error: gErr } = await supabase
+    .from('global_work_instructions' as never)
+    .select('sections')
+    .eq('id', globalWiId)
+    .maybeSingle();
+  if (gErr || !gwi) {
+    return { ok: false, reason: gErr?.message ?? 'Global master not found.' };
+  }
+  const { error: upErr } = await supabase
+    .from('document_studio_templates')
+    .update({
+      sections: (gwi as { sections: unknown }).sections as Json,
+      metadata: { ...meta, lastSyncedFromMasterAt: new Date().toISOString() } as Json,
+    })
+    .eq('template_id', ciId)
+    .eq('company_id', companyId);
+  if (upErr) return { ok: false, reason: upErr.message };
+  return { ok: true };
+}

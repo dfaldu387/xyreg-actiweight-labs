@@ -40,6 +40,17 @@ const ensureAssignedEditorRegistered = () => {
 
 ensureAssignedEditorRegistered();
 
+// Parse date string as UTC midnight (Gantt renders in UTC, so avoid timezone offset).
+// Pairs with the UTC formatter in GanttPhaseUpdateService so dates round-trip cleanly.
+const parseGanttDate = (val: string | Date | null | undefined): Date | null | undefined => {
+    if (val == null) return val as null | undefined;
+    if (val instanceof Date) return val;
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        return new Date(val + 'T00:00:00Z');
+    }
+    return new Date(val);
+};
+
 export interface GanttChartV23Props {
     productId: string;
     tasks?: GanttTask[];
@@ -200,8 +211,8 @@ export function GanttChartV23({
             const customTypes = ['category', 'subsection', 'not-started', 'running', 'overdue', 'on-time'];
             return propsTasks.map(task => ({
                 ...task,
-                start: task.start instanceof Date ? task.start : new Date(task.start),
-                end: task.end instanceof Date ? task.end : (task.end ? new Date(task.end) : task.end),
+                start: task.start instanceof Date ? task.start : parseGanttDate(task.start) as Date,
+                end: task.end instanceof Date ? task.end : (task.end ? parseGanttDate(task.end) as Date : task.end),
                 type: customTypes.includes(task.type)
                     ? task.type
                     : (task.subTaskType && task.type === 'task')
@@ -224,8 +235,8 @@ export function GanttChartV23({
             const customTypes = ['category', 'subsection', 'not-started', 'running', 'overdue', 'on-time'];
             const parsedTasks = propsTasks.map(task => ({
                 ...task,
-                start: task.start instanceof Date ? task.start : new Date(task.start),
-                end: task.end instanceof Date ? task.end : (task.end ? new Date(task.end) : task.end),
+                start: task.start instanceof Date ? task.start : parseGanttDate(task.start) as Date,
+                end: task.end instanceof Date ? task.end : (task.end ? parseGanttDate(task.end) as Date : task.end),
                 // Keep custom types (category, status-based), preserve 'task' for sub-tasks, otherwise use summary for phase tasks
                 type: customTypes.includes(task.type)
                     ? task.type
@@ -276,10 +287,10 @@ export function GanttChartV23({
         return data.map((item) => {
             const parsed = { ...item };
             if (item.start) {
-                parsed.start = new Date(item.start);
+                parsed.start = parseGanttDate(item.start);
             }
             if (item.end !== null && item.end !== undefined) {
-                parsed.end = new Date(item.end);
+                parsed.end = parseGanttDate(item.end);
             }
             return parsed;
         });
@@ -353,8 +364,8 @@ export function GanttChartV23({
             const recalculationOptions = {
                 mode: 'preserve-manual' as const,
                 timelineMode: timelineMode,
-                projectStartDate: productData.project_start_date ? new Date(productData.project_start_date) : undefined,
-                projectedLaunchDate: productData.projected_launch_date ? new Date(productData.projected_launch_date) : undefined,
+                projectStartDate: productData.project_start_date ? parseGanttDate(productData.project_start_date) as Date : undefined,
+                projectedLaunchDate: productData.projected_launch_date ? parseGanttDate(productData.projected_launch_date) as Date : undefined,
                 enforceConstraints: false
             };
 
@@ -456,8 +467,8 @@ export function GanttChartV23({
                                     String(t.id) === String(phaseId) || String(t.id) === strippedId
                                 );
                                 if (taskInRef) {
-                                    taskInRef.start = freshTask.start ? new Date(freshTask.start) : taskInRef.start;
-                                    taskInRef.end = freshTask.end ? new Date(freshTask.end) : taskInRef.end;
+                                    taskInRef.start = freshTask.start ? parseGanttDate(freshTask.start) as Date : taskInRef.start;
+                                    taskInRef.end = freshTask.end ? parseGanttDate(freshTask.end) as Date : taskInRef.end;
                                 }
                             }
                         });
@@ -473,8 +484,8 @@ export function GanttChartV23({
                                         String(t.id) === String(phaseId) || String(t.id) === strippedId
                                     );
                                     if (taskInRef) {
-                                        taskInRef.start = task.start ? new Date(task.start) : taskInRef.start;
-                                        taskInRef.end = task.end ? new Date(task.end) : taskInRef.end;
+                                        taskInRef.start = task.start ? parseGanttDate(task.start) as Date : taskInRef.start;
+                                        taskInRef.end = task.end ? parseGanttDate(task.end) as Date : taskInRef.end;
                                     }
                                 }
                             });

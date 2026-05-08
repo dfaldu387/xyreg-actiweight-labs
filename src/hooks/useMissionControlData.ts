@@ -17,6 +17,8 @@ interface ActionItem {
   companyName?: string;
   url?: string;
   threadId?: string;
+  documentId?: string;
+  commentId?: string;
 }
 
 interface PortfolioSummary {
@@ -590,6 +592,8 @@ export function useMissionControlData(options: MissionControlOptions = {}) {
               type: 'review',
               priority: assignedToMe ? 'high' : 'medium',
               dueDate: c.created_at ? new Date(c.created_at) : undefined,
+              documentId: c.document_id,
+              commentId: c.id,
             });
           });
         }

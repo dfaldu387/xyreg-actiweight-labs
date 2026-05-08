@@ -18,7 +18,9 @@ interface CCRLinkedDocumentsProps {
   onVisibleCountChange?: (count: number) => void;
 }
 
-const EDITABLE_STATUSES = new Set(['draft', 'under_review']);
+// Rejected CCRs are editable so the author can revise the document set
+// before clicking "Resubmit for Review".
+const EDITABLE_STATUSES = new Set(['draft', 'under_review', 'rejected']);
 
 export function CCRLinkedDocuments({ ccr, onVisibleCountChange }: CCRLinkedDocumentsProps) {
   const editable = EDITABLE_STATUSES.has(ccr.status);

@@ -34,8 +34,54 @@ serve(async (req) => {
     const body = await req.json();
     const { companyId, priceId, quantity = 1 } = body;
 
-    if (!priceId) {
-      throw new Error("Price ID is required");
+    // Resolve the active Price ID. The super-admin can rotate the price
+    // (creating a new Price + archiving the previous one), so a passed
+    // priceId may be stale. We always resolve to the Product's current
+    // default_price, falling back to the ai_booster dynamic product.
+    let resolvedPriceId: string | null = null;
+
+    if (priceId) {
+      try {
+        const passed = await stripe.prices.retrieve(priceId);
+        const productId =
+          typeof passed.product === "string" ? passed.product : passed.product.id;
+        const product = await stripe.products.retrieve(productId);
+        const defaultId =
+          typeof product.default_price === "string"
+            ? product.default_price
+            : product.default_price?.id ?? null;
+        if (defaultId) resolvedPriceId = defaultId;
+      } catch (e) {
+        console.warn(
+          "[create-booster-checkout] Could not resolve passed priceId:",
+          (e as Error).message
+        );
+      }
+    }
+
+    if (!resolvedPriceId) {
+      const supabaseService = createClient(
+        Deno.env.get("SUPABASE_URL") ?? "",
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      );
+      const { data: dp } = await supabaseService
+        .from("dynamic_products")
+        .select("stripe_product_id")
+        .eq("product_key", "ai_booster")
+        .eq("is_active", true)
+        .maybeSingle();
+      if (dp?.stripe_product_id) {
+        const product = await stripe.products.retrieve(dp.stripe_product_id);
+        const defaultId =
+          typeof product.default_price === "string"
+            ? product.default_price
+            : product.default_price?.id ?? null;
+        if (defaultId) resolvedPriceId = defaultId;
+      }
+    }
+
+    if (!resolvedPriceId) {
+      throw new Error("No active AI Booster Pack price configured");
     }
 
     // Find Stripe customer ID (same logic as create-portal-session)
@@ -88,7 +134,7 @@ serve(async (req) => {
       invoice_creation: { enabled: true },
       line_items: [
         {
-          price: priceId,
+          price: resolvedPriceId,
           quantity: quantity,
         },
       ],

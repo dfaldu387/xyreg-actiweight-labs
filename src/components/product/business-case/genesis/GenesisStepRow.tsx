@@ -1,9 +1,13 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckCircle2, Circle, ChevronRight, Star, Cpu, FlaskConical, AlertTriangle, LayoutGrid, Flag, Users, Shield, Scale, Factory, Cog } from 'lucide-react';
+import { CheckCircle2, Circle, ChevronRight, Star, Cpu, FlaskConical, AlertTriangle, LayoutGrid, Flag, Users, Shield, Scale, Factory, Cog, ExternalLink } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
+import { supabase } from "@/integrations/supabase/client";
+import { GenesisInlineFieldEditor } from "./GenesisInlineFieldEditor";
+import type { StepConfig } from '../blueprintStepMapping';
 
 // Module color and icon mapping (matches "Powered by XyReg OS" section)
 const MODULE_STYLES: Record<string, { icon: React.ComponentType<{ className?: string }>; colorClass: string }> = {
@@ -56,6 +60,8 @@ interface GenesisStepRowProps {
   disabled?: boolean;
   returnTo?: 'genesis' | 'venture-blueprint';
   onCustomClick?: () => void;
+  /** Tier A SSOT binding — when present, an inline editor is rendered. */
+  ssotField?: StepConfig['ssotField'];
 }
 
 export function GenesisStepRow({
@@ -70,13 +76,41 @@ export function GenesisStepRow({
   disabled = false,
   returnTo = 'venture-blueprint',
   onCustomClick,
+  ssotField,
 }: GenesisStepRowProps) {
   const { lang } = useTranslation();
   const navigate = useNavigate();
   const { productId } = useParams();
 
-  const handleNavigate = () => {
+  // Fetch the bound product field only when an inline editor is requested.
+  // Uses a separate key (`genesis-step-row-product`) so it doesn't clobber the
+  // narrower `funnel-product` query in useViabilityFunnelProgress, which has a
+  // different column list.
+  const { data: productRow } = useQuery({
+    queryKey: ['genesis-step-row-product', productId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', productId!)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: Boolean(ssotField && productId),
+  });
+
+  const inlineValue =
+    ssotField && productRow ? (productRow as Record<string, unknown>)[ssotField.column] : undefined;
+
+  const handleNavigate = (e?: React.MouseEvent) => {
     if (disabled) return;
+    // When an inline editor is present, the row body shouldn't navigate on
+    // click — only the explicit "Open full editor" button does.
+    if (ssotField && e) {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-genesis-open-full]')) return;
+    }
     if (onCustomClick) {
       onCustomClick();
       return;
@@ -107,7 +141,8 @@ export function GenesisStepRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-4 px-4 py-3 rounded-lg border transition-all cursor-pointer",
+        "group flex items-start gap-4 px-4 py-3 rounded-lg border transition-all",
+        ssotField ? "cursor-default" : "cursor-pointer",
         isComplete
           ? "bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/50"
           : "bg-background border-border hover:border-primary/30 hover:bg-muted/30"
@@ -116,7 +151,7 @@ export function GenesisStepRow({
     >
       {/* Step number badge */}
       <div className={cn(
-        "flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold",
+        "flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-sm font-semibold mt-0.5",
         isComplete
           ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300"
           : "bg-muted text-muted-foreground"
@@ -125,7 +160,7 @@ export function GenesisStepRow({
       </div>
 
       {/* Completion icon */}
-      <div className="flex-shrink-0">
+      <div className="flex-shrink-0 mt-1">
         {isComplete ? (
           <CheckCircle2 className="h-5 w-5 text-emerald-500" />
         ) : (
@@ -149,33 +184,57 @@ export function GenesisStepRow({
             </span>
           )}
         </div>
-        <p className="text-xs text-muted-foreground truncate">
+        <p className={cn("text-xs text-muted-foreground", !ssotField && "truncate")}>
           {description}
         </p>
+        {ssotField && (
+          <div className="mt-2">
+            <GenesisInlineFieldEditor
+              ssotField={ssotField}
+              initialValue={inlineValue as string | number | null | undefined}
+              disabled={disabled}
+            />
+          </div>
+        )}
       </div>
 
       {/* Module source badge with color */}
-      <span className={cn(
-        "hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium",
-        moduleStyle.colorClass
-      )}>
-        <ModuleIcon className="h-3 w-3" />
-        {moduleName}
-      </span>
+      <div className="flex flex-col items-end gap-1.5 mt-0.5">
+        <span className={cn(
+          "hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium",
+          moduleStyle.colorClass
+        )}>
+          <ModuleIcon className="h-3 w-3" />
+          {moduleName}
+        </span>
+        {ssotField && (
+          <button
+            type="button"
+            data-genesis-open-full
+            onClick={() => handleNavigate()}
+            className="hidden sm:inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ExternalLink className="h-2.5 w-2.5" />
+            Open full editor
+          </button>
+        )}
+      </div>
 
       {/* Action */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className={cn(
-          "flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity",
-          isComplete && "text-emerald-600"
-        )}
-        disabled={disabled}
-      >
-        {isComplete ? lang('ventureBlueprint.review') : lang('ventureBlueprint.start')}
-        <ChevronRight className="h-4 w-4 ml-1" />
-      </Button>
+      {!ssotField && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mt-0.5",
+            isComplete && "text-emerald-600"
+          )}
+          disabled={disabled}
+        >
+          {isComplete ? lang('ventureBlueprint.review') : lang('ventureBlueprint.start')}
+          <ChevronRight className="h-4 w-4 ml-1" />
+        </Button>
+      )}
     </div>
   );
 }

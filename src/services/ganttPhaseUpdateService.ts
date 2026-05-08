@@ -28,13 +28,16 @@ export interface PhaseUpdateResult {
  */
 export class GanttPhaseUpdateService {
   /**
-   * Normalize a date to UTC midnight (preserves calendar date, removes timezone offset)
-   * Example: Nov 16 2025 00:00:00 GMT+0530 → 2025-11-16T00:00:00.000Z
+   * Normalize a date to UTC midnight using the date's UTC components.
+   * The Gantt renders in UTC, so what the user sees as "Nov 16" has UTC date Nov 16.
+   * Reading via getFullYear/getMonth/getDate (LOCAL) and labelling the result "Z" causes
+   * year/month drift in non-UTC timezones — use UTC accessors instead.
+   * Example: a bar shown on 2025-11-16 in any timezone → "2025-11-16T00:00:00.000Z".
    */
   private static normalizeDateToUTC(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
     return `${year}-${month}-${day}T00:00:00.000Z`;
   }
 

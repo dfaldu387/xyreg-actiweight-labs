@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkAiCredits, logAiTokenUsage, extractLovableAIUsage } from "../_shared/token-tracking.ts";
+
+declare const EdgeRuntime: { waitUntil(promise: Promise<unknown>): void };
+
+const MODEL = "google/gemini-2.5-flash";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,12 +52,35 @@ serve(async (req) => {
       });
     }
 
+    // Enforce AI credit limit before calling the gateway
+    const creditCheck = await checkAiCredits(companyId);
+    if (!creditCheck.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: "NO_CREDITS",
+          message: "No AI credits remaining. Purchase an AI Booster Pack to continue.",
+          used: creditCheck.used,
+          limit: creditCheck.limit,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Resolve user from auth header for per-request usage attribution
+    let userId: string | undefined;
+    const authHeader = req.headers.get("authorization");
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabase.auth.getUser(token);
+      userId = user?.id;
+    }
 
     // Light company / product context (best-effort)
     let companyName = "";
@@ -174,7 +202,7 @@ Return only the field content.`;
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: MODEL,
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
@@ -207,6 +235,26 @@ Return only the field content.`;
 
     const result = await response.json();
     const suggestion: string = result.choices?.[0]?.message?.content?.trim() || "";
+
+    // Log per-request AI token usage (drives credit accounting). Non-blocking.
+    const usage = extractLovableAIUsage(result);
+    if (usage) {
+      EdgeRuntime.waitUntil(
+        logAiTokenUsage({
+          companyId,
+          userId,
+          source: "ai_ccr_draft",
+          model: MODEL,
+          usage: {
+            inputTokens: usage.promptTokens,
+            outputTokens: usage.completionTokens,
+            thinkingTokens: 0,
+            totalTokens: usage.totalTokens,
+          },
+          metadata: { field, changeType: body.changeType ?? null, sourceType: body.sourceType ?? null },
+        }),
+      );
+    }
 
     return new Response(JSON.stringify({ suggestion, contextPreview }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -13,6 +13,12 @@ export interface LinkedSOPInfo {
   id: string;
   name: string;
   status: string | null;
+  /**
+   * Canonical regulatory id (e.g. "SOP-QA-004"). Surfaced so chip/match
+   * layers can reason on the authoritative `document_number` instead of
+   * trying to extract a SOP code from the free-form `name`.
+   */
+  document_number?: string | null;
 }
 
 export interface SOPStatusData {
@@ -312,7 +318,10 @@ async function fetchSOPStatus(
         phase_assigned_document_template:document_id (
           id,
           name,
-          status
+          status,
+          document_number,
+          document_reference,
+          updated_at
         )
       `)
       .eq('company_id', companyId)
@@ -322,8 +331,14 @@ async function fetchSOPStatus(
       console.error(`Error fetching SOP links for ${nodeId}:`, error);
     }
 
-    // Extract linked SOPs with their info
-    const explicit: LinkedSOPInfo[] = (data || [])
+    // Extract linked SOPs with their info, keeping extra fields locally so
+    // we can pick the canonical CI when several rows resolve to the same SOP.
+    type RichSOP = LinkedSOPInfo & {
+      document_number?: string | null;
+      document_reference?: string | null;
+      updated_at?: string | null;
+    };
+    const explicitRich: RichSOP[] = (data || [])
       .map((link: any) => {
         const doc = link.phase_assigned_document_template;
         if (!doc) return null;
@@ -331,23 +346,61 @@ async function fetchSOPStatus(
           id: doc.id,
           name: doc.name || 'Unnamed SOP',
           status: doc.status,
-        };
+          document_number: doc.document_number ?? null,
+          document_reference: doc.document_reference ?? null,
+          updated_at: doc.updated_at ?? null,
+        } as RichSOP;
       })
-      .filter((s): s is LinkedSOPInfo => s !== null);
+      .filter((s): s is RichSOP => s !== null);
 
     // Also infer chip-level matches from the company SOP pool by recommendation
     // numbers — even when no explicit qms_node_sop_links row exists yet.
     const recs = NODE_SOP_RECOMMENDATIONS[nodeId] || [];
-    const numericFromSop = (s: string) => {
-      const m = s.match(/SOP-(?:[A-Z]{2}-)?(\d{3})/i);
-      return m ? m[1] : '';
+    const numericFromSop = (s: string | null | undefined) => {
+      if (!s) return '';
+      const m = s.match(/SOP[-_\s]*(?:[A-Za-z]{1,3}[-_\s]+)?(\d{1,3})/i);
+      return m ? m[1].padStart(3, '0') : '';
     };
     const recNums = new Set(recs.map((r) => numericFromSop(r.sopNumber)).filter(Boolean));
-    const explicitIds = new Set(explicit.map((l) => l.id));
+    const explicitIds = new Set(explicitRich.map((l) => l.id));
     const inferred: LinkedSOPInfo[] = companyDocs.filter(
       (d) => !explicitIds.has(d.id) && recNums.has(numericFromSop(d.name)),
     );
-    const linkedSOPs = [...explicit, ...inferred];
+    // Merge explicit + inferred and deduplicate by canonical SOP number.
+    // When multiple CIs map to the same SOP-NNN we prefer:
+    //   1. rows that carry a real `document_number` (canonical SOP-NNN), and
+    //   2. the most recently updated row.
+    // This guarantees the chip never opens a legacy "Training and Competence"
+    // CI when a numbered "SOP-004 Personnel and Training" CI exists.
+    const mergedRich: RichSOP[] = [
+      ...explicitRich,
+      ...inferred.map((d) => ({ ...d, document_number: null, document_reference: null, updated_at: null })),
+    ];
+    const bestByCanonical = new Map<string, RichSOP>();
+    const passthrough: RichSOP[] = [];
+    for (const r of mergedRich) {
+      const canonical =
+        numericFromSop(r.document_number) ||
+        numericFromSop(r.document_reference) ||
+        numericFromSop(r.name);
+      if (!canonical) { passthrough.push(r); continue; }
+      const prev = bestByCanonical.get(canonical);
+      if (!prev) { bestByCanonical.set(canonical, r); continue; }
+      const prevHasNum = !!prev.document_number;
+      const curHasNum = !!r.document_number;
+      if (curHasNum && !prevHasNum) { bestByCanonical.set(canonical, r); continue; }
+      if (!curHasNum && prevHasNum) continue;
+      const prevTime = prev.updated_at ? new Date(prev.updated_at).getTime() : 0;
+      const curTime = r.updated_at ? new Date(r.updated_at).getTime() : 0;
+      if (curTime > prevTime) bestByCanonical.set(canonical, r);
+    }
+    const linkedSOPs: LinkedSOPInfo[] = [...bestByCanonical.values(), ...passthrough]
+      .map((r) => ({
+        id: r.id,
+        name: r.name,
+        status: r.status,
+        document_number: r.document_number ?? null,
+      }));
 
     const total = linkedSOPs.length;
     const approved = linkedSOPs.filter(s => s.status?.toLowerCase() === 'approved').length;
@@ -375,14 +428,59 @@ async function fetchCompanySOPPool(companyId: string): Promise<LinkedSOPInfo[]> 
   try {
     const { data, error } = await supabase
       .from('phase_assigned_document_template')
-      .select('id, name, status')
+      .select('id, name, status, document_number, document_reference, updated_at')
       .eq('company_id', companyId)
-      .ilike('name', 'SOP-%');
+      .or('name.ilike.SOP-%,document_number.ilike.SOP-%,document_reference.ilike.SOP-%');
     if (error) {
       console.error('Error fetching company SOP pool:', error);
       return [];
     }
-    return (data || []).map((d: any) => ({ id: d.id, name: d.name || '', status: d.status }));
+    // Deduplicate by canonical SOP number — when multiple CIs exist for the
+    // same SOP (legacy + numbered + duplicate), prefer the row that:
+    //   1. has a `document_number` set (canonical SOP-NNN), and
+    //   2. has the most recent `updated_at`.
+    // This prevents the QMS Foundation chip from opening a legacy/empty CI
+    // when a real numbered SOP CI exists alongside it.
+    const numericFromAny = (s: string | null | undefined): string => {
+      if (!s) return '';
+      const m = s.match(/SOP[-_\s]*(?:[A-Za-z]{1,3}[-_\s]+)?(\d{1,3})/i);
+      return m ? m[1].padStart(3, '0') : '';
+    };
+    const rows = (data || []) as Array<{
+      id: string;
+      name: string | null;
+      status: string | null;
+      document_number: string | null;
+      document_reference: string | null;
+      updated_at: string | null;
+    }>;
+    const byCanonical = new Map<string, typeof rows[number]>();
+    const looseRows: typeof rows = [];
+    for (const r of rows) {
+      const canonical =
+        numericFromAny(r.document_number) ||
+        numericFromAny(r.document_reference) ||
+        numericFromAny(r.name);
+      if (!canonical) {
+        looseRows.push(r);
+        continue;
+      }
+      const prev = byCanonical.get(canonical);
+      if (!prev) {
+        byCanonical.set(canonical, r);
+        continue;
+      }
+      // Preference rules
+      const prevHasNum = !!prev.document_number;
+      const curHasNum = !!r.document_number;
+      if (curHasNum && !prevHasNum) { byCanonical.set(canonical, r); continue; }
+      if (!curHasNum && prevHasNum) continue;
+      const prevTime = prev.updated_at ? new Date(prev.updated_at).getTime() : 0;
+      const curTime = r.updated_at ? new Date(r.updated_at).getTime() : 0;
+      if (curTime > prevTime) byCanonical.set(canonical, r);
+    }
+    const winners = [...byCanonical.values(), ...looseRows];
+    return winners.map((d) => ({ id: d.id, name: d.name || '', status: d.status }));
   } catch (err) {
     console.error('Error in fetchCompanySOPPool:', err);
     return [];

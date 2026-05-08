@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { UserRole } from '@/types/documentTypes';
 import { mapLegacyRoleToStandard } from '@/utils/roleUtils';
 import { toast } from 'sonner';
+import { AuditTrailService } from '@/services/auditTrailService';
+import { activeTenant } from '@/config/tenants';
 
 export interface AuthUser {
   id: string;
@@ -19,31 +21,73 @@ export interface AuthUser {
 }
 
 export class AuthService {
-  async signIn(email: string, password: string): Promise<{ user: AuthUser | null; error: any; success: boolean }> {
+  async signIn(email: string, password: string): Promise<{
+    user: AuthUser | null;
+    error: any;
+    success: boolean;
+    tenantAllowedCompanyIds?: string[];
+  }> {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
-
       });
       if (error) {
         console.error("Login error:", error);
+        if (activeTenant.features.audit) {
+          AuditTrailService.logUserAccessEvent({
+            userId: 'unknown',
+            action: 'failed_login',
+            entityName: email,
+            reason: error.message || 'Authentication failed',
+            actionDetails: { email },
+          }).catch(() => {});
+        }
         return { user: null, error, success: false };
       }
-      // Check if the access for David Health Solutions Oy is active
-      const { data: accessData, error: accessError } = await supabase.from('user_company_access').select('*,companies!inner(id,name)').eq('user_id', data.session?.user.id)
-      if (accessError) {
-        console.error('Error fetching user company access:', accessError);
-      }
-      if (accessData) {
-        console.log('Access data:', accessData);
-      }
-      const allowedCompanies = ["xyreg", "Actiweight Labs AS", "David Health Solutions Oy"];
-      if (email.toLowerCase() !== 'superadmin@gmail.com' &&
-        !(accessData?.some((access: any) => allowedCompanies.includes(access.companies?.name)))) {
-        toast.error("User not found. Only authorized company users can log in.");
-        await supabase.auth.signOut();
-        return { user: null, error: null, success: false };
+
+      const isSuperAdmin = email.toLowerCase() === 'superadmin@gmail.com';
+      let allowedCompanyIds: string[] = [];
+
+      if (!isSuperAdmin) {
+        // Run the tenant allow-list RPC and the user's company-access query in
+        // parallel — they're independent. Sequential cost ~2x; parallel ~1x.
+        const [allowedRes, accessRes] = await Promise.all([
+          (supabase as any).rpc('get_tenant_allow_company_ids', { tenant_key: activeTenant.key }),
+          supabase
+            .from('user_company_access')
+            .select('company_id, companies!inner(id,name)')
+            .eq('user_id', data.session?.user.id),
+        ]);
+
+        if (allowedRes.error) {
+          console.error('Error fetching tenant allow list:', allowedRes.error);
+          await supabase.auth.signOut();
+          toast.error(activeTenant.errorMessage);
+          return { user: null, error: allowedRes.error, success: false };
+        }
+
+        if (accessRes.error) {
+          console.error('Error fetching user company access:', accessRes.error);
+        }
+
+        allowedCompanyIds = Array.isArray(allowedRes.data) ? allowedRes.data : [];
+
+        const userCompanyIds = (accessRes.data ?? [])
+          .map((access: any) => access.companies?.id)
+          .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
+
+        // Empty allow list = allow any user with at least one company access row.
+        const allowed = allowedCompanyIds.length === 0
+          ? userCompanyIds.length > 0
+          : userCompanyIds.some(id => allowedCompanyIds.includes(id));
+
+        if (!allowed) {
+          const restrictedError = new Error(activeTenant.errorMessage);
+          await supabase.auth.signOut();
+          toast.error(activeTenant.errorMessage);
+          return { user: null, error: restrictedError, success: false };
+        }
       }
 
       const user: AuthUser = {
@@ -54,9 +98,18 @@ export class AuthService {
         success: true
       };
 
+      if (activeTenant.features.audit) {
+        AuditTrailService.logUserAccessEvent({
+          userId: user.id,
+          companyId: user.user_metadata?.activeCompany || null,
+          action: 'login',
+          entityName: email,
+        }).catch(() => {});
+      }
+
       toast.success(`Signed in as ${email}`);
 
-      return { user, error: null, success: true };
+      return { user, error: null, success: true, tenantAllowedCompanyIds: allowedCompanyIds };
     } catch (error: any) {
       console.error('Error signing in:', error);
       toast.error(error.message || 'Failed to sign in');
@@ -66,10 +119,20 @@ export class AuthService {
 
   async signOut(): Promise<{ error: any }> {
     try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+
       const { error } = await supabase.auth.signOut();
 
       if (error) {
         return { error };
+      }
+
+      if (currentUser && activeTenant.features.audit) {
+        AuditTrailService.logUserAccessEvent({
+          userId: currentUser.id,
+          action: 'logout',
+          entityName: currentUser.email || '',
+        }).catch(() => {});
       }
 
       toast.info('Signed out');
@@ -174,9 +237,7 @@ export class AuthService {
     return supabase.auth.onAuthStateChange(callback);
   }
 
-  // Helper method to check if user is authenticated and not in dev mode
   isRealAuthentication(): boolean {
-    // Check if we're in development mode with mock user
     const mockUser = localStorage.getItem('mock_user');
     return !mockUser;
   }

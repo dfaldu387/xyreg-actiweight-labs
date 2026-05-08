@@ -2,9 +2,8 @@ import React, { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, Users, Building2, Settings, Activity, BarChart3, Key, Wrench, ShieldCheck, Layers, DollarSign, RefreshCw } from "lucide-react";
+import { Shield, Users, Building2, Activity, ShieldCheck, Layers, DollarSign, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import SuperAdminApiKeyManagement from "@/components/super-admin/SuperAdminApiKeyManagement";
 import NoPhaseInitialization from "@/components/super-admin/NoPhaseInitialization";
 import DeviceApplicabilitySyncTool from "@/components/super-admin/DeviceApplicabilitySyncTool";
 
@@ -24,9 +23,8 @@ export default function SuperAdminDashboard() {
 
       {/* Main Content with Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="api-keys">API Key Management</TabsTrigger>
           <TabsTrigger value="system-tools">System Tools</TabsTrigger>
         </TabsList>
 
@@ -88,96 +86,6 @@ export default function SuperAdminDashboard() {
 
           {/* Quick Actions */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Users className="h-5 w-5" />
-                  <span>User Management</span>
-                </CardTitle>
-                <CardDescription>
-                  Manage system users and permissions
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Building2 className="h-5 w-5" />
-                  <span>Company Management</span>
-                </CardTitle>
-                <CardDescription>
-                  Oversee company accounts and settings
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card 
-              className="cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => setActiveTab("api-keys")}
-            >
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Key className="h-5 w-5" />
-                  <span>API Key Management</span>
-                </CardTitle>
-                <CardDescription>
-                  Manage API keys across all companies
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Settings className="h-5 w-5" />
-                  <span>System Settings</span>
-                </CardTitle>
-                <CardDescription>
-                  Configure system-wide settings
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <BarChart3 className="h-5 w-5" />
-                  <span>Analytics</span>
-                </CardTitle>
-                <CardDescription>
-                  View system usage and performance
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="cursor-pointer hover:shadow-md transition-shadow">
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Activity className="h-5 w-5" />
-                  <span>System Logs</span>
-                </CardTitle>
-                <CardDescription>
-                  Monitor system activity and logs
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card
-              className="cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => setActiveTab("system-tools")}
-            >
-              <CardHeader>
-                <CardTitle className="flex items-center space-x-2">
-                  <Wrench className="h-5 w-5" />
-                  <span>System Tools</span>
-                </CardTitle>
-                <CardDescription>
-                  Initialize No Phase and other system utilities
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
             <Card
               className="cursor-pointer hover:shadow-md transition-shadow"
               onClick={() => navigate("/super-admin/app/access-management")}
@@ -224,10 +132,6 @@ export default function SuperAdminDashboard() {
               </CardHeader>
             </Card>
           </div>
-        </TabsContent>
-
-        <TabsContent value="api-keys">
-          <SuperAdminApiKeyManagement />
         </TabsContent>
 
         <TabsContent value="system-tools" className="space-y-6">

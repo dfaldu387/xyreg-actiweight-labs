@@ -20,7 +20,7 @@ export function useCompanyRoles() {
   const location = useLocation();
   const queryClient = useQueryClient();
   // Get user from AuthContext to avoid duplicate auth.getUser() calls
-  const { user: authUser, session } = useAuth();
+  const { user: authUser, session, tenantAllowedCompanyIds } = useAuth();
 
   // Conditionally access DevMode to prevent circular dependency
   let devModeContext: any = null;
@@ -103,24 +103,109 @@ export function useCompanyRoles() {
         return;
       }
 
-      // Fetch user's company access records
-      const { data: accessData, error: accessError } = await supabase
-        .from('user_company_access')
-        .select(`
-          company_id,
-          access_level,
-          is_primary,
-          is_internal,
-          companies(name, is_archived)
-        `)
-        .eq('user_id', authUser.id);
-
-      if (accessError) {
-        console.error('Error fetching company roles:', accessError);
+      // Build the role-source list. Two paths:
+      //
+      //   1. Tenant-granted visibility (genish, arnar, davidhealth, etc.):
+      //      tenantAllowedCompanyIds is non-empty → source from `companies`
+      //      filtered by the allow list, then cross-reference user_company_access
+      //      for role/is_primary/is_internal. Companies the user has no access
+      //      row for default to viewer; their data won't load (RLS denies),
+      //      which is the intended UX.
+      //
+      //   2. Allow-all tenant (mockup):
+      //      tenantAllowedCompanyIds is [] → existing user_company_access join
+      //      query, no behavior change.
+      //
+      // null means the tenant allow list hasn't loaded yet; the effect will
+      // re-run when it does, so just bail.
+      if (tenantAllowedCompanyIds === null) {
         setIsLoading(false);
-        setHasInitialized(true);
         return;
       }
+
+      // Cross-tenant session cleanup: if the persisted company context points
+      // to a company the active tenant doesn't allow, drop it before resolving
+      // the active company below. No-op for the allow-all (mockup) tenant.
+      if (tenantAllowedCompanyIds.length > 0) {
+        try {
+          const { CompanyContextService } = await import('@/services/companyContext');
+          CompanyContextService.clearIfNotIn(tenantAllowedCompanyIds);
+        } catch {
+          // Continue if service not available
+        }
+      }
+
+      type AccessRecord = {
+        company_id: string;
+        access_level: string;
+        is_primary: boolean;
+        is_internal: boolean;
+        companies: { name: string; is_archived: boolean } | null;
+      };
+
+      let accessData: AccessRecord[] = [];
+
+      if (tenantAllowedCompanyIds.length > 0) {
+        // Parallelize the two reads — they're independent.
+        const [companiesRes, accessRes] = await Promise.all([
+          supabase
+            .from('companies')
+            .select('id, name, is_archived')
+            .in('id', tenantAllowedCompanyIds),
+          supabase
+            .from('user_company_access')
+            .select('company_id, access_level, is_primary, is_internal')
+            .eq('user_id', authUser.id)
+            .in('company_id', tenantAllowedCompanyIds),
+        ]);
+
+        if (companiesRes.error) {
+          console.error('Error fetching tenant-allowed companies:', companiesRes.error);
+          setIsLoading(false);
+          setHasInitialized(true);
+          return;
+        }
+        if (accessRes.error) {
+          // Non-fatal — defaults to viewer for missing rows.
+          console.error('Error fetching user company access:', accessRes.error);
+        }
+
+        const accessByCompany = new Map(
+          (accessRes.data ?? []).map((a: any) => [a.company_id, a])
+        );
+
+        accessData = (companiesRes.data ?? []).map((c: any) => {
+          const access = accessByCompany.get(c.id);
+          return {
+            company_id: c.id,
+            access_level: access?.access_level ?? 'viewer',
+            is_primary: access?.is_primary ?? false,
+            is_internal: access?.is_internal ?? false,
+            companies: { name: c.name, is_archived: c.is_archived },
+          };
+        });
+      } else {
+        // Allow-all tenant — existing behavior.
+        const { data, error: accessError } = await supabase
+          .from('user_company_access')
+          .select(`
+            company_id,
+            access_level,
+            is_primary,
+            is_internal,
+            companies(name, is_archived)
+          `)
+          .eq('user_id', authUser.id);
+
+        if (accessError) {
+          console.error('Error fetching company roles:', accessError);
+          setIsLoading(false);
+          setHasInitialized(true);
+          return;
+        }
+        accessData = (data as any) ?? [];
+      }
+
       const filgterData = accessData.filter((record: any) => !record.companies?.is_archived);
 
       // PRIORITY: URL > sessionStorage > metadata > primary > first
@@ -248,14 +333,15 @@ export function useCompanyRoles() {
       setIsLoading(false);
       setHasInitialized(true);
     }
-  }, [hasInitialized, isLoading, authUser]);
+  }, [hasInitialized, isLoading, authUser, tenantAllowedCompanyIds]);
 
-  // Initialize when user becomes available - single execution to prevent loops
+  // Initialize when user becomes available AND tenant allow list has loaded
+  // (tenantAllowedCompanyIds === null means we don't yet know what to filter).
   useEffect(() => {
-    if (!hasInitialized && authUser?.id) {
+    if (!hasInitialized && authUser?.id && tenantAllowedCompanyIds !== null) {
       fetchCompanyRoles();
     }
-  }, [fetchCompanyRoles, hasInitialized, authUser?.id]);
+  }, [fetchCompanyRoles, hasInitialized, authUser?.id, tenantAllowedCompanyIds]);
 
   // Listen for realtime changes to the current user's company access (e.g. role changed by admin)
   useEffect(() => {

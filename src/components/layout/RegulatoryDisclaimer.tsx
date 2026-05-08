@@ -12,7 +12,7 @@ export const RegulatoryDisclaimer = () => {
         </p>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
           <span>Version 0.1</span>
-          <span>© 2025 XYREG. All rights reserved.</span>
+          <span>© 2026 XYREG. All rights reserved.</span>
         </div>
       </div>
     </footer>

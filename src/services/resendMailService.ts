@@ -42,6 +42,78 @@ class ResendEmailService {
             return { success: false, error: error.message }
         }
     }
+
+    async sendCCRReviewEmail(input: {
+        recipientEmail: string;
+        recipientName: string;
+        inviterName: string;
+        companyName: string;
+        ccrId: string;
+        ccrTitle: string;
+        perspectives: string[];
+        reason: string;
+        actionUrl: string;
+    }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+        try {
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+            const { data, error } = await supabase.functions.invoke('send-ccr-review-email', {
+                body: input,
+            })
+
+            clearTimeout(timeoutId)
+
+            if (error) {
+                console.error('Supabase function error:', error)
+                return { success: false, error: error.message }
+            }
+
+            return data
+        } catch (error: any) {
+            console.error('Error calling Supabase function:', error)
+            if (error.name === 'AbortError') {
+                return { success: false, error: 'Request timed out' }
+            }
+            return { success: false, error: error.message }
+        }
+    }
+
+    async sendCCRStatusEmail(input: {
+        kind: 'approved' | 'rejected';
+        recipientEmail: string;
+        recipientName: string;
+        actorName: string;
+        companyName: string;
+        ccrId: string;
+        ccrTitle: string;
+        reason: string;
+        actionUrl: string;
+    }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+        try {
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+            const { data, error } = await supabase.functions.invoke('send-ccr-status-email', {
+                body: input,
+            })
+
+            clearTimeout(timeoutId)
+
+            if (error) {
+                console.error('Supabase function error:', error)
+                return { success: false, error: error.message }
+            }
+
+            return data
+        } catch (error: any) {
+            console.error('Error calling Supabase function:', error)
+            if (error.name === 'AbortError') {
+                return { success: false, error: 'Request timed out' }
+            }
+            return { success: false, error: error.message }
+        }
+    }
 }
 
 export const postmarkService = new ResendEmailService();

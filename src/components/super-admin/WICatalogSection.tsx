@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ListChecks, RefreshCw } from 'lucide-react';
+import { Loader2, ListChecks, RefreshCw, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { seedGlobalWorkInstructions } from '@/services/seedGlobalWorkInstructionsClient';
 import { GLOBAL_WI_CATALOG_TOTAL } from '@/constants/globalWiCatalogSpec';
+import { GlobalWIMasterEditorDrawer } from './GlobalWIMasterEditorDrawer';
 
 interface GlobalWIRow {
   id: string;
@@ -26,6 +27,7 @@ export function WICatalogSection() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number; key: string } | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -166,6 +168,15 @@ export function WICatalogSection() {
                         <Badge variant="outline" className="font-mono text-xs">{r.wi_number}</Badge>
                         <span className="flex-1 truncate">{r.title}</span>
                         <span className="text-xs text-muted-foreground">v{r.version}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingId(r.id)}
+                          title="Edit master content (uploads screenshots once for all companies)"
+                        >
+                          <Pencil className="h-3 w-3 mr-1.5" />
+                          Edit master
+                        </Button>
                       </div>
                     ))}
                   </div>
@@ -175,6 +186,13 @@ export function WICatalogSection() {
           )}
         </CardContent>
       </Card>
+
+      <GlobalWIMasterEditorDrawer
+        globalWiId={editingId}
+        open={!!editingId}
+        onOpenChange={(o) => { if (!o) setEditingId(null); }}
+        onSaved={load}
+      />
     </div>
   );
 }

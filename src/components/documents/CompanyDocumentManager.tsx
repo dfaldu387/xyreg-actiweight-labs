@@ -510,14 +510,17 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
       }
       if (docId) {
         // Last resort: fetch the row directly so a product-scoped doc still
-        // opens as a tab even if not present in the company list.
+        // opens as a tab even if not present in the company list. Surface a
+        // toast on failure — silent no-op here is what makes hyperlink
+        // navigation feel "sometimes works, sometimes doesn't".
         (async () => {
           try {
-            const { data } = await supabase
+            const { data, error } = await supabase
               .from('phase_assigned_document_template')
               .select('id, name, document_type, status, created_at, updated_at')
               .eq('id', docId)
               .maybeSingle();
+            if (error) throw error;
             if (data) {
               openDraft({
                 id: data.id,
@@ -529,8 +532,17 @@ export function CompanyDocumentManager({ companyId, disabled = false }: CompanyD
                 updated_at: data.updated_at,
                 source_table: 'phase_assigned_document_template',
               } as CompanyDocument);
+            } else {
+              toast.error(
+                docName
+                  ? `Couldn't open "${docName}" — referenced document not found.`
+                  : "Couldn't open referenced document — it may have been deleted.",
+              );
             }
-          } catch { /* ignore */ }
+          } catch (err) {
+            console.warn('[CompanyDocumentManager] openDocumentDraft fetch failed', err);
+            toast.error("Couldn't open referenced document — please try again.");
+          }
         })();
         e.preventDefault();
       }

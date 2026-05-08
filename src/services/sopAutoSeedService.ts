@@ -26,7 +26,7 @@ import {
   type TierBSop,
 } from '@/constants/sopAutoSeedTiers';
 import { SOP_FULL_CONTENT, sopContentToSections } from '@/data/sopFullContent';
-import { rewriteAllSopTokens } from '@/constants/sopAutoSeedTiers';
+import { rewriteAllSopTokens, formatSopDisplayId } from '@/constants/sopAutoSeedTiers';
 import type { SOPSectionContent } from '@/data/sopContent/types';
 
 export interface SopSeedResult {
@@ -102,26 +102,35 @@ async function seedSopsForCompany(
     return result;
   }
 
-  // Pre-fetch ALL existing SOP CIs for this company so we can detect
-  // duplicates regardless of legacy naming. Older rows may be titled by
-  // canonical name only (e.g. "Quality Management System") with no
-  // "SOP-" prefix, or have a mismatched document_number. We match on
-  // BOTH document_number and normalized name/title to prevent the seeder
-  // from inserting a second copy.
+  // Pre-fetch existing SOP CIs for this company. We match strictly by
+  // canonical document_number (e.g. "SOP-QA-001"). Loose title matching
+  // used to block reseeding when a legacy bare-title row coexisted with
+  // (or replaced) the canonical row, so we no longer rely on it.
   const { data: existing } = await supabase
     .from('phase_assigned_document_template')
-    .select('name, document_number')
+    .select('id, name, document_number')
     .eq('company_id', companyId)
     .eq('document_type', 'SOP');
 
-  const existingNames = new Set(
-    (existing ?? []).map((r) => normalizeTitle(r.name ?? '')),
-  );
-  const existingNumbers = new Set(
-    (existing ?? [])
-      .map((r) => (r.document_number ?? '').toUpperCase().trim())
-      .filter(Boolean),
-  );
+  const existingByNumber = new Map<string, { id: string; name: string }>();
+  for (const row of existing ?? []) {
+    const num = (row.document_number ?? '').toUpperCase().trim();
+    if (num) existingByNumber.set(num, { id: row.id, name: row.name ?? '' });
+  }
+
+  // Pre-fetch which CIs already have a Studio draft so we can backfill
+  // missing drafts instead of skipping a CI that has no editable draft.
+  const ciIds = Array.from(existingByNumber.values()).map((r) => r.id);
+  const draftedCiIds = new Set<string>();
+  if (ciIds.length > 0) {
+    const { data: drafts } = await supabase
+      .from('document_studio_templates')
+      .select('template_id')
+      .in('template_id', ciIds);
+    for (const d of drafts ?? []) {
+      if (d.template_id) draftedCiIds.add(d.template_id);
+    }
+  }
 
   // Pre-fetch any super-admin-edited section bodies from the FPD catalog;
   // these override the hardcoded SOP_FULL_CONTENT for the SOPs being seeded.
@@ -139,20 +148,64 @@ async function seedSopsForCompany(
       ? { ...baseContent, sections: overrideSections }
       : baseContent;
 
-    const fullName = `${content.sopNumber} ${content.title}`;
-    const canonicalNumber = content.sopNumber.toUpperCase().trim();
+    // Canonicalize to the 3-part form (SOP-XX-NNN) — required by the DB
+    // trigger `enforce_sop_subprefix` and our numbering rule.
+    const canonicalSopNumber = formatSopDisplayId(content.sopNumber);
+    const fullName = `${canonicalSopNumber} ${content.title}`;
+    const canonicalNumber = canonicalSopNumber.toUpperCase().trim();
     const canonicalTitle = normalizeTitle(content.title);
     const fullTitle = normalizeTitle(fullName);
 
-    // Skip if any existing SOP matches by document_number, by full
-    // "SOP-XXX Title" name, or by bare canonical title alone (legacy
-    // rows often store just the title without the SOP- prefix).
-    if (
-      existingNumbers.has(canonicalNumber) ||
-      existingNames.has(fullTitle) ||
-      existingNames.has(canonicalTitle)
-    ) {
+    // Suppress unused-var lint (kept for parity with legacy normalization)
+    void canonicalTitle;
+    void fullTitle;
+
+    const existingCi = existingByNumber.get(canonicalNumber);
+
+    // If the CI already exists AND has a Studio draft, nothing to do.
+    if (existingCi && draftedCiIds.has(existingCi.id)) {
       result.skipped++;
+      continue;
+    }
+
+    // If the CI exists but the Studio draft is missing, backfill the draft
+    // and continue. This makes reseed a true recovery operation.
+    if (existingCi && !draftedCiIds.has(existingCi.id)) {
+      try {
+        const personalized = personalizeSections(
+          sopContentToSections(content),
+          companyName,
+        );
+        const { error: backfillError } = await supabase
+          .from('document_studio_templates')
+          .insert({
+            template_id: existingCi.id,
+            company_id: companyId,
+            name: fullName,
+            type: 'SOP',
+            sections: personalized as unknown as Json,
+            metadata: {
+              sopNumber: canonicalSopNumber,
+              document_number: canonicalSopNumber,
+              seededFrom: 'tier-a-auto-seed-backfill',
+              seededAt: new Date().toISOString(),
+            } as unknown as Json,
+          });
+        if (backfillError) {
+          result.failed++;
+          result.errors.push(
+            `${sopKey}: backfill draft failed — ${backfillError.message}`,
+          );
+        } else {
+          result.inserted++;
+          draftedCiIds.add(existingCi.id);
+        }
+      } catch (err) {
+        result.failed++;
+        result.errors.push(
+          `${sopKey}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       continue;
     }
 
@@ -165,7 +218,7 @@ async function seedSopsForCompany(
           company_id: companyId,
           phase_id: phaseId,
           document_type: 'SOP',
-          document_number: content.sopNumber,
+          document_number: canonicalSopNumber,
           document_scope: 'company_document',
           status: 'Draft',
           version: '1.0',
@@ -194,8 +247,8 @@ async function seedSopsForCompany(
         type: 'SOP',
         sections: personalized as unknown as Json,
         metadata: {
-          sopNumber: content.sopNumber,
-          document_number: content.sopNumber,
+          sopNumber: canonicalSopNumber,
+          document_number: canonicalSopNumber,
           seededFrom: 'tier-a-auto-seed',
           seededAt: new Date().toISOString(),
         } as unknown as Json,

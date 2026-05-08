@@ -30,7 +30,7 @@ function mapRowToCCR(row: any): ChangeControlRequest {
   };
 }
 
-async function resolveCurrentCCRProfileId() {
+export async function resolveCurrentCCRProfileId() {
   const {
     data: { user },
     error: userError,
@@ -38,7 +38,7 @@ async function resolveCurrentCCRProfileId() {
 
   if (userError) throw userError;
   if (!user) {
-    throw new Error('You must be signed in to create a Change Control Request.');
+    throw new Error('You must be signed in to perform this action.');
   }
 
   const { data: existingProfile, error: profileLookupError } = await supabase
@@ -65,7 +65,7 @@ async function resolveCurrentCCRProfileId() {
     .single();
 
   if (profileCreateError) {
-    throw new Error(`Unable to create the profile record required for CCR creation: ${profileCreateError.message}`);
+    throw new Error(`Unable to create the profile record required for this action: ${profileCreateError.message}`);
   }
 
   return createdProfile.id;
@@ -155,31 +155,93 @@ export function useCCRById(ccrId: string | undefined) {
     queryKey: ['ccr', ccrId],
     queryFn: async () => {
       if (!ccrId) return null;
-      
-      const { data, error } = await supabase
+
+      // Step 1: fetch the row by id only. Decoupled from embedded joins so a
+      // failing related table (RLS-restricted CAPA, missing product, etc.)
+      // can't make the whole CCR appear "not found".
+      const { data: row, error } = await supabase
         .from('change_control_requests')
-        .select(`
-          *,
-          owner:user_profiles!change_control_requests_owner_id_fkey(id, first_name, last_name),
-          source_capa:capa_records!change_control_requests_source_capa_id_fkey(id, capa_id, problem_description),
-          product:products!change_control_requests_product_id_fkey(id, name),
-          company:companies!change_control_requests_company_id_fkey(id, name)
-        `)
+        .select('*')
         .eq('id', ccrId)
         .maybeSingle();
 
-      if (error) throw error;
-      if (!data) return null;
-      
+      if (error) {
+        console.error('[useCCRById] base row fetch failed', { ccrId, error });
+        throw error;
+      }
+      if (!row) {
+        console.warn('[useCCRById] no CCR row visible for id', ccrId);
+        return null;
+      }
+
+      // Step 2: best-effort fetch each related entity. Failures here are
+      // logged but don't poison the parent CCR.
+      const [ownerRes, creatorRes, capaRes, productRes, companyRes] = await Promise.all([
+        row.owner_id
+          ? supabase
+              .from('user_profiles')
+              .select('id, first_name, last_name')
+              .eq('id', row.owner_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        row.created_by
+          ? supabase
+              .from('user_profiles')
+              .select('id, first_name, last_name')
+              .eq('id', row.created_by)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        row.source_capa_id
+          ? supabase
+              .from('capa_records')
+              .select('id, capa_id, problem_description')
+              .eq('id', row.source_capa_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        row.product_id
+          ? supabase
+              .from('products')
+              .select('id, name')
+              .eq('id', row.product_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        row.company_id
+          ? supabase
+              .from('companies')
+              .select('id, name')
+              .eq('id', row.company_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+
+      if (ownerRes.error) console.warn('[useCCRById] owner fetch failed', ownerRes.error);
+      if (creatorRes.error) console.warn('[useCCRById] creator fetch failed', creatorRes.error);
+      if (capaRes.error) console.warn('[useCCRById] source_capa fetch failed', capaRes.error);
+      if (productRes.error) console.warn('[useCCRById] product fetch failed', productRes.error);
+      if (companyRes.error) console.warn('[useCCRById] company fetch failed', companyRes.error);
+
+      const buildName = (p: any | null) =>
+        p
+          ? `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Unknown'
+          : null;
+
       return {
-        ...mapRowToCCR(data),
-        owner: data.owner ? {
-          id: (data.owner as any).id,
-          full_name: `${(data.owner as any).first_name || ''} ${(data.owner as any).last_name || ''}`.trim() || 'Unknown',
-        } : null,
-        source_capa: data.source_capa,
-        product: data.product,
-        company: data.company,
+        ...mapRowToCCR(row),
+        owner: ownerRes.data
+          ? {
+              id: (ownerRes.data as any).id,
+              full_name: buildName(ownerRes.data) ?? 'Unknown',
+            }
+          : null,
+        creator: creatorRes.data
+          ? {
+              id: (creatorRes.data as any).id,
+              full_name: buildName(creatorRes.data) ?? 'Unknown',
+            }
+          : null,
+        source_capa: capaRes.data ?? null,
+        product: productRes.data ?? null,
+        company: companyRes.data ?? null,
       } as CCRWithRelations;
     },
     enabled: !!ccrId,
@@ -262,6 +324,12 @@ export function useUpdateCCR() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ccrs'] });
       queryClient.invalidateQueries({ queryKey: ['ccr'] });
+      // Any CCR row update fires the DB audit trigger, so the audit log
+      // changes too. The state-transition list doesn't change here, but
+      // invalidate it defensively in case a future code path updates the
+      // status field directly via this hook.
+      queryClient.invalidateQueries({ queryKey: ['ccr-audit-log'] });
+      queryClient.invalidateQueries({ queryKey: ['ccr-transitions'] });
       toast({
         title: 'CCR Updated',
         description: 'Change Control Request has been updated.',
@@ -295,15 +363,15 @@ export function useTransitionCCRState() {
       userId: string;
       reason?: string;
     }) => {
-      // Update the CCR status
-      const { error: updateError } = await supabase
-        .from('change_control_requests')
-        .update({ status: toStatus })
-        .eq('id', ccrId);
+      // change_control_state_transitions.transitioned_by FKs public.profiles.
+      // Some accounts only have a row in user_profiles (e.g. invited users),
+      // so the INSERT below would 23503 if we don't ensure the profile row.
+      // Ensure it BEFORE flipping status so we don't leave the CCR in a state
+      // with no matching transition record.
+      await resolveCurrentCCRProfileId();
 
-      if (updateError) throw updateError;
-
-      // Record the transition
+      // Record the transition first. If this fails the status hasn't moved
+      // yet, so the CCR's history stays consistent.
       const { error: transitionError } = await supabase
         .from('change_control_state_transitions')
         .insert({
@@ -315,6 +383,14 @@ export function useTransitionCCRState() {
         });
 
       if (transitionError) throw transitionError;
+
+      // Now flip the status on the CCR row.
+      const { error: updateError } = await supabase
+        .from('change_control_requests')
+        .update({ status: toStatus })
+        .eq('id', ccrId);
+
+      if (updateError) throw updateError;
 
       // If CCR approved, activate any linked BOM revision
       if (toStatus === 'approved') {
@@ -335,6 +411,11 @@ export function useTransitionCCRState() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ccrs'] });
       queryClient.invalidateQueries({ queryKey: ['ccr'] });
+      // The transition row is fresh and the CCR row's status changed —
+      // refetch both the timeline and the audit log so the new entry shows
+      // up immediately, no manual refresh needed.
+      queryClient.invalidateQueries({ queryKey: ['ccr-transitions'] });
+      queryClient.invalidateQueries({ queryKey: ['ccr-audit-log'] });
       toast({
         title: 'Status Updated',
         description: 'Change Control Request status has been updated.',

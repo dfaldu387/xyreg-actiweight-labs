@@ -197,13 +197,20 @@ async function fetchSOPRequirementsStatus(
   // Pull every SOP-style row for this company once; we'll match by SOP number
   // below. We don't pre-filter by SOP number because the registry sometimes
   // stores names like "SOP-0003 ..." (zero-padded) or "SOP-003 - ...".
-  type DocResult = { id: string; name: string | null; status: string | null };
+  type DocResult = {
+    id: string;
+    name: string | null;
+    status: string | null;
+    document_number: string | null;
+    document_reference: string | null;
+    updated_at: string | null;
+  };
   let documents: DocResult[] = [];
 
   try {
     const response = await supabase
       .from('phase_assigned_document_template')
-      .select('id, name, status')
+      .select('id, name, status, document_number, document_reference, updated_at')
       .eq('company_id', companyId)
       .in('document_scope', ['company_document', 'company_template']);
 
@@ -233,22 +240,39 @@ async function fetchSOPRequirementsStatus(
       }
     }
 
-    // Match registry rows by canonical SOP number. We accept both 3-digit
-    // (SOP-003) and zero-padded 4-digit (SOP-0003) variants, plus the
-    // 3-part display form (SOP-QA-003).
+    // Match registry rows by canonical SOP number. Prefer rows that carry
+    // a real `document_number` (canonical `SOP-NNN`) over loose name matches,
+    // and within a tier prefer the most recently updated row. This stops a
+    // legacy duplicate CI (e.g. "Training and Competence" with no doc_number)
+    // from outranking the real numbered CI (e.g. "SOP-004 Personnel and
+    // Training").
     const canonical = rec.sopNumber.toUpperCase();        // "SOP-003"
     const numeric = canonical.replace(/^SOP-/, '');       // "003"
-    const matchingDoc = documents.find((doc) => {
-      const name = (doc.name || '').toUpperCase();
-      if (!name) return false;
-      // Strip the functional sub-prefix (QA/DE/RM/...) so SOP-QA-003 also matches.
-      const normalized = name.replace(/^SOP-[A-Z]{2,3}-/, 'SOP-');
+    const matchesNumber = (raw: string | null | undefined) => {
+      if (!raw) return false;
+      const upper = raw.toUpperCase();
+      const normalized = upper.replace(/^SOP-[A-Z]{2,3}-/, 'SOP-');
       return (
         normalized.startsWith(canonical) ||
         normalized.includes(`SOP-${numeric}`) ||
-        normalized.includes(`SOP-0${numeric}`) // zero-padded variant
+        normalized.includes(`SOP-0${numeric}`)
       );
+    };
+    const candidates = documents.filter(
+      (doc) =>
+        matchesNumber(doc.document_number) ||
+        matchesNumber(doc.document_reference) ||
+        matchesNumber(doc.name),
+    );
+    candidates.sort((a, b) => {
+      const aHasNum = matchesNumber(a.document_number) ? 1 : 0;
+      const bHasNum = matchesNumber(b.document_number) ? 1 : 0;
+      if (aHasNum !== bHasNum) return bHasNum - aHasNum;
+      const at = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+      const bt = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+      return bt - at;
     });
+    const matchingDoc = candidates[0];
 
     return buildResolvedStatus(rec.sopNumber, matchingDoc);
   });

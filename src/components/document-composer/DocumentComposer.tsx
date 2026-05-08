@@ -157,10 +157,11 @@ export function DocumentComposer({ disabled = false }: DocumentComposerProps) {
       try {
         const { data } = await supabase
           .from('companies')
-          .select('logo_url')
+          .select('logo_url, document_logo_url')
           .eq('id', activeCompanyRole.companyId)
           .single();
-        setCompanyLogoUrl(data?.logo_url || undefined);
+        const d = data as any;
+        setCompanyLogoUrl(d?.document_logo_url || d?.logo_url || undefined);
       } catch (e) {
         console.error('Failed to fetch company logo:', e);
       }

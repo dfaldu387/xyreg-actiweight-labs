@@ -32,6 +32,19 @@ export function ResizableDrawer({
       setDrawerWidth(window.innerWidth * (defaultWidthPercent / 100));
     }
   }, [open, defaultWidthPercent]);
+
+  // Close on Escape (TipTap/MUI focus traps can swallow the default Drawer ESC)
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, onClose]);
   const isResizing = useRef(false);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

@@ -59,6 +59,13 @@ function getScreenshotUrl(path: string | null): string | null {
   return data.publicUrl;
 }
 
+function getVideoUrl(path: string | null): string | null {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  const { data } = supabase.storage.from("feedback-videos").getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export function FeedbackTrackerWidget({ companyId, onRemove, readOnly = false, defaultExpanded = false, hideHeader = false, onCountReady, externalShowClosed, externalSearchTerm, externalTypeFilter, externalStatusFilter, externalPriorityFilter }: FeedbackTrackerWidgetProps & { defaultExpanded?: boolean }) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -69,6 +76,7 @@ export function FeedbackTrackerWidget({ companyId, onRemove, readOnly = false, d
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxKind, setLightboxKind] = useState<"image" | "video">("image");
   const [showClosed, setShowClosed] = useState(false);
   const [sortColumn, setSortColumn] = useState<string>("created_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
@@ -391,7 +399,7 @@ export function FeedbackTrackerWidget({ companyId, onRemove, readOnly = false, d
                             src={url!}
                             alt={`Screenshot ${idx + 1}`}
                             className="max-h-32 rounded border border-border cursor-pointer hover:opacity-80 transition-opacity"
-                            onClick={() => setLightboxUrl(url)}
+                            onClick={() => { setLightboxKind("image"); setLightboxUrl(url); }}
                           />
                           {!readOnly && (
                             <Button
@@ -426,6 +434,43 @@ export function FeedbackTrackerWidget({ companyId, onRemove, readOnly = false, d
             );
           })()}
         </div>
+        {/* Row 5: Videos */}
+        {(() => {
+          const videoPaths: string[] = (item as any).videos_url || [];
+          if (videoPaths.length === 0) return null;
+          return (
+            <div className="col-span-2">
+              <span className="text-muted-foreground text-xs">Videos</span>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {videoPaths.map((path: string, idx: number) => {
+                  const url = getVideoUrl(path);
+                  if (!url) return null;
+                  return (
+                    <div key={idx} className="relative group">
+                      <video
+                        src={url}
+                        controls
+                        preload="metadata"
+                        className="max-h-40 rounded border border-border bg-black cursor-pointer"
+                        onClick={(e) => {
+                          // Open lightbox only when clicking outside the video element's
+                          // native controls — i.e. when the video is paused and the user
+                          // clicks the frame. Otherwise let the controls handle it.
+                          const v = e.currentTarget;
+                          if (v.paused) {
+                            e.preventDefault();
+                            setLightboxKind("video");
+                            setLightboxUrl(url);
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
       {/* Row 5: Status, Priority, Assigned To */}
       <div className={`border-t border-border pt-3 grid ${isSuperAdminMode ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
@@ -738,11 +783,33 @@ export function FeedbackTrackerWidget({ companyId, onRemove, readOnly = false, d
         }
       </CardContent>
 
-      {/* Screenshot lightbox */}
+      {/* Screenshot / video lightbox */}
       <Dialog open={!!lightboxUrl} onOpenChange={(open) => !open && setLightboxUrl(null)}>
-        <DialogContent className="sm:max-w-4xl p-2">
-          {lightboxUrl && (
-            <img src={lightboxUrl} alt="Screenshot" className="w-full h-auto rounded" />
+        <DialogContent className="w-[95vw] max-w-[1400px] sm:max-w-[1400px] p-2 [&>button:not([data-custom-close])]:hidden">
+          {/* Custom close — red background with white X, large hit area */}
+          <button
+            type="button"
+            data-custom-close
+            onClick={() => setLightboxUrl(null)}
+            aria-label="Close"
+            className="absolute top-3 right-3 z-50 inline-flex h-9 w-9 items-center justify-center rounded-full bg-red-600 text-white shadow-md hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {lightboxUrl && lightboxKind === "image" && (
+            <img
+              src={lightboxUrl}
+              alt="Screenshot"
+              className="w-full h-auto max-h-[85vh] object-contain rounded"
+            />
+          )}
+          {lightboxUrl && lightboxKind === "video" && (
+            <video
+              src={lightboxUrl}
+              controls
+              autoPlay
+              className="w-full h-auto max-h-[85vh] rounded bg-black"
+            />
           )}
         </DialogContent>
       </Dialog>

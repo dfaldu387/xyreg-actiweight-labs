@@ -56,8 +56,13 @@ export default function CompanyProcessingPage() {
     try {
       setIsRedirectingToCheckout(true);
 
-      if (!plan.tier || plan.tier === 'genesis' || plan.tier === 'enterprise') {
-        // Genesis is free, Enterprise uses custom pricing / contact sales
+      if (!plan.tier || plan.tier === 'enterprise') {
+        // Enterprise uses custom pricing / contact sales
+        return false;
+      }
+
+      // Free plans (e.g. Genesis under WHX promo) skip Stripe entirely
+      if (plan.monthlyPrice <= 0) {
         return false;
       }
 
@@ -84,11 +89,18 @@ export default function CompanyProcessingPage() {
         }, companyId);
       } else {
         // Use StripeService with full add-on support
+        const planNames: Record<string, string> = {
+          core: 'Helix OS',
+          genesis: 'Genesis',
+        };
+        const tierStripePriceId =
+          plan.tier === 'genesis' ? STRIPE_PRICES.GENESIS_BASE : STRIPE_PRICES.CORE_BASE;
+
         await StripeService.handlePlanPurchase({
           planId: plan.tier,
-          name: plan.tier === 'core' ? 'Helix OS' : plan.tier,
+          name: planNames[plan.tier] || plan.tier,
           price: `€${plan.monthlyPrice}`,
-          stripePriceId: STRIPE_PRICES.CORE_BASE,
+          stripePriceId: tierStripePriceId,
           tier: plan.tier,
           // Add-on data
           extraDevices: plan.extraDevices || 0,
@@ -166,9 +178,7 @@ export default function CompanyProcessingPage() {
 
         // Check if user selected a paid plan
         const selectedPlan = getSelectedPlan();
-        const isPaidPlan = selectedPlan &&
-          selectedPlan.tier !== 'genesis' &&
-          selectedPlan.monthlyPrice > 0;
+        const isPaidPlan = selectedPlan && selectedPlan.monthlyPrice > 0;
 
         // Navigate after success animation
         setTimeout(async () => {
@@ -181,8 +191,9 @@ export default function CompanyProcessingPage() {
           // Add delay to ensure refresh completes
           await new Promise(resolve => setTimeout(resolve, 500));
 
-          // Assign Genesis plan if user selected free tier (or no plan selected)
-          const isGenesisOrFreePlan = !selectedPlan || selectedPlan.tier === 'genesis' || selectedPlan.monthlyPrice === 0;
+          // Assign Genesis plan if user selected free tier (or no plan selected).
+          // Paid Genesis users get their plan assigned via the Stripe webhook after payment.
+          const isGenesisOrFreePlan = !selectedPlan || selectedPlan.monthlyPrice === 0;
           if (isGenesisOrFreePlan) {
             try {
               const { data: { user } } = await supabase.auth.getUser();
@@ -334,7 +345,7 @@ export default function CompanyProcessingPage() {
 
   // Check if we need to redirect to checkout
   const selectedPlan = getSelectedPlan();
-  const isPaidPlan = selectedPlan && selectedPlan.tier !== 'genesis' && selectedPlan.monthlyPrice > 0;
+  const isPaidPlan = selectedPlan && selectedPlan.monthlyPrice > 0;
 
   if (showSuccess) {
     return (

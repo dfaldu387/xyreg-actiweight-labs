@@ -342,7 +342,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-gray-700 mt-8 pt-6 flex justify-between items-center">
-            <p className="text-sm">© 2025 XYREG. All rights reserved.</p>
+            <p className="text-sm">© 2026 XYREG. All rights reserved.</p>
             <div className="flex space-x-4">
               <a href="#" className="hover:text-white">
                 <span className="sr-only">LinkedIn</span>

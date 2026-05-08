@@ -35,7 +35,7 @@ export interface TierASop {
 }
 
 /**
- * Tier A — 27 SOPs auto-created when a company is provisioned.
+ * Tier A — 31 SOPs auto-created when a company is provisioned.
  * Content is identical across companies except for `[Company Name]`
  * substitution handled by `sopPersonalizationPipeline`.
  *
@@ -54,7 +54,9 @@ export const TIER_A_AUTO_SEED: readonly TierASop[] = [
   { sop: 'SOP-009', reason: 'Generic design V&V framework (§7.3.6–7.3.7) — applies to all medical devices' },
   { sop: 'SOP-011', reason: 'Process-only — generic design change control' },
   { sop: 'SOP-012', reason: 'Structure-only — DHF/Technical Documentation index template' },
+  { sop: 'SOP-015', reason: 'Risk Management (ISO 14971) — mandatory for all medical devices regardless of pathway' },
   { sop: 'SOP-016', reason: 'Generic supplier evaluation & control workflow (§7.4)' },
+  { sop: 'SOP-019', reason: 'Identification, Traceability & UDI — mandatory under ISO 13485 §7.5.8 for all devices' },
   { sop: 'SOP-021', reason: 'Standard complaint handling workflow (§8.2.2)' },
   { sop: 'SOP-022', reason: 'Standard PMS framework, identical across QMS' },
   { sop: 'SOP-023', reason: 'Generic infrastructure & work environment procedure (§6.3–6.4)' },
@@ -70,6 +72,7 @@ export const TIER_A_AUTO_SEED: readonly TierASop[] = [
   { sop: 'SOP-037', reason: 'Standard Field Safety Corrective Action process' },
   { sop: 'SOP-038', reason: 'Standard vigilance reporting workflow' },
   { sop: 'SOP-042', reason: 'Generic trend analysis & signal detection process' },
+  { sop: 'SOP-045', reason: 'UDI Management — mandatory across EU MDR, FDA, and most major markets' },
   { sop: 'SOP-050', reason: 'Standard ISO 13485 §8.2.4 internal audit process' },
 ] as const;
 
@@ -81,15 +84,12 @@ export const TIER_B_CONDITIONAL: readonly TierBSop[] = [
   { sop: 'SOP-010', trigger: 'manufacturing', reason: 'Design Transfer requires manufacturing scope' },
   { sop: 'SOP-013', trigger: 'eu_mdr', reason: 'GSPR — EU MDR Annex I' },
   { sop: 'SOP-014', trigger: 'eu_clinical', reason: 'Clinical Evaluation — EU MDR clinical pathway' },
-  { sop: 'SOP-015', trigger: 'always', reason: 'Risk Management ISO 14971 applies to all devices' },
   { sop: 'SOP-017', trigger: 'manufacturing', reason: 'Production & Service Provision — manufacturing in scope' },
   { sop: 'SOP-018', trigger: 'manufacturing', reason: 'Process Validation — manufacturing in scope' },
-  { sop: 'SOP-019', trigger: 'always', reason: 'Identification, Traceability, UDI' },
   { sop: 'SOP-020', trigger: 'physical_product', reason: 'Labeling & Packaging — physical product' },
   { sop: 'SOP-036', trigger: 'eu_mdr', reason: 'Classification & Conformity Assessment — EU/UK/CH pathway' },
   { sop: 'SOP-043', trigger: 'manufacturing', reason: 'Incoming Inspection — manufacturing in scope' },
   { sop: 'SOP-044', trigger: 'eu_mdr_class_iia_plus', reason: 'PSUR — EU MDR Class IIa+' },
-  { sop: 'SOP-045', trigger: 'always', reason: 'UDI Management' },
   { sop: 'SOP-046', trigger: 'eu_mdr_class_iia_plus', reason: 'Notified Body Interactions — EU MDR Class IIa+ / IVDR' },
   { sop: 'SOP-048', trigger: 'eu_clinical', reason: 'PMCF — EU MDR clinical pathway' },
   { sop: 'SOP-051', trigger: 'manufacturing', reason: 'Batch Record / DHR — manufacturing in scope' },

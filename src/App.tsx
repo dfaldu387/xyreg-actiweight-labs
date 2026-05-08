@@ -104,13 +104,15 @@ const SuperAdminAiTokenUsage = lazy(() => import("@/components/super-admin/Super
 const SuperAdminDocuments = lazy(() => import("@/pages/SuperAdminDocuments"));
 const SuperAdminTemplates = lazy(() => import("@/pages/SuperAdminTemplates"));
 const SuperAdminReleases = lazy(() => import("@/pages/super-admin/SuperAdminReleases"));
-const SuperAdminAuditLog = lazy(() => import("@/pages/SuperAdminAuditLog"));
+// const SuperAdminAuditLog = lazy(() => import("@/pages/SuperAdminAuditLog"));
+const SuperAdminConsultingHours = lazy(() => import("@/pages/SuperAdminConsultingHours"));
 
 const SuperAdminFeedback = lazy(() => import("@/pages/SuperAdminFeedback"));
 
 const SuperAdminWHXCodes = lazy(() => import("@/components/super-admin/SuperAdminWHXCodes"));
 const SuperAdminWHXUsers = lazy(() => import("@/components/super-admin/SuperAdminWHXUsers"));
 const SuperAdminAccessManagement = lazy(() => import("@/pages/SuperAdminAccessManagement"));
+const SuperAdminTenantConfigs = lazy(() => import("@/pages/SuperAdminTenantConfigs"));
 
 const ViewerCompliancePage = lazy(() => import("@/pages/ViewerCompliancePage"));
 const ViewerDocumentsPage = lazy(() => import("@/pages/ViewerDocumentsPage"));
@@ -396,6 +398,15 @@ function App() {
                 </Suspense>
               } />
 
+              {/* Super Admin Tenant Configurations */}
+              <Route path="app/tenant-configs" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary level="component">
+                    <SuperAdminTenantConfigs />
+                  </ErrorBoundary>
+                </Suspense>
+              } />
+
               {/* Super Admin Plan Pricing */}
               <Route path="app/plan-pricing" element={
                 <Suspense fallback={<PageLoader />}>
@@ -441,14 +452,23 @@ function App() {
                 </Suspense>
               } />
 
+              {/* Super Admin Consulting Hours */}
+              <Route path="app/consulting-hours" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary level="component">
+                    <SuperAdminConsultingHours />
+                  </ErrorBoundary>
+                </Suspense>
+              } />
+
               {/* Super Admin Audit Log */}
-              <Route path="app/audit-logs" element={
+              {/* <Route path="app/audit-logs" element={
                 <Suspense fallback={<PageLoader />}>
                   <ErrorBoundary level="component">
                     <SuperAdminAuditLog />
                   </ErrorBoundary>
                 </Suspense>
-              } />
+              } /> */}
 
 
               {/* Super Admin Feedback */}
@@ -892,6 +912,15 @@ function App() {
 
               {/* Change Control Detail Page */}
               <Route path="change-control/:ccrId" element={
+                <Suspense fallback={<PageLoader />}>
+                  <ErrorBoundary level="component">
+                    <ChangeControlDetailPage />
+                  </ErrorBoundary>
+                </Suspense>
+              } />
+
+              {/* Company-scoped Change Control Detail (preserves company context in URL) */}
+              <Route path="company/:companyName/change-control/:ccrId" element={
                 <Suspense fallback={<PageLoader />}>
                   <ErrorBoundary level="component">
                     <ChangeControlDetailPage />

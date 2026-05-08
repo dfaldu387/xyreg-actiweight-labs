@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCompanyRole } from '@/context/CompanyRoleContext';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,6 +23,26 @@ interface NoCreditDialogProps {
   limit?: number;
 }
 
+interface BoosterPack {
+  price_cents: number;
+  currency: string;
+  credits: number;
+}
+
+function formatBoosterPrice(p: BoosterPack | null): string {
+  if (!p) return '';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: p.currency.toUpperCase(),
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(p.price_cents / 100);
+  } catch {
+    return `${p.price_cents / 100} ${p.currency.toUpperCase()}`;
+  }
+}
+
 const notificationService = new AppNotificationService();
 
 export function NoCreditDialog({ open, onOpenChange }: NoCreditDialogProps) {
@@ -33,6 +53,38 @@ export function NoCreditDialog({ open, onOpenChange }: NoCreditDialogProps) {
   const companyName = activeCompanyRole?.companyName || '';
   const [loading, setLoading] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
+  const [boosterPack, setBoosterPack] = useState<BoosterPack | null>(null);
+  const [boosterLoading, setBoosterLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setBoosterPack(null);
+    setBoosterLoading(true);
+    (async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-dynamic-products', {
+          body: { product_key: 'ai_booster' },
+        });
+        if (error || cancelled) return;
+        const first = data?.products?.[0];
+        if (!first) return;
+        setBoosterPack({
+          price_cents: first.price_cents,
+          currency: first.currency,
+          credits: Number(first.metadata?.credits ?? 500),
+        });
+      } catch (err) {
+        console.error('Failed to load AI booster pack:', err);
+      } finally {
+        if (!cancelled) setBoosterLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
+
+  const priceLabel = formatBoosterPrice(boosterPack);
+  const creditsLabel = (boosterPack?.credits ?? 500).toLocaleString();
 
   const handleBuyCredits = async () => {
     setLoading(true);
@@ -102,7 +154,12 @@ export function NoCreditDialog({ open, onOpenChange }: NoCreditDialogProps) {
         return;
       }
 
-      const userName = user.user_metadata?.full_name || user.email || 'A team member';
+      const meta = user.user_metadata as { full_name?: string; first_name?: string; last_name?: string } | undefined;
+      const userName =
+        meta?.full_name ||
+        [meta?.first_name, meta?.last_name].filter(Boolean).join(' ') ||
+        user.email ||
+        'A team member';
 
       // Send notification to owner + all admins
       const notifications = uniqueRecipientIds.map((recipientId) => ({
@@ -116,7 +173,7 @@ export function NoCreditDialog({ open, onOpenChange }: NoCreditDialogProps) {
         message: `${userName} has requested more AI credits. The team has run out of monthly credits and needs a Booster Pack to continue using AI features.`,
         priority: 'high' as const,
         entity_type: 'ai_credits',
-        action_url: `/app/company/${encodeURIComponent(companyName)}/settings?tab=general`,
+        action_url: `/app/company/${encodeURIComponent(companyName)}/profile?tab=addons`,
       }));
 
       const { error } = await notificationService.createBulkNotifications(notifications);
@@ -144,16 +201,18 @@ export function NoCreditDialog({ open, onOpenChange }: NoCreditDialogProps) {
           <AlertDialogTitle className="text-center">You're out of AI credits</AlertDialogTitle>
           <AlertDialogDescription className="text-center">
             {isAdmin
-              ? 'Your monthly AI credits have been fully used. Top up with an AI Booster Pack (500 credits for $20) to keep using AI-powered features like document generation, suggestions, and analysis.'
+              ? boosterLoading || !boosterPack
+                ? 'Your monthly AI credits have been fully used. Loading AI Booster Pack pricing...'
+                : `Your monthly AI credits have been fully used. Top up with an AI Booster Pack (${creditsLabel} credits for ${priceLabel}) to keep using AI-powered features like document generation, suggestions, and analysis.`
               : 'Your monthly AI credits have been fully used. Request your admin to top up with an AI Booster Pack so your team can continue using AI-powered features.'
             }
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
           {isAdmin ? (
-            <Button onClick={handleBuyCredits} disabled={loading} className="w-full bg-purple-600 hover:bg-purple-700">
-              {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-              {loading ? 'Processing...' : 'Get More Credits - $20'}
+            <Button onClick={handleBuyCredits} disabled={loading || boosterLoading || !boosterPack} className="w-full bg-purple-600 hover:bg-purple-700">
+              {loading || boosterLoading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+              {loading ? 'Processing...' : boosterLoading || !boosterPack ? 'Loading price...' : `Get More Credits - ${priceLabel}`}
             </Button>
           ) : requestSent ? (
             <Button disabled className="w-full bg-green-600 hover:bg-green-600">

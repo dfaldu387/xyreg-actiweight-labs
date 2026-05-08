@@ -106,6 +106,16 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
   const [draftTemplateNames, setDraftTemplateNames] = useState<Set<string>>(new Set());
   const [draftTemplatesBySopNumber, setDraftTemplatesBySopNumber] = useState<Map<string, DraftTemplateSummary>>(new Map());
   const [draftDrawerDoc, setDraftDrawerDoc] = useState<{ id: string; name: string; type: string } | null>(null);
+  // Tracks the template whose Edit button was just clicked, while we resolve
+  // its draft and open the drawer. Without this the button gives no feedback
+  // for the 1–3s gap between click and drawer slide-in, and the click feels
+  // like it did nothing.
+  const [openingTemplateId, setOpeningTemplateId] = useState<string | null>(null);
+  // Clear the per-button "opening" spinner as soon as the drawer is mounted —
+  // from there on, the drawer's own loading state takes over.
+  useEffect(() => {
+    if (draftDrawerDoc) setOpeningTemplateId(null);
+  }, [draftDrawerDoc]);
   const { toast } = useToast();
 
   // Bulk seed selection: set of SOP keys (e.g. "SOP-008") for missing-SOP rows.
@@ -427,12 +437,17 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
   };
 
   const handleEdit = (template: any) => {
+    setOpeningTemplateId(template.id);
     setSelectedTemplate(template);
-    if (isSOP(template.name)) {
-      void openSopEditor(template);
-    } else {
-      void openNonSopEditor(template);
-    }
+    const open = isSOP(template.name)
+      ? openSopEditor(template)
+      : openNonSopEditor(template);
+    // Safety: if the open path errors (e.g. seed failure with no draft) the
+    // useEffect on draftDrawerDoc never fires, so clear the per-button
+    // spinner here too. Toast errors are handled inside the open helpers.
+    void Promise.resolve(open).catch(() => {}).finally(() => {
+      setOpeningTemplateId((prev) => (prev === template.id ? null : prev));
+    });
   };
 
   // For non-SOP templates: try to open the existing studio draft in the side drawer.
@@ -1102,24 +1117,36 @@ export function TemplateManagementTab({ companyId, onOpenAiTemplateDialog, onOpe
                        >
                          <Eye className="h-4 w-4" />
                        </Button>
-                       <Button
-                         variant="ghost"
-                         size="icon"
-                         className="h-8 w-8"
-                         onClick={() => handleEdit(template)}
-                         disabled={seedingSop === extractSopKey(template.name)}
-                         title={
-                            isTierASop(template.name) && !hasDraftForTemplate(template)
-                             ? 'Provision this SOP for the company (auto-personalized) and open editor'
-                             : 'Edit template'
-                         }
-                       >
-                         {seedingSop === extractSopKey(template.name) ? (
-                           <Loader2 className="h-4 w-4 animate-spin" />
-                         ) : (
-                           <Edit className="h-4 w-4" />
-                         )}
-                       </Button>
+                       {(() => {
+                         const sopKeyForRow = extractSopKey(template.name);
+                         // Guard against null === null: extractSopKey returns
+                         // null for non-SOP rows (e.g. FORM-*) and seedingSop
+                         // is also null when idle, which would otherwise mark
+                         // every non-SOP row as "currently seeding".
+                         const isSeedingThisRow = !!seedingSop && seedingSop === sopKeyForRow;
+                         const isOpeningThisRow = openingTemplateId === template.id;
+                         const isBusyThisRow = isSeedingThisRow || isOpeningThisRow;
+                         return (
+                           <Button
+                             variant="ghost"
+                             size="icon"
+                             className="h-8 w-8"
+                             onClick={() => handleEdit(template)}
+                             disabled={isBusyThisRow}
+                             title={
+                                isTierASop(template.name) && !hasDraftForTemplate(template)
+                                 ? 'Provision this SOP for the company (auto-personalized) and open editor'
+                                 : 'Edit template'
+                             }
+                           >
+                             {isBusyThisRow ? (
+                               <Loader2 className="h-4 w-4 animate-spin" />
+                             ) : (
+                               <Edit className="h-4 w-4" />
+                             )}
+                           </Button>
+                         );
+                       })()}
                        {template.file_path && (
                          <Button
                            variant="ghost"

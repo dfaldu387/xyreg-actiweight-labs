@@ -805,6 +805,10 @@ export function L2ContextualBar({
       // The chevron button handles expand/collapse separately
       if (productHasVariants) {
         handleItemClick(item, { parentId });
+      } else if (hasChildren && item.route) {
+        // Parent rows that also have a destination route should navigate when the
+        // main row is clicked. The chevron remains the expand/collapse control.
+        handleItemClick(item, { parentId });
       } else if (hasChildren) {
         toggleExpanded(item.id);
       } else {
@@ -1801,7 +1805,7 @@ export function L2ContextualBar({
 
     // If clicking an item with children from collapsed state, navigate to last selected child
     const hasChildren = item.children && item.children.length > 0;
-    if (options?.fromCollapsedState && hasChildren && item.children) {
+    if (options?.fromCollapsedState && hasChildren && item.children && !item.route) {
       const lastChildId = getLastSelectedChild(item.id);
       const targetChild = lastChildId 
         ? item.children.find(c => c.id === lastChildId) 

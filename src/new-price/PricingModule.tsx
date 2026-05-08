@@ -43,7 +43,6 @@ import {
   Minus,
   ChevronRight,
   ChevronLeft,
-  Gift,
   Copy,
   Target,
   Lightbulb,
@@ -123,6 +122,7 @@ const PRICING = {
     includedDevices: 1,
   },
   genesis: {
+    base: 149,               // €149/mo Genesis subscription
     aiBooster: 49,           // €49 for Genesis AI pack (more expensive than Core)
     aiBoosterCredits: 500,   // 500 credits per Genesis pack
     referralCredits: 150,    // Credits earned per qualified referral
@@ -564,7 +564,7 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
   const [activeDevices, setActiveDevices] = useState(1);
   const [selectedPacks, setSelectedPacks] = useState<string[]>([]);
   const [aiBoosterPacks, setAiBoosterPacks] = useState(0);
-  const [genesisAiPack, setGenesisAiPack] = useState(false);
+  const genesisAiPack = false;
   const [isContactOpen, setIsContactOpen] = useState(false);
   const [showPlanDetails, setShowPlanDetails] = useState(false);
   const [selectedSponsorshipPackage, setSelectedSponsorshipPackage] = useState<string | null>(null);
@@ -742,7 +742,9 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
 
   const monthlyTotal = isCore
     ? baseCost + packsCost + specialistCost + individualModulesCost + devicesCost
-    : 0;
+    : isGenesis
+      ? PRICING.genesis.base
+      : 0;
 
   const oneTimeCost = boosterCost;
 
@@ -929,7 +931,6 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                       setIpPatentEnabled(false);
                       setActiveDevices(tierKey === "core" ? 1 : 0);
                       setAiBoosterPacks(0);
-                      setGenesisAiPack(false);
                     }
                   }}
                   className={cn(
@@ -1016,7 +1017,6 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                       setIpPatentEnabled(false);
                       setActiveDevices(0);
                       setAiBoosterPacks(0);
-                      setGenesisAiPack(false);
                     }
                   }}
                   className={cn(
@@ -1200,36 +1200,6 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                             })}
                           </div>
                         </ScrollArea>
-                      </div>
-
-                      {/* Optional Add-on Section */}
-                      <div>
-                        <p className="text-[10px] text-purple-300 uppercase tracking-wider font-medium mb-2">Optional Add-on</p>
-                        <div className="p-3 rounded-lg bg-purple-500/20 border border-purple-500/40">
-                          <div className="flex items-start gap-2">
-                            <Checkbox
-                              id="genesis-ai-pack"
-                              checked={genesisAiPack}
-                              onCheckedChange={(checked) => setGenesisAiPack(checked === true)}
-                              className="mt-0.5 border-purple-400 data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
-                            />
-                            <div className="flex-1">
-                              <label htmlFor="genesis-ai-pack" className="text-xs font-semibold text-purple-300 cursor-pointer">
-                                AI Booster Pack (+€{PRICING.genesis.aiBooster})
-                              </label>
-                              <p className="text-[10px] text-purple-200 mt-0.5">
-                                {PRICING.genesis.aiBoosterCredits} AI credits for document generation
-                              </p>
-                              <p className="text-[9px] text-purple-300/70 mt-0.5">
-                                Credits expire 60 days after purchase
-                              </p>
-                              <p className="text-[9px] text-purple-300/60 mt-1.5 italic">
-                                <Gift className="w-3 h-3 inline mr-1" />
-                                No budget? Invite founders → earn 150 credits each
-                              </p>
-                            </div>
-                          </div>
-                        </div>
                       </div>
 
                       {/* Restrictions */}
@@ -2134,12 +2104,6 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                             <p className="text-[10px] text-teal-300">
                               ✓ Shareable investor links
                             </p>
-                            {genesisAiPack && (
-                              <div className="flex justify-between pt-1">
-                                <span className="text-[10px] text-purple-300">AI Booster Pack</span>
-                                <span className="text-[10px] text-purple-300">€{PRICING.genesis.aiBooster}</span>
-                              </div>
-                            )}
                             <p className="text-[10px] text-teal-300">
                               ✓ Referral program access
                             </p>
@@ -2439,7 +2403,11 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                           onPlanSelect({
                             tier: selectedTier,
                             powerPacks: selectedPacks,
-                            monthlyPrice: isCore ? (couponApplied ? PILOT_PRICE : monthlyTotal) : (isGenesis ? genesisOneTimeCost : 0),
+                            monthlyPrice: isCore
+                              ? (couponApplied ? PILOT_PRICE : monthlyTotal)
+                              : isGenesis
+                                ? PRICING.genesis.base + genesisOneTimeCost
+                                : 0,
                             couponCode: couponApplied ? PILOT_COUPON : undefined,
                             // Add-on details
                             isGrowthSuite: allPacksSelected,
@@ -2550,7 +2518,7 @@ const PricingModule = ({ isRegistrationFlow = false, onPlanSelect, initialSelect
                               if (isInvestor) return "Join Network";
                               return selectedIdx > currentIdx ? "Upgrade Plan" : "Downgrade";
                             })())
-                          : (isGenesis ? "Start Free" : isEnterprise ? (enterpriseCouponApplied ? `Pay €${ENTERPRISE_COUPON_PRICE}/mo` : "Contact Sales") : isInvestor ? "Join Network" : couponApplied ? `Pay €${PILOT_PRICE}/mo` : "Start Trial")
+                          : (isGenesis ? `Pay €${PRICING.genesis.base}/mo` : isEnterprise ? (enterpriseCouponApplied ? `Pay €${ENTERPRISE_COUPON_PRICE}/mo` : "Contact Sales") : isInvestor ? "Join Network" : couponApplied ? `Pay €${PILOT_PRICE}/mo` : "Start Trial")
                       }
                     </Button>
                   </div>

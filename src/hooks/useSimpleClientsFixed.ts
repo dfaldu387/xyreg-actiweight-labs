@@ -24,7 +24,7 @@ interface SimpleClient {
 }
 
 export function useSimpleClientsFixed() {
-  const { session } = useAuth();
+  const { session, tenantAllowedCompanyIds } = useAuth();
   const { isDevMode, selectedCompanies } = useDevMode();
 
   const normalizeStatus = (status: string | null | undefined): "On Track" | "At Risk" | "Needs Attention" => {
@@ -35,32 +35,48 @@ export function useSimpleClientsFixed() {
 
   const fetchClients = async (): Promise<SimpleClient[]> => {
     try {
+      // Tenant scoping: when the active tenant deployment grants visibility to
+      // a specific set of companies (e.g. genish, arnar, davidhealth), Client
+      // Compass should only show those — never the user's full
+      // user_company_access list. Empty allow list (mockup) = no extra filter.
+      const tenantAllowed = tenantAllowedCompanyIds ?? [];
+      const applyTenantFilter = tenantAllowed.length > 0;
+
+      let companiesQuery = supabase
+        .from('companies')
+        .select(`
+          id,
+          name,
+          country,
+          srn,
+          user_company_access!inner(user_id)
+        `)
+        .eq('is_archived', false)
+        .eq('user_company_access.user_id', session?.user.id);
+
+      let productsQuery = supabase
+        .from('products')
+        .select(`
+          id, name, company_id, status, progress,
+          companies!inner(
+            user_company_access!inner(user_id)
+          )
+        `)
+        .eq('is_archived', false)
+        .eq('companies.is_archived', false)
+        .eq('companies.user_company_access.user_id', session?.user.id)
+        .order('inserted_at', { ascending: false })
+        .limit(1000);
+
+      if (applyTenantFilter) {
+        companiesQuery = companiesQuery.in('id', tenantAllowed);
+        productsQuery = productsQuery.in('company_id', tenantAllowed);
+      }
+
       // PARALLEL: Fetch companies and their products simultaneously
       const [companiesResult, productsResult] = await Promise.all([
-        supabase
-          .from('companies')
-          .select(`
-            id,
-            name,
-            country,
-            srn,
-            user_company_access!inner(user_id)
-          `)
-          .eq('is_archived', false)
-          .eq('user_company_access.user_id', session?.user.id),
-        supabase
-          .from('products')
-          .select(`
-            id, name, company_id, status, progress,
-            companies!inner(
-              user_company_access!inner(user_id)
-            )
-          `)
-          .eq('is_archived', false)
-          .eq('companies.is_archived', false)
-          .eq('companies.user_company_access.user_id', session?.user.id)
-          .order('inserted_at', { ascending: false })
-          .limit(1000)
+        companiesQuery,
+        productsQuery,
       ]);
 
       const { data: companies, error: companiesError } = companiesResult;

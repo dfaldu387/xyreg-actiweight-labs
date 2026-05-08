@@ -16,6 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sparkles, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { showNoCreditDialog } from '@/context/AiCreditContext';
 
 type DraftField = 'description' | 'justification';
 
@@ -98,6 +99,11 @@ export function AiDraftAssistPopover({
         },
       });
       if (error) throw error;
+      if ((data as any)?.error === 'NO_CREDITS') {
+        showNoCreditDialog();
+        setOpen(false);
+        return;
+      }
       const s: string = (data as any)?.suggestion?.trim() ?? '';
       const ctx: string = (data as any)?.contextPreview ?? '';
       if (ctx) setContextPreview(ctx);

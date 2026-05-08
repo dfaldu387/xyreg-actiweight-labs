@@ -202,8 +202,12 @@ export function CCRCreateDialog({ open, onOpenChange, companyId, productId, pref
   };
 
   return (
-    <Dialog modal={false} open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[540px] max-h-[85vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className="sm:max-w-[540px] max-h-[85vh] overflow-y-auto"
+        overlayClassName="bg-black/40 backdrop-blur-sm"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{lang('changeControl.createDialogTitle')}</DialogTitle>

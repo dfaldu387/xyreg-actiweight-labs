@@ -600,3 +600,40 @@ body.sop-drawer-on-top [data-radix-dialog-overlay] {
   background-color: transparent !important;
   pointer-events: none !important;
 }
+
+/* Work Instruction screenshot placeholders.
+   Emitted by the global WI seeder as <figure class="wi-image-placeholder">
+   to mark spots where a master screenshot should be uploaded once
+   (super-admin) and inherited by every materialized company copy. */
+.wi-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  margin: 0.75rem 0;
+  padding: 1rem;
+  border: 2px dashed hsl(var(--muted-foreground) / 0.35);
+  border-radius: 0.5rem;
+  background: hsl(var(--muted) / 0.3);
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 120ms, background-color 120ms;
+}
+.wi-image-placeholder:hover {
+  border-color: hsl(var(--primary) / 0.6);
+  background: hsl(var(--primary) / 0.05);
+}
+.wi-image-placeholder__icon { font-size: 1.25rem; }
+.wi-image-placeholder__label { font-weight: 500; color: hsl(var(--foreground) / 0.75); }
+.wi-image-placeholder__hint { font-style: italic; max-width: 32rem; }
+.wi-image-placeholder__cta { font-size: 0.75rem; color: hsl(var(--primary)); }
+img.wi-screenshot {
+  display: block;
+  max-width: 100%;
+  margin: 0.75rem auto;
+  border-radius: 0.375rem;
+  border: 1px solid hsl(var(--border));
+}

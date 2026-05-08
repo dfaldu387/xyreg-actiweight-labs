@@ -184,6 +184,24 @@ class CompanyContextServiceClass {
     }
   }
 
+  /**
+   * Drop the stored context if its company is not in the supplied set.
+   * Used after a user lands on a tenant deployment that doesn't grant
+   * visibility to the previously-selected company (cross-tenant session
+   * cleanup). No-op when the stored company is in the allowed list.
+   *
+   * @param allowedIds the set of company UUIDs visible on the active tenant.
+   *                   Pass an empty array to mean "no filter" — nothing is
+   *                   cleared in that case.
+   */
+  clearIfNotIn(allowedIds: string[]): boolean {
+    if (!this.currentContext) return false;
+    if (!allowedIds || allowedIds.length === 0) return false;
+    if (allowedIds.includes(this.currentContext.companyId)) return false;
+    this.clear();
+    return true;
+  }
+
   // Private methods
 
   private getFromStorage(): StoredCompanyContext | null {

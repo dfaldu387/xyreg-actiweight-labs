@@ -769,9 +769,9 @@ export function CompanyDocumentListView({
               size="sm"
               onClick={() => onCreateInStudio?.(doc)}
               disabled={isDeleting || disabled}
-              title={doc.document_reference ? "Edit Document" : "Create Document"}
+              title={(() => { const st = (doc.status || "").toLowerCase(); const hasDraft = doc.document_reference?.startsWith("DS-") || (st && st !== "not started" && st !== "n/a"); return hasDraft ? "Edit Draft" : "Create Draft"; })()}
             >
-              <FileEdit className={`h-4 w-4 ${doc.document_reference?.startsWith('DS-') && doc.status?.toLowerCase() !== 'approved' ? 'text-amber-500' : 'text-primary'}`} />
+              <FileEdit className={`h-4 w-4 ${(() => { const st = (doc.status || '').toLowerCase(); const hasDraft = doc.document_reference?.startsWith('DS-') || (st && st !== 'not started' && st !== 'approved' && st !== 'n/a'); return hasDraft ? 'text-amber-500' : 'text-primary'; })()}`} />
             </Button>
             {/* View */}
             {hasFile && onView && (

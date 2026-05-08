@@ -84,12 +84,12 @@ export function LinkedWorkInstructionsSection({
     <Collapsible
       open={open}
       onOpenChange={setOpen}
-      className="border rounded-md bg-muted/30"
+      className="border rounded-md bg-muted/30 w-full min-w-0"
     >
-      <CollapsibleTrigger className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50 rounded-md">
-        <span className="flex items-center gap-2">
+      <CollapsibleTrigger className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50 rounded-md min-w-0">
+        <span className="flex items-center gap-2 min-w-0">
           <ListChecks className="w-4 h-4 text-purple-600" />
-          <span>Linked Work Instructions</span>
+          <span className="truncate">Linked Work Instructions</span>
           {!loading && wis.length > 0 && (
             <span className="text-[10px] font-normal text-muted-foreground">
               ({wis.length})
@@ -100,10 +100,10 @@ export function LinkedWorkInstructionsSection({
           className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </CollapsibleTrigger>
-      <CollapsibleContent className="px-3 pb-3 space-y-2">
-        <p className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+      <CollapsibleContent className="px-3 pb-3 space-y-2 min-w-0">
+        <p className="text-[11px] text-muted-foreground flex items-start gap-1.5 min-w-0">
           <Sparkles className="w-3 h-3 mt-0.5 text-purple-600 shrink-0" />
-          <span>
+          <span className="min-w-0 break-words">
             Foundational SOPs share the same Work Instructions across all
             companies. Open any one to load a per-company copy you can edit.
           </span>
@@ -118,13 +118,13 @@ export function LinkedWorkInstructionsSection({
             No global Work Instructions seeded for this SOP yet.
           </div>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-1 min-w-0">
             {wis.map((wi) => (
               <li
                 key={wi.id}
-                className="flex items-center justify-between gap-2 px-2 py-1.5 rounded border bg-background text-xs"
+                className="flex items-center justify-between gap-2 px-2 py-1.5 rounded border bg-background text-xs min-w-0"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="font-medium truncate">
                     <span className="text-muted-foreground mr-1.5">
                       {wi.wi_number}

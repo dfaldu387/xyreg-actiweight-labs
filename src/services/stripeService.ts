@@ -397,6 +397,7 @@ const STRIPE_SECRET_KEY = import.meta.env.VITE_STRIPE_SECRET_KEY || '';
 export const STRIPE_PRICES = {
     // Base Plans
     CORE_BASE: import.meta.env.VITE_STRIPE_PRICE_CORE_BASE,
+    GENESIS_BASE: import.meta.env.VITE_STRIPE_PRICE_GENESIS_BASE, // €149/mo
     ENTERPRISE: import.meta.env.VITE_STRIPE_PRICE_ENTERPRISE,
 
     // Power Packs (€349/mo each)
@@ -414,6 +415,9 @@ export const STRIPE_PRICES = {
     CORE_EXTRA_MODULE: import.meta.env.VITE_STRIPE_PRICE_CORE_EXTRA_MODULE, // €100/mo (module slot)
     CORE_AI_BOOSTER: import.meta.env.VITE_STRIPE_PRICE_CORE_AI_BOOSTER, // €50/mo
     GENESIS_AI_BOOSTER: import.meta.env.VITE_STRIPE_PRICE_GENESIS_AI_BOOSTER, // €49/mo
+
+    // Consulting Hours
+    CONSULTING_HOURS: import.meta.env.VITE_STRIPE_PRICE_CONSULTING_HOURS, // €1,000/pack (8h)
 
     // Investor Add-ons
     INVESTOR_STARTER: import.meta.env.VITE_STRIPE_PRICE_INVESTOR_STARTER,
@@ -445,7 +449,7 @@ export const SPECIALIST_PRICES: Record<string, number> = {
 
 // Plan tier mapping to Stripe Price IDs
 export const PLAN_PRICE_MAPPING: Record<string, string> = {
-    'genesis': '', // Free plan, no Stripe price
+    'genesis': STRIPE_PRICES.GENESIS_BASE,
     'enterprise': STRIPE_PRICES.ENTERPRISE,
     'genesis_ai_booster': STRIPE_PRICES.GENESIS_AI_BOOSTER,
     'core': STRIPE_PRICES.CORE_BASE,
@@ -699,12 +703,20 @@ export class StripeService {
             // 1. BASE PLAN
             if (!isAddOnOnly) {
                 const tierPriceId = PLAN_PRICE_MAPPING[data.tier];
+                const baseAmountByTier: Record<string, number> = {
+                    core: 49900,    // €499
+                    genesis: 14900, // €149
+                };
+                const baseAmount = baseAmountByTier[data.tier] ?? 0;
+
                 if (tierPriceId) {
                     lineItems.push({
                         priceId: tierPriceId,
                         name: `${data.planName} Base`,
-                        description: 'Core platform subscription',
-                        amount: 49900, // €499 base
+                        description: data.tier === 'genesis'
+                            ? 'Genesis Founder Sandbox subscription'
+                            : 'Core platform subscription',
+                        amount: baseAmount,
                         quantity: 1,
                         isRecurring: true,
                     });
@@ -717,12 +729,14 @@ export class StripeService {
                         quantity: 1,
                         isRecurring: true,
                     });
-                } else if (data.tier === 'core') {
-                    // Fallback for core without price ID
+                } else if (data.tier === 'core' || data.tier === 'genesis') {
+                    // Fallback when Stripe price ID isn't configured for the tier
                     lineItems.push({
                         name: `${data.planName} Base`,
-                        description: 'Core platform subscription',
-                        amount: 49900,
+                        description: data.tier === 'genesis'
+                            ? 'Genesis Founder Sandbox subscription'
+                            : 'Core platform subscription',
+                        amount: baseAmount,
                         quantity: 1,
                         isRecurring: true,
                     });
@@ -734,8 +748,12 @@ export class StripeService {
                 return lineItems;
             }
 
+            // Genesis only allows the AI Booster add-on (handled in section 5 below);
+            // skip Power Packs, specialist modules, and devices that don't apply.
+            const allowAddOns = data.tier !== 'genesis';
+
             // 2. POWER PACKS (Build, Ops, Monitor)
-            if (data.isGrowthSuite) {
+            if (allowAddOns && data.isGrowthSuite) {
                 // All 3 packs at discounted bundle rate (€1,199 instead of €1,047)
                 if (STRIPE_PRICES.GROWTH_SUITE) {
                     lineItems.push({
@@ -756,7 +774,7 @@ export class StripeService {
                         isRecurring: true,
                     });
                 }
-            } else if (data.selectedPacks && data.selectedPacks.length > 0) {
+            } else if (allowAddOns && data.selectedPacks && data.selectedPacks.length > 0) {
                 // Individual packs
                 for (const packId of data.selectedPacks) {
                     const priceId = PACK_PRICE_MAPPING[packId];
@@ -794,7 +812,7 @@ export class StripeService {
             }
 
             // 3. SPECIALIST MODULES (Predicate Finder, IP Patent)
-            if (data.specialistModules?.predicateFinder) {
+            if (allowAddOns && data.specialistModules?.predicateFinder) {
                 if (STRIPE_PRICES.PREDICATE_FINDER) {
                     lineItems.push({
                         priceId: STRIPE_PRICES.PREDICATE_FINDER,
@@ -815,7 +833,7 @@ export class StripeService {
                 }
             }
 
-            if (data.specialistModules?.ipPatent) {
+            if (allowAddOns && data.specialistModules?.ipPatent) {
                 if (STRIPE_PRICES.IP_PATENT) {
                     lineItems.push({
                         priceId: STRIPE_PRICES.IP_PATENT,
@@ -837,7 +855,7 @@ export class StripeService {
             }
 
             // 4. EXTRA DEVICES (€150/mo each)
-            if (data.extraDevices && data.extraDevices > 0) {
+            if (allowAddOns && data.extraDevices && data.extraDevices > 0) {
                 if (STRIPE_PRICES.CORE_EXTRA_DEVICE) {
                     lineItems.push({
                         priceId: STRIPE_PRICES.CORE_EXTRA_DEVICE,

@@ -32,7 +32,7 @@ export default function CompanyChangeControlPage() {
   const { data: ccrs = [], isLoading: ccrsLoading } = useCCRsByCompany(companyId);
 
   const handleCCRClick = (ccr: CCRWithRelations) => {
-    navigate(`/app/change-control/${ccr.id}`);
+    navigate(`/app/company/${companyName}/change-control/${ccr.id}`);
   };
 
   if (companyLoading) {

@@ -66,11 +66,11 @@ export function GenerateWorkInstructionSection({
   };
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="border rounded-md bg-muted/30">
-      <CollapsibleTrigger className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50 rounded-md">
-        <span className="flex items-center gap-2">
+    <Collapsible open={open} onOpenChange={setOpen} className="border rounded-md bg-muted/30 w-full min-w-0">
+      <CollapsibleTrigger className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50 rounded-md min-w-0">
+        <span className="flex items-center gap-2 min-w-0">
           <ListChecks className="w-4 h-4 text-purple-600" />
-          <span>Generate Work Instruction from this SOP</span>
+          <span className="truncate">Generate Work Instruction from this SOP</span>
         </span>
         <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
       </CollapsibleTrigger>

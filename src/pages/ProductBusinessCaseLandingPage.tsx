@@ -6,7 +6,7 @@ import { useProductDetails } from '@/hooks/useProductDetails';
 import { useProductCompanyGuard } from '@/hooks/useProductCompanyGuard';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Globe, BarChart3, Calculator, DollarSign, Map, Layers } from 'lucide-react';
+import { Globe, BarChart3, Calculator, DollarSign, Map, Layers, Sparkles, ArrowRight } from 'lucide-react';
 
 export default function ProductBusinessCaseLandingPage() {
   const { productId } = useParams<{ productId: string }>();
@@ -83,6 +83,13 @@ export default function ProductBusinessCaseLandingPage() {
     }
   ];
 
+  const ventureBlueprintTab = {
+    id: "venture-blueprint",
+    label: "Venture Blueprint",
+    icon: Map,
+    description: "The strategic meta-layer that ties together every specialist area below — author once, propagate everywhere.",
+  };
+
   const businessCaseTabs = [
     {
       id: "markets",
@@ -90,13 +97,6 @@ export default function ProductBusinessCaseLandingPage() {
       icon: Globe,
       description: "Define target markets and regulatory pathways for this product",
       color: "from-blue-500 to-purple-600"
-    },
-    {
-      id: "venture-blueprint",
-      label: "Venture Blueprint",
-      icon: Map,
-      description: "Strategic roadmap and go-to-market planning",
-      color: "from-teal-500 to-cyan-600"
     },
     {
       id: "business-canvas",
@@ -158,6 +158,35 @@ export default function ProductBusinessCaseLandingPage() {
             </TabsList>
             
             <TabsContent value="overview" className="space-y-6">
+              {/* Venture Blueprint — meta-layer hero */}
+              <button
+                type="button"
+                onClick={() => navigate(`/app/product/${productId}/business-case?tab=${ventureBlueprintTab.id}`)}
+                className="w-full text-left group relative overflow-hidden rounded-xl border border-amber-300/60 bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 dark:from-amber-950/30 dark:via-yellow-950/20 dark:to-orange-950/30 p-6 hover:shadow-lg transition-all"
+              >
+                <div className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-900/40 px-2 py-1 rounded-full">
+                  <Sparkles className="h-3 w-3" /> Meta-layer
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="min-w-14 h-14 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-md">
+                    <ventureBlueprintTab.icon className="h-7 w-7" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-xl font-bold mb-1 flex items-center gap-2">
+                      {ventureBlueprintTab.label}
+                      <ArrowRight className="h-4 w-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-2xl">{ventureBlueprintTab.description}</p>
+                  </div>
+                </div>
+              </button>
+
+              <div className="flex items-center gap-3 pt-2">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Specialist areas</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {businessCaseTabs.map((tab) => (
                   <div 

@@ -445,7 +445,7 @@ export function useRegistrationFlow(options?: RegistrationFlowOptions) {
         navigate(`/company-processing?company=${encodeURIComponent(state.clientDetails.companyName)}&userType=${state.selectedUserType || 'business'}`);
 
         // Check if this is a paid plan
-        const isPaidPlan = state.selectedPlan.tier && state.selectedPlan.tier !== 'genesis' && state.selectedPlan.monthlyPrice > 0;
+        const isPaidPlan = !!state.selectedPlan.tier && state.selectedPlan.monthlyPrice > 0;
 
         if (isPaidPlan) {
           // PAID PLAN: Store registration data for after payment, do NOT create company yet
@@ -705,7 +705,7 @@ export function useRegistrationFlow(options?: RegistrationFlowOptions) {
       sessionStorage.setItem('selected-plan', JSON.stringify(state.selectedPlan));
 
       // Check if this is a paid plan
-      const isPaidPlan = state.selectedPlan.tier && state.selectedPlan.tier !== 'genesis' && state.selectedPlan.monthlyPrice > 0;
+      const isPaidPlan = !!state.selectedPlan.tier && state.selectedPlan.monthlyPrice > 0;
 
       if (isPaidPlan) {
         // PAID PLAN: Store registration data for after payment, do NOT create company yet

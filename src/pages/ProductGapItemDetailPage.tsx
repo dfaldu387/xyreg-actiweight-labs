@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useDeviceComponents } from '@/hooks/useDeviceComponents';
-import { ArrowLeft, ArrowRight, Zap, CheckCircle, FileText, ShieldCheck, Cpu } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Zap, CheckCircle, FileText, ShieldCheck, Cpu, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { findAnnexIIConfig } from '@/config/gapAnnexIISections';
 import { GapItem } from '@/components/product/gap-analysis/GapItem';
@@ -34,8 +34,10 @@ import { UKCA_MDR_FORM_FIELDS } from '@/config/gapUKCAMDRFormFields';
 import { MEPSW_FORM_FIELDS } from '@/config/gapMEPSWFormFields';
 import { KFDA_FORM_FIELDS } from '@/config/gapKFDAFormFields';
 import { PPWR_FORM_FIELDS } from '@/config/gapPPWRFormFields';
+import { DIGA_FORM_FIELDS } from '@/config/gapDiGAFormFields';
 import { IEC_60601_SSOT_FIELD_MAP } from '@/config/gapIEC60601SsotMapping';
 import { MDR_ANNEX_II_DERIVED_SSOT_FIELDS } from '@/config/gapAnnexIISsotMapping';
+import { DIGA_DERIVED_SSOT_FIELDS } from '@/config/gapDiGASsotMapping';
 import type { DerivedSsotFields } from '@/components/product/gap-analysis/IEC60601ClauseForm';
 import { IEC_60601_SECTIONS, IEC_60601_GROUPS } from '@/config/gapIEC60601Sections';
 import { ANNEX_II_SECTIONS, ANNEX_II_GROUPS } from '@/config/gapAnnexIISections';
@@ -62,6 +64,7 @@ import { UKCA_MDR_SECTIONS, UKCA_MDR_GROUPS } from '@/config/gapUKCAMDRSections'
 import { MEPSW_SECTIONS, MEPSW_GROUPS } from '@/config/gapMEPSWSections';
 import { KFDA_SECTIONS, KFDA_GROUPS } from '@/config/gapKFDASections';
 import { PPWR_SECTIONS, PPWR_GROUPS } from '@/config/gapPPWRSections';
+import { DIGA_SECTIONS, DIGA_GROUPS } from '@/config/gapDiGASections';
 import { GenericGapSidebar, type ActiveSubStep } from '@/components/company/gap-analysis/GenericGapSidebar';
 import type { GenericSectionItem, GenericSectionGroup } from '@/components/company/gap-analysis/GenericGapLaunchView';
 import type { LucideIcon } from 'lucide-react';
@@ -152,6 +155,9 @@ function getFrameworkConfig(fw: string): FrameworkConfig | null {
   if (fwLower.includes('ppwr') || fw === 'PPWR') {
     return { sections: PPWR_SECTIONS, groups: PPWR_GROUPS, label: 'PPWR', icon: FileText, frameworkFilter: fw };
   }
+  if (fwLower.includes('diga') || fw === 'DIGA_FAST_TRACK') {
+    return { sections: DIGA_SECTIONS, groups: DIGA_GROUPS, label: 'DiGA Fast-Track', icon: Smartphone, frameworkFilter: fw };
+  }
   return null;
 }
 
@@ -233,11 +239,13 @@ export default function ProductGapItemDetailPage() {
     if ((fwLower.includes('mepsw') || fwLower.includes('mepv')) && MEPSW_FORM_FIELDS[sectionStr]) return MEPSW_FORM_FIELDS;
     if (fwLower.includes('kfda') && KFDA_FORM_FIELDS[sectionStr]) return KFDA_FORM_FIELDS;
     if (fwLower.includes('ppwr') && PPWR_FORM_FIELDS[sectionStr]) return PPWR_FORM_FIELDS;
+    if (fwLower.includes('diga') && DIGA_FORM_FIELDS[sectionStr]) return DIGA_FORM_FIELDS;
     return null;
   })();
   const hasFormConfig = !!resolvedFormFields;
   const isIEC60601_1 = fwConfig?.frameworkFilter === 'IEC 60601-1';
   const isAnnexII = ['MDR', 'MDR_ANNEX_II', 'MDR Annex II'].includes(fwConfig?.frameworkFilter || '');
+  const isDiGA = fwConfig?.label === 'DiGA Fast-Track';
 
   const { data: allFrameworkItems = [] } = useQuery({
     queryKey: ['gap-analysis-items-framework', productId, fwConfig?.frameworkFilter],
@@ -351,8 +359,25 @@ export default function ProductGapItemDetailPage() {
       base.variants_description = { value: variantName, sourceLabel: 'Device Definition', readOnly: true };
     }
 
+    // DiGA SSOT derived fields
+    if (isDiGA && productData) {
+      const pd = productData as any;
+      const purposeData = (pd.intended_purpose_data || {}) as Record<string, any>;
+      const tradeName = [pd.name, pd.trade_name].filter(Boolean).join(' / ') || '';
+      const contraindications = Array.isArray(pd.contraindications) ? pd.contraindications.join('; ') : '';
+      const basicUdiDi = pd.eudamed_basic_udi_di_code || '';
+      const riskClass = pd.class || '';
+      base.product_trade_name = { value: tradeName, sourceLabel: 'Device Definition', readOnly: true };
+      base.intended_purpose = { value: purposeData.intendedPurpose || '', sourceLabel: 'Purpose', readOnly: true };
+      base.patient_population = { value: purposeData.patientPopulation || '', sourceLabel: 'Purpose', readOnly: true };
+      base.contraindications = { value: contraindications, sourceLabel: 'Purpose', readOnly: true };
+      base.basic_udi_di = { value: basicUdiDi, sourceLabel: 'Identification', readOnly: true };
+      base.udi_di = { value: basicUdiDi, sourceLabel: 'Identification', readOnly: true };
+      base.mdr_class = { value: riskClass, sourceLabel: 'Classification', readOnly: true };
+    }
+
     return base;
-  }, [productData, isAnnexII]);
+  }, [productData, isAnnexII, isDiGA]);
 
   // Fetch device components for applied parts SSOT
   const { data: deviceComponentsRaw } = useDeviceComponents(productId);
@@ -606,7 +631,7 @@ export default function ProductGapItemDetailPage() {
                 onSsotEnergyTypeChange={isIEC60601_1 ? ssotTechSpecs['energyTransferType']?.onChange : undefined}
                 deviceComponents={isIEC60601_1 ? deviceComponents : undefined}
                 ssotTechSpecs={isIEC60601_1 ? ssotTechSpecs : undefined}
-                derivedSsotFields={(isIEC60601_1 || isAnnexII) ? derivedSsotFields : undefined}
+                derivedSsotFields={(isIEC60601_1 || isAnnexII || isDiGA) ? derivedSsotFields : undefined}
                 ssotEssentialPerformance={isIEC60601_1 ? ssotEssentialPerformance : undefined}
                 formReadOnly={isInheritedItem || (item as any).status === 'not_applicable'}
                 frameworkId={fwConfig?.frameworkFilter}

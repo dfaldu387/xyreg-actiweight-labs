@@ -27,8 +27,12 @@ export function useUserComments(documentId?: string) {
   // Realtime subscription
   useEffect(() => {
     if (!documentId) return;
+    const uniqueId =
+      (typeof crypto !== "undefined" && "randomUUID" in crypto)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const channel = supabase
-      .channel(`duc:${documentId}`)
+      .channel(`duc:${documentId}:${uniqueId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "document_user_comments", filter: `document_id=eq.${documentId}` },

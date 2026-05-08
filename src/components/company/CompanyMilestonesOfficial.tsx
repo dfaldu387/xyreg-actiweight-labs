@@ -97,65 +97,61 @@ const parseLocalDate = (val: string | Date): Date => {
   return new Date(val);
 };
 
-const dayStyle = {
-  backgroundColor: "#e8e8e8",
+// Format a Date as YYYY-MM-DD using its UTC components.
+// Pairs with parseLocalDate so a stored string round-trips to the same calendar day
+// the user sees in the Gantt (which renders in UTC).
+const formatGanttDate = (d: Date): string => {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 };
 
-const hoursTemplate = (date: Date) => {
-  return `${date.getHours()}:${date.getMinutes()}`;
-};
-
-// Zoom levels configuration
+// Zoom levels configuration — kept in sync with src/components/gantt-chart/config/ganttChartConfig.ts
+// so the company and device Gantts share the same zoom UX.
 const zoomLevels = [
   {
-    name: "Years",
-    minCellWidth: 200,
-    scales: [{ unit: "year", step: 1, format: "yyyy" }],
-  },
-  {
-    name: "3 Months",
-    minCellWidth: 150,
-    scales: [
-      { unit: "year", step: 1, format: "yyyy" },
-      { unit: "quarter", step: 1, format: "QQQQ" },
-    ],
-  },
-  {
-    name: "Months",
-    minCellWidth: 250,
+    name: "Quarters",
+    minCellWidth: 220,
+    maxCellWidth: 400,
     scales: [
       { unit: "quarter", step: 1, format: "QQQQ" },
       { unit: "month", step: 1, format: "MMMM yyyy" },
     ],
   },
   {
-    name: "Weeks",
-    minCellWidth: 100,
+    name: "Months",
+    minCellWidth: 250,
+    maxCellWidth: 400,
     scales: [
       { unit: "month", step: 1, format: "MMMM yyyy" },
       { unit: "week", step: 1, format: "'week' w" },
     ],
   },
   {
+    name: "Weeks",
+    minCellWidth: 100,
+    maxCellWidth: 400,
+    scales: [
+      { unit: "week", step: 1, format: "'week' w" },
+      { unit: "day", step: 1, format: "MMM d" },
+    ],
+  },
+  {
     name: "Days",
+    minCellWidth: 50,
     maxCellWidth: 200,
     scales: [
-      { unit: "month", step: 1, format: "MMMM yyyy" },
-      { unit: "day", step: 1, format: "d", css: dayStyle },
+      { unit: "day", step: 1, format: "MMM d" },
+      { unit: "hour", step: 6, format: "ha" },
     ],
   },
   {
-    name: "Hours (6h)",
-    minCellWidth: 25,
+    name: "Hours",
+    minCellWidth: 30,
+    maxCellWidth: 120,
     scales: [
-      { unit: "day", step: 1, format: "MMM d", css: dayStyle },
-      { unit: "hour", step: 6, format: hoursTemplate },
-    ],
-  },
-  {
-    name: "Hours (1h)",
-    scales: [
-      { unit: "day", step: 1, format: "MMM d", css: dayStyle },
+      { unit: "day", step: 1, format: "MMM d" },
       { unit: "hour", step: 1, format: "HH:mm" },
     ],
   },
@@ -246,7 +242,10 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
   const [error, setError] = useState<string | null>(null);
   const ganttApiRef = useRef<any>(null);
   const [apiReady, setApiReady] = useState(false);
-  const [currentZoomLevel, setCurrentZoomLevel] = useState(1); // Default to Months
+  // Zoom levels: 0=Quarters, 1=Months, 2=Weeks, 3=Days, 4=Hours
+  const [currentZoomLevel, setCurrentZoomLevel] = useState(
+    Math.max(0, zoomLevels.findIndex((z) => z.name === "Quarters"))
+  );
   const [ganttLinks, setGanttLinks] = useState<any[]>([]);
   const [individualDocuments, setIndividualDocuments] = useState<
     Record<string, IndividualDocument[]>
@@ -849,8 +848,8 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
           });
     
           // Update dragged dates ref + recalculate parent summary
-          const dbStart = newTargetStart.toISOString().split('T')[0];
-          const dbEnd = newTargetEnd.toISOString().split('T')[0];
+          const dbStart = formatGanttDate(newTargetStart);
+          const dbEnd = formatGanttDate(newTargetEnd);
 
           if (targetId.startsWith('ent-doc-')) {
             const id = targetId.replace('ent-doc-', '');
@@ -1038,8 +1037,8 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
             dStart = currentStart;
             dEnd = currentEnd;
           } else if (datesRef[item.id]) {
-            dStart = new Date(datesRef[item.id][dateFields.start]);
-            dEnd = new Date(datesRef[item.id][dateFields.end]);
+            dStart = parseLocalDate(datesRef[item.id][dateFields.start]);
+            dEnd = parseLocalDate(datesRef[item.id][dateFields.end]);
           } else {
             const taskInGantt = api.getTask(`${childPrefix}${item.id}`);
             if (taskInGantt) {
@@ -1108,8 +1107,8 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
 
       const startDate = newStart instanceof Date ? new Date(newStart.getTime()) : new Date(newStart);
       const endDate = newEnd instanceof Date ? new Date(newEnd.getTime()) : new Date(newEnd);
-      const dbStartStr = startDate.toISOString().split('T')[0];
-      const dbEndStr = endDate.toISOString().split('T')[0];
+      const dbStartStr = formatGanttDate(startDate);
+      const dbEndStr = formatGanttDate(endDate);
 
       // === DOCUMENTS ===
       if (taskId.startsWith('ent-doc-')) {
@@ -1262,10 +1261,10 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
         );
         if (phases.length > 0) {
           const phaseStartDates = phases
-            .map((phase) => phase.start_date ? new Date(phase.start_date) : null)
+            .map((phase) => phase.start_date ? parseLocalDate(phase.start_date) : null)
             .filter(Boolean) as Date[];
           const phaseEndDates = phases
-            .map((phase) => phase.end_date ? new Date(phase.end_date) : null)
+            .map((phase) => phase.end_date ? parseLocalDate(phase.end_date) : null)
             .filter(Boolean) as Date[];
 
           if (phaseStartDates.length > 0) {
@@ -1346,9 +1345,9 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
     // === 2. AUDITS ===
     if (enterpriseAudits.length > 0) {
       const auditDates = enterpriseAudits.map(a => {
-        const aStart = a.start_date ? new Date(a.start_date) : companyStart;
-        const aEnd = a.end_date ? new Date(a.end_date)
-          : a.deadline_date ? new Date(a.deadline_date)
+        const aStart = a.start_date ? parseLocalDate(a.start_date) : companyStart;
+        const aEnd = a.end_date ? parseLocalDate(a.end_date)
+          : a.deadline_date ? parseLocalDate(a.deadline_date)
           : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
         return { start: aStart, end: aEnd };
       });
@@ -1367,11 +1366,11 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
 
       [...enterpriseAudits].sort((a, b) => a.audit_name.localeCompare(b.audit_name)).forEach(audit => {
         const dragged = draggedAuditDatesRef.current[audit.id];
-        const aStart = dragged ? new Date(dragged.start_date)
-          : audit.start_date ? new Date(audit.start_date) : auditsStart;
-        const aEnd = dragged ? new Date(dragged.end_date)
-          : audit.end_date ? new Date(audit.end_date)
-          : audit.deadline_date ? new Date(audit.deadline_date)
+        const aStart = dragged ? parseLocalDate(dragged.start_date)
+          : audit.start_date ? parseLocalDate(audit.start_date) : auditsStart;
+        const aEnd = dragged ? parseLocalDate(dragged.end_date)
+          : audit.end_date ? parseLocalDate(audit.end_date)
+          : audit.deadline_date ? parseLocalDate(audit.deadline_date)
           : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
         tasks.push({
           id: `ent-audit-${audit.id}`,
@@ -1387,8 +1386,8 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
     // === 3. ACTIVITIES ===
     if (enterpriseActivities.length > 0) {
       const actDates = enterpriseActivities.map(a => {
-        const aStart = a.start_date ? new Date(a.start_date) : companyStart;
-        const aEnd = a.end_date ? new Date(a.end_date)
+        const aStart = a.start_date ? parseLocalDate(a.start_date) : companyStart;
+        const aEnd = a.end_date ? parseLocalDate(a.end_date)
           : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
         return { start: aStart, end: aEnd };
       });
@@ -1407,10 +1406,10 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
 
       [...enterpriseActivities].sort((a, b) => a.name.localeCompare(b.name)).forEach(activity => {
         const dragged = draggedActivityDatesRef.current[activity.id];
-        const aStart = dragged ? new Date(dragged.start_date)
-          : activity.start_date ? new Date(activity.start_date) : activitiesStart;
-        const aEnd = dragged ? new Date(dragged.end_date)
-          : activity.end_date ? new Date(activity.end_date)
+        const aStart = dragged ? parseLocalDate(dragged.start_date)
+          : activity.start_date ? parseLocalDate(activity.start_date) : activitiesStart;
+        const aEnd = dragged ? parseLocalDate(dragged.end_date)
+          : activity.end_date ? parseLocalDate(activity.end_date)
           : new Date(aStart.getTime() + 30 * 24 * 60 * 60 * 1000);
         tasks.push({
           id: `ent-activity-${activity.id}`,
@@ -1452,10 +1451,10 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
       );
       if (productPhases.length > 0) {
         const phaseStartDates = productPhases
-          .map((phase) => phase.start_date ? new Date(phase.start_date) : null)
+          .map((phase) => phase.start_date ? parseLocalDate(phase.start_date) : null)
           .filter(Boolean) as Date[];
         const phaseEndDates = productPhases
-          .map((phase) => phase.end_date ? new Date(phase.end_date) : null)
+          .map((phase) => phase.end_date ? parseLocalDate(phase.end_date) : null)
           .filter(Boolean) as Date[];
 
         if (phaseStartDates.length > 0) {
@@ -1483,14 +1482,14 @@ export function CompanyMilestonesOfficial({ companyName }: CompanyMilestonesProp
     const allRangeStarts = [companyStart, entStart];
     const allRangeEnds = [companyEnd, entEnd];
     if (enterpriseAudits.length > 0) {
-      const asDates = enterpriseAudits.map(a => a.start_date ? new Date(a.start_date) : companyStart);
-      const aeDates = enterpriseAudits.map(a => a.end_date ? new Date(a.end_date) : a.deadline_date ? new Date(a.deadline_date) : companyEnd);
+      const asDates = enterpriseAudits.map(a => a.start_date ? parseLocalDate(a.start_date) : companyStart);
+      const aeDates = enterpriseAudits.map(a => a.end_date ? parseLocalDate(a.end_date) : a.deadline_date ? parseLocalDate(a.deadline_date) : companyEnd);
       allRangeStarts.push(new Date(Math.min(...asDates.map(d => d.getTime()))));
       allRangeEnds.push(new Date(Math.max(...aeDates.map(d => d.getTime()))));
     }
     if (enterpriseActivities.length > 0) {
-      const asDates = enterpriseActivities.map(a => a.start_date ? new Date(a.start_date) : companyStart);
-      const aeDates = enterpriseActivities.map(a => a.end_date ? new Date(a.end_date) : companyEnd);
+      const asDates = enterpriseActivities.map(a => a.start_date ? parseLocalDate(a.start_date) : companyStart);
+      const aeDates = enterpriseActivities.map(a => a.end_date ? parseLocalDate(a.end_date) : companyEnd);
       allRangeStarts.push(new Date(Math.min(...asDates.map(d => d.getTime()))));
       allRangeEnds.push(new Date(Math.max(...aeDates.map(d => d.getTime()))));
     }

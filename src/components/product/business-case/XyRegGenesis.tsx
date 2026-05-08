@@ -266,6 +266,39 @@ export function XyRegGenesis({ disabled = false }: XyRegGenesisProps) {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Phase-out banner: Genesis is being consolidated into Venture Blueprint. */}
+      <Card className="border-indigo-200/70 dark:border-indigo-800/50 bg-gradient-to-r from-indigo-50/70 to-blue-50/70 dark:from-indigo-950/30 dark:to-blue-950/20">
+        <CardContent className="py-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-3 min-w-0">
+              <Send className="h-5 w-5 text-indigo-600 dark:text-indigo-400 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-foreground">
+                  Genesis is moving into Venture Blueprint
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Open the <strong>Investor Essentials</strong> track in Venture
+                  Blueprint to continue here in context — same data, same SSOT.
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() =>
+                navigate(
+                  `/app/product/${productId}/business-case?tab=venture-blueprint&track=investor`,
+                )
+              }
+              className="gap-1.5 bg-indigo-600 hover:bg-indigo-700"
+            >
+              Open Investor Essentials
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Action Button Row */}
       <div className="flex justify-end">
         <Button 

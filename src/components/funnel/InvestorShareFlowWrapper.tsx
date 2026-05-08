@@ -78,7 +78,8 @@ function InvestorShareFlowWrapperInner({ children, productId }: InvestorShareFlo
   const isGapAnalysisFlow = returnTo === 'gap-analysis';
   const isGuidedFlow = isInInvestorFlow || isGapAnalysisFlow;
   // Show drawer for genesis tab OR when in investor flow
-  const shouldShowPreviewDrawer = isGenesisTab || isInInvestorFlow;
+  const isVentureBlueprintTab = tab === 'venture-blueprint';
+  const shouldShowPreviewDrawer = isGenesisTab || isVentureBlueprintTab || isInInvestorFlow;
 
   const { data: product } = useProductDetails(productId);
   const companyId = product?.company_id || '';

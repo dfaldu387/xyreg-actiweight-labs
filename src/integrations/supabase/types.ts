@@ -2451,6 +2451,50 @@ export type Database = {
           },
         ]
       }
+      ccr_reviewer_assignments: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          approved_perspectives: string[]
+          ccr_id: string
+          created_at: string
+          id: string
+          perspectives: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_perspectives?: string[]
+          ccr_id: string
+          created_at?: string
+          id?: string
+          perspectives?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          approved_perspectives?: string[]
+          ccr_id?: string
+          created_at?: string
+          id?: string
+          perspectives?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ccr_reviewer_assignments_ccr_id_fkey"
+            columns: ["ccr_id"]
+            isOneToOne: false
+            referencedRelation: "change_control_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       certifications: {
         Row: {
           comments: Json | null
@@ -3901,11 +3945,14 @@ export type Database = {
           default_markets: Json | null
           department_structure: Json | null
           description: string | null
+          document_logo_original_url: string | null
+          document_logo_url: string | null
           email: string | null
           id: string
           importers: Json | null
           inserted_at: string
           is_archived: boolean
+          logo_original_url: string | null
           logo_url: string | null
           name: string
           notified_body_id: string | null
@@ -3941,11 +3988,14 @@ export type Database = {
           default_markets?: Json | null
           department_structure?: Json | null
           description?: string | null
+          document_logo_original_url?: string | null
+          document_logo_url?: string | null
           email?: string | null
           id?: string
           importers?: Json | null
           inserted_at?: string
           is_archived?: boolean
+          logo_original_url?: string | null
           logo_url?: string | null
           name: string
           notified_body_id?: string | null
@@ -3981,11 +4031,14 @@ export type Database = {
           default_markets?: Json | null
           department_structure?: Json | null
           description?: string | null
+          document_logo_original_url?: string | null
+          document_logo_url?: string | null
           email?: string | null
           id?: string
           importers?: Json | null
           inserted_at?: string
           is_archived?: boolean
+          logo_original_url?: string | null
           logo_url?: string | null
           name?: string
           notified_body_id?: string | null
@@ -6385,6 +6438,7 @@ export type Database = {
           name: string
           public_url: string | null
           scope: string | null
+          sections: Json | null
           tech_applicability: string | null
           template_category: string | null
           updated_at: string | null
@@ -6407,6 +6461,7 @@ export type Database = {
           name: string
           public_url?: string | null
           scope?: string | null
+          sections?: Json | null
           tech_applicability?: string | null
           template_category?: string | null
           updated_at?: string | null
@@ -6429,6 +6484,7 @@ export type Database = {
           name?: string
           public_url?: string | null
           scope?: string | null
+          sections?: Json | null
           tech_applicability?: string | null
           template_category?: string | null
           updated_at?: string | null
@@ -8950,6 +9006,39 @@ export type Database = {
         }
         Relationships: []
       }
+      dynamic_products: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          metadata: Json
+          product_key: string
+          sort_order: number
+          stripe_product_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          product_key: string
+          sort_order?: number
+          stripe_product_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          product_key?: string
+          sort_order?: number
+          stripe_product_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ehds_anonymization_profiles: {
         Row: {
           applied_by: string | null
@@ -10810,6 +10899,7 @@ export type Database = {
           updated_at: string
           user_agent: string | null
           user_id: string | null
+          videos_url: string[] | null
           viewport_size: string | null
         }
         Insert: {
@@ -10832,6 +10922,7 @@ export type Database = {
           updated_at?: string
           user_agent?: string | null
           user_id?: string | null
+          videos_url?: string[] | null
           viewport_size?: string | null
         }
         Update: {
@@ -10854,6 +10945,7 @@ export type Database = {
           updated_at?: string
           user_agent?: string | null
           user_id?: string | null
+          videos_url?: string[] | null
           viewport_size?: string | null
         }
         Relationships: [
@@ -11499,6 +11591,7 @@ export type Database = {
       gap_template_items: {
         Row: {
           applicability_rationale: string | null
+          applicability_rule: Json | null
           applicable_phases: Json | null
           applicable_standards: Json | null
           associated_standards: string | null
@@ -11522,11 +11615,13 @@ export type Database = {
           labeling_owner: string | null
           mfg_ops_owner: string | null
           other_owner: string | null
+          parent_item_id: string | null
           priority: string | null
           qa_ra_owner: string | null
           question_number: string | null
           rd_owner: string | null
           recommended_teams: string | null
+          regulatory_dna_attributes: Json | null
           requirement_summary: string | null
           requirement_text: string
           sort_order: number | null
@@ -11536,6 +11631,7 @@ export type Database = {
         }
         Insert: {
           applicability_rationale?: string | null
+          applicability_rule?: Json | null
           applicable_phases?: Json | null
           applicable_standards?: Json | null
           associated_standards?: string | null
@@ -11559,11 +11655,13 @@ export type Database = {
           labeling_owner?: string | null
           mfg_ops_owner?: string | null
           other_owner?: string | null
+          parent_item_id?: string | null
           priority?: string | null
           qa_ra_owner?: string | null
           question_number?: string | null
           rd_owner?: string | null
           recommended_teams?: string | null
+          regulatory_dna_attributes?: Json | null
           requirement_summary?: string | null
           requirement_text: string
           sort_order?: number | null
@@ -11573,6 +11671,7 @@ export type Database = {
         }
         Update: {
           applicability_rationale?: string | null
+          applicability_rule?: Json | null
           applicable_phases?: Json | null
           applicable_standards?: Json | null
           associated_standards?: string | null
@@ -11596,11 +11695,13 @@ export type Database = {
           labeling_owner?: string | null
           mfg_ops_owner?: string | null
           other_owner?: string | null
+          parent_item_id?: string | null
           priority?: string | null
           qa_ra_owner?: string | null
           question_number?: string | null
           rd_owner?: string | null
           recommended_teams?: string | null
+          regulatory_dna_attributes?: Json | null
           requirement_summary?: string | null
           requirement_text?: string
           sort_order?: number | null
@@ -11609,6 +11710,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "gap_template_items_parent_item_id_fkey"
+            columns: ["parent_item_id"]
+            isOneToOne: false
+            referencedRelation: "gap_template_items"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "gap_template_items_template_id_fkey"
             columns: ["template_id"]
@@ -26145,6 +26253,75 @@ export type Database = {
           },
         ]
       }
+      tenant_configs: {
+        Row: {
+          allow_company_ids: string[]
+          branch_name: string | null
+          company_id: string | null
+          github_base_branch: string | null
+          id: string
+          inserted_at: string
+          key: string
+          last_pr_created_at: string | null
+          last_pr_number: number | null
+          last_pr_url: string | null
+          name: string
+          pr_automation_enabled: boolean
+          stripe_id: string | null
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          allow_company_ids?: string[]
+          branch_name?: string | null
+          company_id?: string | null
+          github_base_branch?: string | null
+          id?: string
+          inserted_at?: string
+          key: string
+          last_pr_created_at?: string | null
+          last_pr_number?: number | null
+          last_pr_url?: string | null
+          name: string
+          pr_automation_enabled?: boolean
+          stripe_id?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          allow_company_ids?: string[]
+          branch_name?: string | null
+          company_id?: string | null
+          github_base_branch?: string | null
+          id?: string
+          inserted_at?: string
+          key?: string
+          last_pr_created_at?: string | null
+          last_pr_number?: number | null
+          last_pr_url?: string | null
+          name?: string
+          pr_automation_enabled?: boolean
+          stripe_id?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_configs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_configs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "company_dashboard_summary"
+            referencedColumns: ["company_id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           admin_email: string
@@ -28629,6 +28806,7 @@ export type Database = {
         Returns: string
       }
       can_manage_user_profiles: { Args: never; Returns: boolean }
+      canonicalize_sop_id: { Args: { legacy: string }; Returns: string }
       check_phase_system_health: {
         Args: never
         Returns: {
@@ -29241,6 +29419,10 @@ export type Database = {
           version: string
         }[]
       }
+      get_tenant_allow_company_ids: {
+        Args: { tenant_key: string }
+        Returns: string[]
+      }
       get_user_role_in_company: {
         Args: { p_company_id: string; p_user_id: string }
         Returns: {
@@ -29432,6 +29614,7 @@ export type Database = {
         Args: { p_file_id: string }
         Returns: undefined
       }
+      sop_subprefix: { Args: { canonical: string }; Returns: string }
       standardize_company_phases: {
         Args: { target_company_id: string }
         Returns: {

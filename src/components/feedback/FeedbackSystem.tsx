@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FeedbackButton } from './FeedbackButton';
 // import { ScreenshotCapture } from './ScreenshotCapture';
 import { SimpleScreenshot } from './SimpleScreenshot';
 import { FeedbackModal, type FeedbackData } from './FeedbackModal';
+import { CursorHighlightOverlay } from './CursorHighlightOverlay';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
@@ -13,6 +14,29 @@ export function FeedbackSystem() {
   const [showModal, setShowModal] = useState(false);
   const [screenshot, setScreenshot] = useState('');
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const handleRecordingChange = (recording: boolean) => {
+    setIsRecording(recording);
+    if (recording) {
+      // Hide the dialog so it isn't part of the recording.
+      setShowModal(false);
+    } else {
+      // Recording finished — bring the dialog back so the user sees the new video.
+      setShowModal(true);
+    }
+  };
+
+  // Show a recording indicator in the tab title — visible to the user but not
+  // captured (browser chrome / tab bar isn't in the recording).
+  useEffect(() => {
+    if (!isRecording) return;
+    const original = document.title;
+    document.title = `● REC — ${original}`;
+    return () => {
+      document.title = original;
+    };
+  }, [isRecording]);
 
   const handleFeedbackClick = () => {
     setShowModal(true);
@@ -81,7 +105,7 @@ export function FeedbackSystem() {
 
       // Upload all screenshots to storage
       const imagesToUpload = feedback.screenshots?.length ? feedback.screenshots : (feedback.screenshot ? [feedback.screenshot] : []);
-      
+
       for (const imageData of imagesToUpload) {
         if (!imageData) continue;
         const screenshotFile = new File(
@@ -101,8 +125,27 @@ export function FeedbackSystem() {
 
         screenshotUrls.push(uploadData.path);
       }
-      
+
       screenshotUrl = screenshotUrls[0] || null;
+
+      // Upload all videos to the dedicated bucket
+      const videosUrl: string[] = [];
+      for (const v of feedback.videos || []) {
+        if (!v?.blob) continue;
+        const ext = v.filename.split('.').pop() || 'webm';
+        const safeName = `feedback-${Date.now()}-${videosUrl.length}.${ext}`;
+        const { data: videoUpload, error: videoError } = await supabase.storage
+          .from('feedback-videos')
+          .upload(`${session.user.id}/${safeName}`, v.blob, {
+            contentType: v.blob.type || 'video/webm',
+            upsert: false,
+          });
+        if (videoError) {
+          console.error('Video upload error:', videoError);
+          throw videoError;
+        }
+        videosUrl.push(videoUpload.path);
+      }
 
       // Insert feedback data directly into the database
       const insertData: any = {
@@ -112,6 +155,7 @@ export function FeedbackSystem() {
         description: feedback.description,
         screenshot_url: screenshotUrl,
         screenshot_urls: screenshotUrls,
+        videos_url: videosUrl,
         company_id: feedback.company_id,
       };
 
@@ -185,7 +229,16 @@ export function FeedbackSystem() {
         onCaptureScreen={handleCaptureScreen}
         onClearScreenshot={handleClearScreenshot}
         isCapturing={isCapturing}
+        onRecordingChange={handleRecordingChange}
       />
+
+      {/* Cursor highlight + click ripples — only while recording.
+          The pill (in-app stop button) is intentionally NOT rendered here:
+          getDisplayMedia captures the page DOM, so anything we draw in the
+          page would land in the recording. The user stops via Chrome's
+          native "Stop sharing" toolbar (browser chrome — not captured),
+          via the auto-timeout, or by closing the shared tab. */}
+      {isRecording && <CursorHighlightOverlay />}
     </>
   );
 }

@@ -150,7 +150,12 @@ export function NotificationBell() {
       }
     }
 
-    if (notification.source === 'app' && notification.category === 'review' && currentCompanyName) {
+    if (
+      notification.source === 'app' &&
+      notification.category === 'review' &&
+      notification.type !== 'ccr_review_assigned' &&
+      currentCompanyName
+    ) {
       const entityId = notification.entity_id || '';
       // Add timestamp to force re-trigger when already on the review page
       const isApproval = notification.type === 'approval_assigned';

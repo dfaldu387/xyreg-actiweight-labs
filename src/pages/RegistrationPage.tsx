@@ -36,13 +36,6 @@ export default function RegistrationPage() {
       navigate('/investor/register');
       return;
     }
-    if (plan.tier === 'genesis') {
-      // Redirect to xyreg.com/genesis with current search params + redirect source
-      const params = new URLSearchParams(searchParams);
-      params.set('redirectfrom', window.location.host || 'app.xyreg.com');
-      window.location.href = `https://xyreg.com/genesis?${params.toString()}`;
-      return;
-    }
     handlePlanSelection(plan);
   }, [navigate, handlePlanSelection, searchParams]);
 

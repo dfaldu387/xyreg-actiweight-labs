@@ -1,44 +1,62 @@
-# Generalised role-driven training derivation
+## Plan: Foundation SOP correction + CCR description sync
 
-The previous plan special-cased Marcus. Correcting course: the fix is structural — derive recommended training from each user's defined role on `user_company_access`, and where the role is undefined, force the user to define it before training can be recommended. No per-person backfills.
+Two independent fixes addressing what you saw on `/change-control/a1fa29dd-…`.
 
-## Current data reality
-`user_company_access` already carries: `is_internal`, `department` (free text), `functional_area` (enum), `external_role` (enum). For Actiweight today:
-- 2 consultants → `external_role='consultant'`, no department.
-- Marcus → `is_internal=true`, `department='Internal'`, `functional_area=NULL`. "Internal" is a bucket, not a role; no job title is captured anywhere.
+---
 
-So the gap is universal: there is no field for the **job title / position** (CEO, Quality Manager, R&D Engineer…), and `functional_area` is optional.
+### Part 1 — Fix the Foundation SOP set
 
-## A. Schema (one migration)
-Add `job_title text` to `user_company_access` (nullable). No data backfill — users (or admins) fill it in via Settings.
+**Problem.** SOPs that should be universal (Risk Management, UDI, Identification & Traceability) are classified as Tier B `'always'` triggers, so they're not auto-seeded at company onboarding. SOP-002 Document Control IS in Tier A but renders below the fold, which made it look missing.
 
-## B. Settings — People editor
-In `AddStakeholderUserSheet` and the corresponding edit sheet, add a "Job title" input directly under the Functional Area select, for internal users. External users keep `external_role`.
+**Change.** In `src/constants/sopAutoSeedTiers.ts`, promote three SOPs from Tier B → Tier A:
 
-## C. Label composition (`trainingGroups.ts`)
-`getInferredRoleLabel` returns:
-- internal + `job_title` + `functional_area` → `"<FunctionalArea> | <Job title>"` (e.g. `Management | CEO`).
-- internal + only `job_title` → `<Job title>` + amber "Set functional area".
-- internal + only `functional_area` → `<FunctionalArea>` + amber "Add job title".
-- internal + neither (only `department='Internal'`) → amber "Define role" badge with a CTA link to Settings → People for that user.
-- external → existing `external_role` label unchanged.
+| SOP | Title | Current | New |
+|---|---|---|---|
+| SOP-015 | Risk Management (ISO 14971) | Tier B (`always`) | **Tier A** |
+| SOP-019 | Identification, Traceability & UDI | Tier B (`always`) | **Tier A** |
+| SOP-045 | UDI Management | Tier B (`always`) | **Tier A** |
 
-`getRecommendedGroupsForUser` keeps using `functional_area` + `external_role` + keyword scan over `department` / `job_title`. Adding `job_title` to the keyword scan is the only behavioural change (so "CEO", "Quality Manager", etc. resolve even when functional_area is empty).
+Result: foundation grows from 28 → **31 SOPs**. All three are mandatory under ISO 13485 / EU MDR / 21 CFR 820 regardless of pathway, so the `'always'` trigger was a tell that they were misclassified.
 
-## D. Wizard — `PeopleRecommendationTable`
-- Render the new combined label.
-- When a row's role is undefined, disable "Apply" and show inline link "Define role in Settings → People" (deep link to that user's edit sheet).
-- Keep "Apply all" but it skips undefined-role rows and reports "<n> skipped — role undefined".
+**Files touched**
+- `src/constants/sopAutoSeedTiers.ts` — move three entries, add justification strings.
+- `mem://features/sop/tiered-auto-seed-classification` — update count from 28 to 31, list new entries.
 
-## E. Copy fix
-Replace the `§` glyph with the word "Section" in the wizard empty-state alert (the "Russian letters" report — it is the section sign, not Cyrillic; English wording avoids the confusion).
+**Backfill for existing companies.** New companies get them automatically. For existing companies (like David Health Solutions Oy), add a one-time idempotent backfill via the existing seed routine. Two options to pick at implement time, but default: surface a "Seed missing foundation SOPs (3)" banner in Document Control when any of the three are absent, so admins opt in rather than auto-mutating their QMS.
 
-## Files
-- `supabase/migrations/*` — add `job_title` column.
-- `src/hooks/useCompanyUsers.ts` — select/update `job_title`, expose as `title`.
-- `src/components/settings/AddStakeholderUserSheet.tsx` (+ edit sheet) — Job title input.
-- `src/constants/trainingGroups.ts` — label + recommendation logic.
-- `src/components/training/TrainingSetupWizard.tsx` — disabled state, deep link, skip-count, copy fix.
+---
 
-## Out of scope
-No backfill for Marcus or anyone else, no `company_roles` rewiring, no auth/RLS changes, no new tables.
+### Part 2 — CCR description ↔ Connected Documents reconciliation
+
+**Problem.** The CCR `description` / `scope` field is authored once (often AI-assisted) and then drifts as users add/remove documents on the Documents tab. The text can reference docs that are no longer linked, or omit ones that were added later.
+
+**Change.** Two-layer fix:
+
+**(a) Drift detection (read-only badge).**
+- Add a lightweight `useCCRDescriptionDrift(ccrId)` hook that:
+  - tokenises the `description` for SOP/document references (regex: `SOP-[A-Z]{0,3}-?\d{3}`, document_reference patterns)
+  - compares against the live `change_control_affected_documents` set
+  - returns `{ missing: string[], stale: string[] }`
+- In `ChangeControlDetailPage.tsx`, render an amber pill next to the description: **"Description out of sync — N referenced doc(s) no longer linked, M linked doc(s) not mentioned"** with a "Refresh from linked documents" action.
+
+**(b) Refresh action (Draft only).**
+- Button calls a new `regenerateCCRDescriptionFromLinkedDocs(ccrId)` service that:
+  - fetches all `change_control_affected_documents` rows joined to `documents`
+  - calls the existing Gemini AI assist (already wired via `AiAssistPopover`) with a deterministic prompt: *"Rewrite this CCR scope so every linked document is referenced and no unlinked doc is mentioned. Preserve the original change rationale."*
+  - opens the result in the existing inline EditableText with diff preview (no auto-write — user confirms)
+- Restricted to CCRs in `Draft` status (matches existing edit gating on line ~70).
+
+**Files touched**
+- New `src/hooks/useCCRDescriptionDrift.ts`
+- New service method in `src/services/ccrLinkedDocsService.ts`: `extractReferencedDocs(description)` + `regenerateCCRDescriptionFromLinkedDocs(ccrId)`
+- `src/pages/ChangeControlDetailPage.tsx` — render drift badge + action button next to description block.
+- Mission Control surface: per the core rule "any flag must also surface in Mission Control" — add CCRs with description drift to the existing CCR widget as a sub-status pill.
+
+**No DB schema changes.** Pure frontend + service layer.
+
+---
+
+### Out of scope (call out, don't build)
+- Promoting Tier B `manufacturing`-triggered SOPs (017, 018, 043, 051) — these genuinely depend on whether the company manufactures.
+- Auto-rewriting the description without user confirmation — drift detection is advisory only.
+- Renumbering SOPs to remove the gap between 002 and the rest of the list (would break audit trails).

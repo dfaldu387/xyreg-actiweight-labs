@@ -11,6 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Google } from "@mui/icons-material";
+import { activeTenant } from "@/config/tenants";
 
 interface LoginFormProps {
   onClose: () => void;
@@ -34,48 +35,149 @@ export function LoginForm({ onClose, setShowRegister }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
+  // Check if user is on Genesis plan and return the appropriate redirect URL
+  const getGenesisRedirect = async (userId: string | undefined): Promise<string | null> => {
+    if (!userId) return null;
+    try {
+      // Get user's primary company
+      const { data: access } = await supabase
+        .from('user_company_access')
+        .select('company_id')
+        .eq('user_id', userId)
+        .eq('is_primary', true)
+        .limit(1)
+        .single();
+      if (!access?.company_id) return null;
+
+      // Check if company is on Genesis plan
+      const { data: companyPlan } = await supabase
+        .from('new_pricing_company_plans')
+        .select('plan:new_pricing_plans(name)')
+        .eq('company_id', access.company_id)
+        .in('status', ['active', 'trial'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      const planName = (companyPlan?.plan as any)?.name;
+      if (!planName || planName.toLowerCase() !== 'genesis') return null;
+
+      // Genesis user — find their first product for redirect
+      const { data: product } = await supabase
+        .from('products')
+        .select('id')
+        .eq('company_id', access.company_id)
+        .eq('is_archived', false)
+        .limit(1)
+        .single();
+
+      if (product?.id) {
+        return `/app/product/${product.id}/business-case?tab=genesis`;
+      }
+
+      // No product yet — redirect to company genesis page
+      const { data: company } = await supabase
+        .from('companies')
+        .select('name')
+        .eq('id', access.company_id)
+        .single();
+
+      if (company?.name) {
+        return `/app/company/${encodeURIComponent(company.name)}/genesis`;
+      }
+
+      return '/app/genesis';
+    } catch (err) {
+      console.error('Genesis redirect check failed:', err);
+      return null; // Fall back to normal redirect on error
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
 
     try {
-      console.log("Attempting to sign in with:", { email });
-
       // Validate that both email and password are provided
       if (!email.trim() || !password.trim()) {
         setError("Please enter both email and password.");
         return;
       }
 
-      const result = await signIn(email, password);
-      // console.log("result", result);
-      if (result.success === false) {
-        setError(result.error || "User not found. Only Actiweight Labs AS users can log in.");
-        return;
-      }
-      if (result.success) {
-        if (email === 'superadmin@gmail.com') {
-          navigate('/super-admin/app/users');
-        } else {
-          // Check if user has a last selected company for direct redirect
-          const { data: { user } } = await supabase.auth.getUser();
-          const lastSelectedCompany = (user?.user_metadata as any)?.lastSelectedCompany;
-          // console.log("lastSelectedCompany", lastSelectedCompany);
-          if (lastSelectedCompany) {
-            navigate(`/app/company/${encodeURIComponent(lastSelectedCompany)}`);
-          } else {
-            navigate('/app/clients');
-          }
-          navigate(0);
-        }
+      if (activeTenant.features.genesis) {
+        sessionStorage.setItem('genesis_login', 'checking');
       }
 
+      const result = await signIn(email, password);
+      if (result.success) {
+        const user = result.user;
+        let redirectUrl = '/app/clients';
+
+        if (email === 'superadmin@gmail.com') {
+          sessionStorage.removeItem('genesis_login');
+          redirectUrl = '/super-admin/app/users';
+        } else if (activeTenant.features.investor && result.isInvestor) {
+          sessionStorage.removeItem('genesis_login');
+          redirectUrl = '/investor/deal-flow';
+        } else {
+          const genesisRedirect = activeTenant.features.genesis
+            ? await getGenesisRedirect(user?.id)
+            : null;
+          if (genesisRedirect) {
+            redirectUrl = genesisRedirect;
+            sessionStorage.setItem('genesis_login', genesisRedirect);
+          } else {
+            sessionStorage.removeItem('genesis_login');
+            const lastSelectedCompany = (user?.user_metadata as any)?.lastSelectedCompany;
+            if (lastSelectedCompany) {
+              const companyPath = activeTenant.features.genesis
+                ? `/app/company/${encodeURIComponent(lastSelectedCompany)}/mission-control`
+                : `/app/company/${encodeURIComponent(lastSelectedCompany)}`;
+              redirectUrl = companyPath;
+            }
+          }
+        }
+
+        onClose();
+        navigate(redirectUrl);
+        sessionStorage.removeItem('genesis_login');
+      }
+      else {
+        sessionStorage.removeItem('genesis_login');
+        setError(result.error || activeTenant.errorMessage);
+      }
+
+
+      // if (user) {
+      //   // Check user metadata or a specific field to determine if they're a super admin
+      //   // You might need to adjust this based on how super admin status is stored
+      //   const isSuperAdmin = user.user_metadata?.role === 'super_admin' || 
+      //                      user.email === 'superadmin@gmail.com'; // Adjust this email as needed
+
+      //   onClose();
+
+      //   if (isSuperAdmin) {
+      //     navigate('/super-admin/app/users'); // Redirect to super admin panel
+      //   } else {
+      //     navigate('/app/clients'); // Redirect to regular app
+      //     navigate(0);
+      //   }
+      // } else {
+      //   // Fallback to regular app if user data is not available
+      //   onClose();
+      //   navigate('/app/clients');
+      //   navigate(0);
+      // }
+
     } catch (error: any) {
+      sessionStorage.removeItem('genesis_login');
       console.error("Login error:", error);
 
       // Check for specific error codes and messages
-      if (error.code === 'invalid_credentials') {
+      if (error.code === 'user_banned') {
+        setError("Your session has expired. Please contact support.");
+      } else if (error.code === 'invalid_credentials') {
         setError("Invalid email or password. Please check your credentials and try again.");
       } else if (error.code === 'user_not_found') {
         setError("No account found with this email address. Please check your email or create a new account.");
@@ -101,15 +203,29 @@ export function LoginForm({ onClose, setShowRegister }: LoginFormProps) {
     setError(null);
 
     try {
-      // Use a more explicit redirect URL format to avoid hash fragments
-      const redirectUrl = `${window.location.origin}/reset-password?source=email`;
+      const appUrl = window.location.origin || 'https://app.xyreg.com';
+      const redirectUrl = `${appUrl}/reset-password?source=email`;
 
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: redirectUrl,
-      });
+      if (activeTenant.features.edgeFnResetEmail) {
+        const { data, error } = await supabase.functions.invoke("send-reset-password-email", {
+          body: { email: resetEmail, redirectUrl, appUrl },
+        });
 
-      if (error) {
-        throw error;
+        if (error) {
+          throw error;
+        }
+
+        if (data && !data.success) {
+          throw new Error(data.error || "Failed to send reset email");
+        }
+      } else {
+        const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+          redirectTo: redirectUrl,
+        });
+
+        if (error) {
+          throw error;
+        }
       }
 
       setResetSuccess(true);
@@ -346,38 +462,40 @@ export function LoginForm({ onClose, setShowRegister }: LoginFormProps) {
         {isLoading ? "Signing in..." : "Sign In"}
       </Button>
 
-      {/* Divider */}
-      <div className="relative my-4">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-background px-2 text-muted-foreground">
-            Or continue with
-          </span>
-        </div>
-      </div>
+      {activeTenant.features.google && (
+        <>
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
+          </div>
 
-      {/* Google Sign In Button */}
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        onClick={handleGoogleSignIn}
-        disabled={isGoogleLoading || isLoading}
-      >
-        {isGoogleLoading ? (
-          <>
-            <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"></div>
-            Signing in with Google...
-          </>
-        ) : (
-          <>
-            <Google className="mr-2 h-4 w-4" />
-            Sign in with Google
-          </>
-        )}
-      </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleSignIn}
+            disabled={isGoogleLoading || isLoading}
+          >
+            {isGoogleLoading ? (
+              <>
+                <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"></div>
+                Signing in with Google...
+              </>
+            ) : (
+              <>
+                <Google className="mr-2 h-4 w-4" />
+                Sign in with Google
+              </>
+            )}
+          </Button>
+        </>
+      )}
     </form>
   );
 }

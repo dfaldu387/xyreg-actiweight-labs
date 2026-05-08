@@ -3,17 +3,40 @@ import { useNavigate } from 'react-router-dom';
 import { XCircle, RotateCcw } from "lucide-react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function CheckoutCancel() {
   const navigate = useNavigate();
 
-  // Clean up pending registration data since payment was cancelled
+  // Clean up pending registration data and delete the unpaid auth user since payment was cancelled
   useEffect(() => {
-    sessionStorage.removeItem('pending-registration');
-    sessionStorage.removeItem('selected-plan');
-    sessionStorage.removeItem('company-creation-complete');
-    sessionStorage.removeItem('checkout-company');
-    sessionStorage.removeItem('checkout-userType');
+    const cleanup = async () => {
+      console.log('[CheckoutCancel] Cleanup started');
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('[CheckoutCancel] Session present?', !!session?.access_token, 'userId:', session?.user?.id);
+
+        if (!session?.access_token) {
+          console.warn('[CheckoutCancel] No session — skipping delete-unpaid-user');
+        } else {
+          // Server-side delete: removes user, orphaned company, and access rows
+          // (skipped automatically if the user already has an active subscription).
+          const { data, error } = await supabase.functions.invoke('delete-unpaid-user');
+          console.log('[CheckoutCancel] delete-unpaid-user result:', { data, error });
+        }
+      } catch (err) {
+        console.warn('[CheckoutCancel] Failed to delete unpaid user:', err);
+      } finally {
+        try { await supabase.auth.signOut(); } catch {}
+        sessionStorage.removeItem('pending-registration');
+        sessionStorage.removeItem('selected-plan');
+        sessionStorage.removeItem('company-creation-complete');
+        sessionStorage.removeItem('checkout-company');
+        sessionStorage.removeItem('checkout-userType');
+        console.log('[CheckoutCancel] Cleanup complete');
+      }
+    };
+    cleanup();
   }, []);
 
   return (

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SaveStatusIndicator } from "@/components/ui/save-status-indicator";
-import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, Send, Globe } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { DraftStorage } from "@/utils/draftStorage";
@@ -12,6 +13,9 @@ import { BlueprintCollaborationService } from "@/services/blueprintCollaboration
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { InvestorShareDialog } from "@/components/company/InvestorShareDialog";
+import { InvestorShareCard } from '@/components/investor-share/InvestorShareCard';
+import { MarketplaceShareCard } from '@/components/investor-share/MarketplaceShareCard';
+import { EnhancedPitchBuilder } from './pitch-builder/EnhancedPitchBuilder';
 import { useTranslation } from "@/hooks/useTranslation";
 import { 
   PHASE_1_STEPS, 
@@ -27,12 +31,22 @@ import {
 import { useViabilityFunnelProgress } from '@/hooks/useViabilityFunnelProgress';
 import { useCalculatedViabilityScore } from '@/hooks/useCalculatedViabilityScore';
 import { ViabilityScoreDashboard } from './viability/ViabilityScoreDashboard';
-import { 
-  GenesisProgressHeader, 
-  GenesisPhaseTimeline, 
-  GenesisStepRow, 
-  GenesisPhaseSection 
+import {
+  GenesisProgressHeader,
+  BlueprintLaunchView,
+  BlueprintSidebar,
+  BlueprintStepDetailView,
+  BlueprintIntroBanner,
+  BlueprintMarketplaceIntro,
 } from './genesis';
+import { GENESIS_SECTIONS } from '@/config/genesisSections';
+import { Button } from '@/components/ui/button';
+import {
+  INVESTOR_ESSENTIAL_COMPLETION_KEYS,
+  INVESTOR_ESSENTIAL_TOTAL,
+  BLUEPRINT_TRACK_PARAM,
+} from '@/config/investorEssentialKeys';
+import { Star } from 'lucide-react';
 
 
 interface VentureBlueprintData {
@@ -48,6 +62,7 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
   const { lang } = useTranslation();
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [stepNotes, setStepNotes] = useState<Record<string, string>>({});
@@ -57,6 +72,8 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isViabilityExpanded, setIsViabilityExpanded] = useState(true);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [isInvestorDialogOpen, setIsInvestorDialogOpen] = useState(false);
+  const [isMarketplaceDialogOpen, setIsMarketplaceDialogOpen] = useState(false);
   
 
   // Get module completion status from funnel progress
@@ -79,9 +96,16 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
       return Boolean(completionData.hasTAM && completionData.hasSAM && completionData.hasSOM);
     }
 
+    // Special case: legacy combined Intended Use + Value Proposition step
+    if (completionKey === 'intended_use_and_value') {
+      return Boolean(completionData.hasIntendedUse && completionData.hasValueProposition);
+    }
+
     const keyToCompletionField: Record<string, keyof typeof completionData> = {
       // Phase 1: Opportunity & Definition
       'device_name': 'hasDeviceName',
+      'device_type': 'hasDeviceType',
+      'trl_assessment': 'hasTRL',
       'system_architecture': 'hasSystemArchitecture',
       'intended_use': 'hasIntendedUse',
       'device_description': 'hasDescription',
@@ -90,6 +114,7 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
       'regulatory_pathway': 'hasRegulatoryPathway',
       'competition': 'hasCompetitor',
       'economic_buyer': 'hasBuyerProfile',
+      'strategic_partners': 'hasStrategicPartners',
       // Phase 2: Feasibility & Planning
       'value_proposition': 'hasValueProposition',
       'health_economics': 'hasHealthEconomics',
@@ -100,6 +125,7 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
       'essential_gates': 'hasGatesProgress',
       'use_of_proceeds': 'hasUseOfProceeds',
       'team_profile': 'hasTeamMembers',
+      'revenue_forecast': 'hasRevenueForecast',
       // Phase 5: Market Readiness
       'gtm_strategy': 'hasGtmStrategy',
       'manufacturing': 'hasManufacturing',
@@ -261,6 +287,20 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
     element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // Completion map for the launch view (Gap-Analysis-style flat list).
+  const completionMap: Record<string, boolean> = React.useMemo(() => {
+    const map: Record<string, boolean> = {};
+    GENESIS_SECTIONS.forEach((sec) =>
+      sec.subSteps.forEach((sub) => {
+        if (sub.completionKey) {
+          map[sub.completionKey] = getModuleCompletion(sub.completionKey);
+        }
+      }),
+    );
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completionData]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -269,200 +309,137 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
     );
   }
 
+  const selectedStepId = searchParams.get('step');
+  const isDetailMode = Boolean(selectedStepId);
+
+  // Investor-essential completion (derived) — gates share actions.
+  const investorEssentialCompleted = Array.from(
+    INVESTOR_ESSENTIAL_COMPLETION_KEYS,
+  ).filter((k) => Boolean(completionMap[k])).length;
+  const investorEssentialRemaining =
+    INVESTOR_ESSENTIAL_TOTAL - investorEssentialCompleted;
+  const investorReady = investorEssentialRemaining <= 0;
+
+  const handleShareGuard = (open: () => void) => {
+    if (!investorReady) {
+      const next = new URLSearchParams(searchParams);
+      next.set(BLUEPRINT_TRACK_PARAM, 'investor');
+      next.delete('step');
+      setSearchParams(next, { replace: false });
+      toast({
+        title: 'Investor essentials incomplete',
+        description: `${investorEssentialRemaining} investor-essential step${investorEssentialRemaining === 1 ? '' : 's'} remaining. Switched to the Investor Essentials track.`,
+      });
+      return;
+    }
+    open();
+  };
+
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Progress Header */}
-      <GenesisProgressHeader
-        completedCount={totalCompleted}
-        totalCount={TOTAL_DEVELOPMENT_STEPS}
-        nextStepTitle={nextStep?.title}
-        onShareInvestor={handlePreview}
-        onNextStep={handleNextStep}
-        title={lang('ventureBlueprint.title')}
-        subtitle={lang('ventureBlueprint.subtitle')}
-        colorVariant="indigo"
-      />
+    <div className="space-y-6">
+      {/* Right-rail sidebar — mirrors Gap Analysis pattern */}
+      <BlueprintSidebar completion={completionMap} disabled={disabled} />
 
-      {/* Phase Timeline - All 6 Phases */}
-      <GenesisPhaseTimeline
-        phases={phaseData}
-        onPhaseClick={scrollToPhase}
-        colorVariant="orange"
-      />
-
-      {/* Save Status */}
-      <div className="flex justify-end">
-        <SaveStatusIndicator 
-          status={saveStatus}
-          hasUnsavedChanges={hasUnsavedChanges}
-          className="text-xs"
-        />
-      </div>
-
-      {/* Phase 1: Opportunity & Definition */}
-      <div id="blueprint-phase-1">
-        <GenesisPhaseSection
-          phaseNumber={1}
-          title={lang('ventureBlueprint.phase1Title')}
-          goal={lang('ventureBlueprint.phase1Goal')}
-          completedCount={phase1Completed}
-          totalCount={PHASE_1_STEPS.length}
-          colorVariant="orange"
-        >
-        {PHASE_1_STEPS.map((step) => (
-            <GenesisStepRow
-              key={step.id}
-              stepId={step.id}
-              stepNumber={step.stepNumber}
-              title={step.title}
-              description={step.description}
-              route={step.route}
-              moduleLabel={step.moduleLabel}
-              isComplete={getModuleCompletion(step.completionKey)}
-              isNew={step.isNew}
-              disabled={disabled}
+      {isDetailMode ? (
+        /* DETAIL MODE — Gap-Analysis-style: editor renders in main column */
+        <>
+          <div className="flex justify-end">
+            <SaveStatusIndicator
+              status={saveStatus}
+              hasUnsavedChanges={hasUnsavedChanges}
+              className="text-xs"
             />
-          ))}
-        </GenesisPhaseSection>
-      </div>
+          </div>
+          <BlueprintStepDetailView
+            completion={completionMap}
+            selectedStepId={selectedStepId!}
+            disabled={disabled}
+          />
+        </>
+      ) : (
+        /* LANDING MODE — intro, progress, pitch builder, section list */
+        <>
+          <BlueprintIntroBanner />
 
-      {/* Phase 2: Feasibility & Planning */}
-      <div id="blueprint-phase-2">
-        <GenesisPhaseSection
-          phaseNumber={2}
-          title={lang('ventureBlueprint.phase2Title')}
-          goal={lang('ventureBlueprint.phase2Goal')}
-          completedCount={phase2Completed}
-          totalCount={PHASE_2_STEPS.length}
-          colorVariant="orange"
-        >
-        {PHASE_2_STEPS.map((step) => (
-            <GenesisStepRow
-              key={step.id}
-              stepId={step.id}
-              stepNumber={step.stepNumber}
-              title={step.title}
-              description={step.description}
-              route={step.route}
-              moduleLabel={step.moduleLabel}
-              isComplete={getModuleCompletion(step.completionKey)}
-              isNew={step.isNew}
-              disabled={disabled}
-            />
-          ))}
-        </GenesisPhaseSection>
-      </div>
+          <BlueprintLaunchView
+            completion={completionMap}
+            disabled={disabled}
+            headerActions={
+              <div className="flex items-center gap-2">
+                <SaveStatusIndicator
+                  status={saveStatus}
+                  hasUnsavedChanges={hasUnsavedChanges}
+                  className="text-xs"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleShareGuard(() => setIsInvestorDialogOpen(true))}
+                  disabled={disabled}
+                  title={
+                    investorReady
+                      ? undefined
+                      : `${investorEssentialRemaining} investor-essential step${investorEssentialRemaining === 1 ? '' : 's'} remaining`
+                  }
+                  className={!investorReady ? 'opacity-70' : undefined}
+                >
+                  <Send className="h-3.5 w-3.5 mr-1.5" />
+                  Share with Investor
+                  {!investorReady && (
+                    <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] text-amber-600">
+                      <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                      {investorEssentialCompleted}/{INVESTOR_ESSENTIAL_TOTAL}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleShareGuard(() => setIsMarketplaceDialogOpen(true))}
+                  disabled={disabled}
+                  title={
+                    investorReady
+                      ? undefined
+                      : `${investorEssentialRemaining} investor-essential step${investorEssentialRemaining === 1 ? '' : 's'} remaining`
+                  }
+                  className={!investorReady ? 'opacity-70' : undefined}
+                >
+                  <Globe className="h-3.5 w-3.5 mr-1.5" />
+                  Marketplace
+                </Button>
+              </div>
+            }
+            onSelectStep={(stepId) => {
+              const next = new URLSearchParams(searchParams);
+              if (stepId) {
+                next.set('step', stepId);
+              } else {
+                next.delete('step');
+              }
+              if (!next.get('tab')) next.set('tab', 'venture-blueprint');
+              setSearchParams(next, { replace: false });
+            }}
+          />
 
-      {/* Phase 3: Design & Development */}
-      <div id="blueprint-phase-3">
-        <GenesisPhaseSection
-          phaseNumber={3}
-          title={lang('ventureBlueprint.phase3Title')}
-          goal={lang('ventureBlueprint.phase3Goal')}
-          completedCount={phase3Completed}
-          totalCount={PHASE_3_STEPS.length}
-          colorVariant="orange"
-        >
-          {PHASE_3_STEPS.map((step) => (
-            <GenesisStepRow
-              key={step.id}
-              stepId={step.id}
-              stepNumber={step.stepNumber}
-              title={step.title}
-              description={step.description}
-              route={step.route}
-              moduleLabel={step.moduleLabel}
-              isComplete={getModuleCompletion(step.completionKey)}
-              isNew={step.isNew}
-              disabled={disabled}
-            />
-          ))}
-        </GenesisPhaseSection>
-      </div>
+          <Collapsible defaultOpen={false}>
+            <Card className="border-dashed">
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
+                  <CardTitle className="text-sm font-medium">
+                    Pitch & Investor Sharing
+                  </CardTitle>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="pt-0 space-y-4">
+                  <BlueprintMarketplaceIntro />
+                  <EnhancedPitchBuilder variant="card" />
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
 
-      {/* Phase 4: Verification & Validation */}
-      <div id="blueprint-phase-4">
-        <GenesisPhaseSection
-          phaseNumber={4}
-          title={lang('ventureBlueprint.phase4Title')}
-          goal={lang('ventureBlueprint.phase4Goal')}
-          completedCount={phase4Completed}
-          totalCount={PHASE_4_STEPS.length}
-          colorVariant="orange"
-        >
-          {PHASE_4_STEPS.map((step) => (
-            <GenesisStepRow
-              key={step.id}
-              stepId={step.id}
-              stepNumber={step.stepNumber}
-              title={step.title}
-              description={step.description}
-              route={step.route}
-              moduleLabel={step.moduleLabel}
-              isComplete={getModuleCompletion(step.completionKey)}
-              isNew={step.isNew}
-              disabled={disabled}
-            />
-          ))}
-        </GenesisPhaseSection>
-      </div>
-
-      {/* Phase 5: Market Readiness & Submission */}
-      <div id="blueprint-phase-5">
-        <GenesisPhaseSection
-          phaseNumber={5}
-          title={lang('ventureBlueprint.phase5Title')}
-          goal={lang('ventureBlueprint.phase5Goal')}
-          completedCount={phase5Completed}
-          totalCount={PHASE_5_FULL_STEPS.length}
-          colorVariant="orange"
-        >
-          {PHASE_5_FULL_STEPS.map((step) => (
-            <GenesisStepRow
-              key={step.id}
-              stepId={step.id}
-              stepNumber={step.stepNumber}
-              title={step.title}
-              description={step.description}
-              route={step.route}
-              moduleLabel={step.moduleLabel}
-              isComplete={getModuleCompletion(step.completionKey)}
-              isNew={step.isNew}
-              disabled={disabled}
-            />
-          ))}
-        </GenesisPhaseSection>
-      </div>
-
-      {/* Phase 6: Post-Market & Growth */}
-      <div id="blueprint-phase-6">
-        <GenesisPhaseSection
-          phaseNumber={6}
-          title={lang('ventureBlueprint.phase6Title')}
-          goal={lang('ventureBlueprint.phase6Goal')}
-          completedCount={phase6Completed}
-          totalCount={PHASE_6_STEPS.length}
-          colorVariant="orange"
-        >
-          {PHASE_6_STEPS.map((step) => (
-            <GenesisStepRow
-              key={step.id}
-              stepId={step.id}
-              stepNumber={step.stepNumber}
-              title={step.title}
-              description={step.description}
-              route={step.route}
-              moduleLabel={step.moduleLabel}
-              isComplete={getModuleCompletion(step.completionKey)}
-              isNew={step.isNew}
-              disabled={disabled}
-            />
-          ))}
-        </GenesisPhaseSection>
-      </div>
-
-      {/* Viability Score - Compact collapsible */}
-      <Collapsible open={isViabilityExpanded} onOpenChange={setIsViabilityExpanded}>
+          <Collapsible open={isViabilityExpanded} onOpenChange={setIsViabilityExpanded}>
         <Card className="border-dashed">
           <CollapsibleTrigger asChild>
             <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
@@ -490,7 +467,9 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
             </CardContent>
           </CollapsibleContent>
         </Card>
-      </Collapsible>
+          </Collapsible>
+        </>
+      )}
 
       {/* Investor Share Dialog */}
       {companyId && (
@@ -501,6 +480,52 @@ export function VentureBlueprint({ disabled = false }: VentureBlueprintProps) {
           companyName={companyData?.name || 'Company'}
           productId={productId}
         />
+      )}
+
+      {/* Share with Investor Dialog (Genesis parity) */}
+      {companyId && (
+        <Dialog open={isInvestorDialogOpen} onOpenChange={setIsInvestorDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[95vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Send className="h-5 w-5 text-indigo-600" />
+                Share with Investor
+              </DialogTitle>
+              <DialogDescription>
+                Configure what investors can view in your shared link.
+              </DialogDescription>
+            </DialogHeader>
+            <InvestorShareCard
+              companyId={companyId}
+              companyName={companyData?.name || 'Company'}
+              productId={productId}
+              variant="dialog"
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Share on Marketplace Dialog (Genesis parity) */}
+      {companyId && (
+        <Dialog open={isMarketplaceDialogOpen} onOpenChange={setIsMarketplaceDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[95vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Globe className="h-5 w-5 text-emerald-600" />
+                Share on Marketplace
+              </DialogTitle>
+              <DialogDescription>
+                Publish a public marketplace listing for this venture.
+              </DialogDescription>
+            </DialogHeader>
+            <MarketplaceShareCard
+              companyId={companyId}
+              companyName={companyData?.name || 'Company'}
+              productId={productId}
+              variant="dialog"
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

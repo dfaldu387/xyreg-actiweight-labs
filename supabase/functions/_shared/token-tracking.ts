@@ -95,7 +95,7 @@ export function extractLovableAIUsage(responseData: any): TokenUsage | null {
  */
 // --- Per-request AI token usage tracking ---
 
-export type AiSource = 'professor_xyreg' | 'document_ai_assistant' | 'auto_fill_section' | 'ai_suggestion' | 'ai_user_needs' | 'ai_system_requirements' | 'ai_software_requirements' | 'ai_hardware_requirements' | 'ai_hazard_analysis' | 'ai_vv_plan';
+export type AiSource = 'professor_xyreg' | 'document_ai_assistant' | 'auto_fill_section' | 'ai_suggestion' | 'ai_user_needs' | 'ai_system_requirements' | 'ai_software_requirements' | 'ai_hardware_requirements' | 'ai_hazard_analysis' | 'ai_vv_plan' | 'ai_ccr_draft' | 'ai_ccr_impact';
 
 interface DetailedTokenUsage {
   inputTokens: number;

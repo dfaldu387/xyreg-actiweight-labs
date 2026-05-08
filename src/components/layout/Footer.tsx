@@ -70,7 +70,7 @@ export function Footer() {
         </div>
         
         <div className="mt-12 pt-8 border-t text-center text-muted-foreground text-sm">
-          <p>&copy; {new Date().getFullYear()} XYREG. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} XYREG22. All rights reserved.</p>
           <p className="mt-2">Contact support: <a href="mailto:support@xyreg.com" className="hover:text-primary">support@xyreg.com</a></p>
         </div>
       </div>

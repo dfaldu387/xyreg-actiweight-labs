@@ -50,7 +50,7 @@ export interface HelixNodeLightData {
   sopCounts?: SOPStatusCount;
   companyId?: string;
   // Linked SOPs from database (populated by useHelixPulseStatus)
-  linkedSOPs?: Array<{ id: string; name: string; status: string | null }>;
+  linkedSOPs?: Array<{ id: string; name: string; status: string | null; document_number?: string | null }>;
   onClick?: (nodeId: string) => void;
   onRBRClick?: (rbrType: string) => void;
 }
@@ -89,7 +89,7 @@ const statusConfig = {
 // Helper component to render SOP chips under the ISO clause
 interface NodeSOPChipsProps {
   nodeId: string;
-  linkedSOPs?: Array<{ id: string; name: string; status: string | null }>;
+  linkedSOPs?: Array<{ id: string; name: string; status: string | null; document_number?: string | null }>;
   sopStatus?: SOPStatus;
   sopCounts?: SOPStatusCount;
   onIndicatorClick: () => void;
@@ -111,14 +111,19 @@ function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorCli
     title: string;
   };
 
-  const numericFromSop = (s: string) => {
-    const m = s.match(/SOP-(?:[A-Z]{2}-)?(\d{3})/i);
-    return m ? m[1] : '';
+  const numericFromSop = (s: string | null | undefined) => {
+    if (!s) return '';
+    const m = s.match(/SOP[-_\s]*(?:[A-Za-z]{2,3}[-_\s]+)?(\d{1,3})/i);
+    return m ? m[1].padStart(3, '0') : '';
   };
-  const subPrefixFromSop = (s: string) => {
-    const m = s.match(/SOP-([A-Z]{2})-\d{3}/i);
+  const subPrefixFromSop = (s: string | null | undefined) => {
+    if (!s) return '';
+    const m = s.match(/SOP-([A-Z]{2,3})-\d{1,3}/i);
     return m ? m[1].toUpperCase() : '';
   };
+  // Prefer canonical document_number (authoritative) over the free-form name.
+  const sopIdOf = (l: { name: string; document_number?: string | null }) =>
+    l.document_number || l.name;
 
   const merged: Merged[] = [];
   const usedLinkedIds = new Set<string>();
@@ -128,11 +133,18 @@ function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorCli
     const recPrefix = subPrefixFromSop(rec.sopNumber);
     const match = linked.find((l) => {
       if (usedLinkedIds.has(l.id)) return false;
-      if (numericFromSop(l.name) !== recNum) return false;
+      const lid = sopIdOf(l);
+      if (numericFromSop(lid) !== recNum) return false;
       // If the recommendation specifies a functional sub-prefix (e.g. DE),
       // the linked doc must carry the same prefix — never let a generic
       // SOP-006 satisfy a SOP-DE-006 slot.
-      if (recPrefix) return subPrefixFromSop(l.name) === recPrefix;
+      if (recPrefix) {
+        const lprefix = subPrefixFromSop(lid);
+        // Empty prefix means the linked CI predates the sub-prefix rule —
+        // accept it to avoid spurious "missing" reds; the DB trigger now
+        // prevents new rows without a sub-prefix.
+        return !lprefix || lprefix === recPrefix;
+      }
       return true;
     });
     if (match) usedLinkedIds.add(match.id);
@@ -142,7 +154,9 @@ function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorCli
       : matchStatus === 'approved'
       ? 'approved'
       : 'in-progress';
-    const matchedId = match?.name.match(/SOP-[A-Z]{2}-\d{3}/i)?.[0];
+    const matchedId =
+      match?.document_number ||
+      match?.name.match(/SOP-[A-Z]{2,3}-\d{1,3}/i)?.[0];
     merged.push({
       key: rec.sopNumber,
       displayId: formatSopDisplayId(matchedId || rec.sopNumber),
@@ -156,7 +170,10 @@ function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorCli
   // Append any linked SOPs that don't match a recommendation
   for (const l of linked) {
     if (usedLinkedIds.has(l.id)) continue;
-    const id = l.name.match(/SOP-[A-Z]{2}-\d{3}/i)?.[0] || l.name;
+    const id =
+      l.document_number ||
+      l.name.match(/SOP-[A-Z]{2,3}-\d{1,3}/i)?.[0] ||
+      l.name;
     const ls = l.status?.toLowerCase() ?? '';
     const lstatus: Merged['status'] =
       ls === 'approved'
@@ -221,7 +238,7 @@ function NodeSOPChips({ nodeId, linkedSOPs, sopStatus, sopCounts, onIndicatorCli
               m.status === 'in-progress' &&
                 'bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100',
               m.status === 'missing' &&
-                'bg-slate-50 text-slate-500 border border-dashed border-slate-300 hover:bg-slate-100 hover:text-slate-700',
+                'bg-red-50 text-red-700 border border-dashed border-red-300 hover:bg-red-100',
             )}
             title={m.title}
           >

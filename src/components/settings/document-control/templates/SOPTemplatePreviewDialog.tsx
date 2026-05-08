@@ -4,10 +4,13 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileEdit, BookOpen } from 'lucide-react';
+import { FileEdit, BookOpen, Copy as CopyIcon, Loader2 } from 'lucide-react';
 import { getSOPContentByName, SOPFullContent } from '@/data/sopFullContent';
 import { SaveContentAsDocCIDialog } from '@/components/shared/SaveContentAsDocCIDialog';
 import { formatSopDisplayName } from '@/constants/sopAutoSeedTiers';
+import { DocumentStudioPersistenceService, DocumentStudioData } from '@/services/documentStudioPersistenceService';
+import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface SOPTemplatePreviewDialogProps {
   template: any;
@@ -22,6 +25,8 @@ interface SOPTemplatePreviewDialogProps {
 
 export function SOPTemplatePreviewDialog({ template, isOpen, onClose, onDraftCreated, companyId, companyName, viewOnly = false }: SOPTemplatePreviewDialogProps) {
   const [showCIDialog, setShowCIDialog] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
+  const queryClient = useQueryClient();
 
   if (!template) return null;
 
@@ -86,6 +91,65 @@ export function SOPTemplatePreviewDialog({ template, isOpen, onClose, onDraftCre
 
   const templateKey = `SOP-TPL-${template.name?.replace(/\s+/g, '-')}`;
 
+  // One-click copy of this Enterprise Template into the company's Documents
+  // tab. Each click creates a NEW document with the same name and content.
+  // We bypass `syncToDocumentCI`'s reference-based idempotency by tagging
+  // each copy with a unique `documentReference` (timestamped) so multiple
+  // copies coexist instead of overwriting one shared row.
+  const handleCopyToDocuments = async () => {
+    if (!sopContent || !companyId) return;
+    setIsCopying(true);
+    try {
+      const html = buildHtmlContent();
+      const uniqueRef = `${templateKey}-COPY-${Date.now()}`;
+
+      const syncResult = await DocumentStudioPersistenceService.syncToDocumentCI({
+        companyId,
+        name: template.name,
+        documentReference: uniqueRef,
+        documentScope: 'company_document',
+        documentType: 'Manual',
+      });
+      if (!syncResult.success || !syncResult.id) {
+        throw new Error(syncResult.error || 'Failed to create document');
+      }
+      const ciUUID = syncResult.id;
+
+      const sections = [
+        {
+          id: 'exported-content',
+          title: template.name,
+          content: [{ id: 'content-1', type: 'paragraph', content: html }],
+          order: 0,
+        },
+      ];
+
+      const studioData: DocumentStudioData = {
+        company_id: companyId,
+        template_id: ciUUID,
+        name: template.name,
+        type: 'Manual',
+        sections,
+        metadata: { source: 'enterprise-template-copy', templateIdKey: uniqueRef, ciId: ciUUID },
+      };
+
+      const saveResult = await DocumentStudioPersistenceService.saveTemplate(studioData);
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save document content');
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['company-documents', companyId] });
+      toast.success(`Copied "${template.name}" to Documents`);
+      onDraftCreated?.();
+      onClose();
+    } catch (err: any) {
+      console.error('Copy to Documents failed:', err);
+      toast.error(`Failed to copy: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
   return (
     <>
       <Dialog open={isOpen && !showCIDialog} onOpenChange={(open) => !open && onClose()}>
@@ -123,6 +187,20 @@ export function SOPTemplatePreviewDialog({ template, isOpen, onClose, onDraftCre
 
           <DialogFooter className="pt-4 border-t shrink-0">
             <Button variant="outline" onClick={onClose}>Close</Button>
+            <Button
+              variant="outline"
+              onClick={handleCopyToDocuments}
+              disabled={!sopContent || isCopying || !companyId}
+              className="gap-2"
+              title="Copy this template to the Documents tab with the same name and content"
+            >
+              {isCopying ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CopyIcon className="h-4 w-4" />
+              )}
+              Copy to Documents
+            </Button>
             {!viewOnly && (
               <Button
                 onClick={() => setShowCIDialog(true)}
