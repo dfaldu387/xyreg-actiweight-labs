@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { eachDayOfInterval, isWeekend, isSameDay, startOfDay } from 'date-fns';
+import { eachDayOfInterval, getDay, isSameDay, startOfDay } from 'date-fns';
 import type { TimeScale } from '@/lib/gantt/timeScale';
 import type { ZoomGranularity } from '@/types/ganttChart';
 
@@ -7,6 +7,13 @@ interface TimelineGridProps {
     scale: TimeScale;
     level: ZoomGranularity;
     height: number;
+    /**
+     * Which weekdays to render as tinted weekend bands. Values are
+     * `getDay()` indices: 0 = Sunday, 1 = Monday … 6 = Saturday. Defaults
+     * to `[]` (no weekend tinting). Pass `[0, 6]` for the Western
+     * convention or `[5, 6]` for Friday + Saturday.
+     */
+    weekendDays?: readonly number[];
 }
 
 interface TodayMarkerProps {
@@ -62,8 +69,15 @@ export function TodayMarker({ scale, height }: TodayMarkerProps) {
     );
 }
 
-export function TimelineGrid({ scale, level, height }: TimelineGridProps) {
-    const showWeekends = level === 'hour' || level === 'day' || level === 'week';
+export function TimelineGrid({
+    scale,
+    level,
+    height,
+    weekendDays = [],
+}: TimelineGridProps) {
+    const showWeekends =
+        weekendDays.length > 0 && (level === 'hour' || level === 'day' || level === 'week');
+    const weekendSet = useMemo(() => new Set(weekendDays), [weekendDays]);
 
     // Gridlines align with the TimelineHeader's minor tier so the visual
     // rhythm stays consistent: header label → gridline below it.
@@ -86,12 +100,12 @@ export function TimelineGrid({ scale, level, height }: TimelineGridProps) {
         if (!showWeekends) return [];
         return scale
             .ticks('day')
-            .filter(isWeekend)
+            .filter((d) => weekendSet.has(getDay(d)))
             .map((d) => ({
                 x: scale.dateToX(d),
                 width: scale.pxPerDay,
             }));
-    }, [scale, showWeekends]);
+    }, [scale, showWeekends, weekendSet]);
 
     return (
         <svg

@@ -30,6 +30,7 @@ import { AIContentRecommendationService } from '@/services/aiContentRecommendati
 import { AISuggestionService } from '@/services/aiSuggestionService';
 import { DocumentStudioPersistenceService } from '@/services/documentStudioPersistenceService';
 import { AIAutoFillDialog } from './AIAutoFillDialog';
+import { AIAutoFillFromDocxDialog } from './AIAutoFillFromDocxDialog';
 import { useCustomerFeatureFlag } from '@/hooks/useCustomerFeatureFlag';
 import { AIDocumentValidationDialog } from './AIDocumentValidationDialog';
 import { DraftEmptyStateModal } from './DraftEmptyStateModal';
@@ -1054,6 +1055,7 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
   const [showAIModal, setShowAIModal] = useState(false);
   const [selectedSection, setSelectedSection] = useState<{title: string, content: string} | null>(null);
   const [showAutoFillDialog, setShowAutoFillDialog] = useState(false);
+  const [showAutoFillFromDocxDialog, setShowAutoFillFromDocxDialog] = useState(false);
   const [showEmptyStateModal, setShowEmptyStateModal] = useState(false);
   const [showSopPickerModal, setShowSopPickerModal] = useState(false);
   // Inline "Edit with AI" popover — captured snapshot of the selection.
@@ -2411,50 +2413,15 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
     setShowSopPickerModal(true);
   }, []);
 
-  const docxImportInputRef = useRef<HTMLInputElement | null>(null);
   const handleEmptyStateUploadDocx = useCallback(() => {
     setShowEmptyStateModal(false);
-    // Defer so the dialog has finished closing before opening the OS picker.
-    setTimeout(() => docxImportInputRef.current?.click(), 50);
+    setShowAutoFillFromDocxDialog(true);
   }, []);
 
-  // Toolbar entry — always available. Warns before overwriting existing content.
+  // Toolbar entry — always available.
   const handleToolbarUploadDocx = useCallback(() => {
-    const editor = editorInstanceRef.current;
-    const hasContent = !!editor && !editor.isEmpty;
-    if (hasContent) {
-      const ok = window.confirm('Replace current content with the uploaded Word document? This cannot be undone.');
-      if (!ok) return;
-    }
-    docxImportInputRef.current?.click();
+    setShowAutoFillFromDocxDialog(true);
   }, []);
-
-  const handleDocxFileSelected = useCallback(async (file: File) => {
-    try {
-      const ext = file.name.split('.').pop()?.toLowerCase();
-      if (ext !== 'docx' && ext !== 'doc') {
-        toast.error('Only .doc / .docx files can be imported.');
-        return;
-      }
-      const { convertDocxToHtml, mapDocxHtmlToSections } = await import('@/utils/docxToSections');
-      const html = await convertDocxToHtml(file);
-      if (!html.trim()) {
-        toast.error('Could not read any content from this file.');
-        return;
-      }
-      const baseSections = template?.sections || [];
-      if (!baseSections.length) {
-        toast.error('Draft has no sections yet — try again once it loads.');
-        return;
-      }
-      const newSections = mapDocxHtmlToSections(html, baseSections);
-      onContentUpdate?.('full-document-content', JSON.stringify(newSections));
-      toast.success(`Imported "${file.name}" into draft.`);
-    } catch (err: any) {
-      console.error('Import .docx failed:', err);
-      toast.error(err?.message || 'Could not import .docx — try saving it as a newer Word format.');
-    }
-  }, [template?.sections, onContentUpdate]);
 
   // Keep the ProseMirror highlight decoration in sync with the popover state.
   useEffect(() => {
@@ -3735,6 +3702,17 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
         onBack={() => setShowEmptyStateModal(true)}
       />
 
+      {/* AI Auto-Fill from Uploaded .docx Dialog */}
+      <AIAutoFillFromDocxDialog
+        open={showAutoFillFromDocxDialog}
+        onOpenChange={setShowAutoFillFromDocxDialog}
+        template={template}
+        companyId={companyId}
+        productId={selectedProductId}
+        onContentUpdate={onContentUpdate}
+        onBack={() => setShowEmptyStateModal(true)}
+      />
+
       {/* Empty-state chooser shown when opening a draft with no content */}
       {!disableEmptyStatePrompt && (
         <DraftEmptyStateModal
@@ -3746,19 +3724,6 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
             onUploadDocx={handleEmptyStateUploadDocx}
           />
       )}
-
-      {/* Hidden .docx file input — always mounted so the toolbar Upload button works too */}
-      <input
-        ref={docxImportInputRef}
-        type="file"
-        accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleDocxFileSelected(f);
-          if (docxImportInputRef.current) docxImportInputRef.current.value = '';
-        }}
-      />
 
       {/* SOP picker for Copy-from-SOP flow */}
       <SOPPickerModal

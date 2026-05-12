@@ -18,6 +18,34 @@ interface GanttContainerProps {
     links: GanttLink[];
     domain: readonly [Date, Date];
     rowHeight?: number;
+    /**
+     * Initial collapse state for every parent row.
+     *  - false (default): all sub-trees expanded — user sees the full hierarchy.
+     *  - true: every parent (anything with children) starts collapsed — only
+     *    top-level rows are visible until the user clicks chevrons to expand.
+     * After mount this is purely an initial value; the user's manual toggles
+     * take over from there.
+     */
+    defaultCollapsed?: boolean;
+    /**
+     * Fine-grained alternative to `defaultCollapsed` — explicitly seed which
+     * task IDs start collapsed. Useful when you want, say, every Documents
+     * container collapsed but every phase expanded.
+     */
+    initialCollapsedIds?: ReadonlyArray<GanttTask['id']>;
+    /**
+     * Show the "time elapsed" / explicit-progress dark fill inside each bar.
+     * Off by default so bars render as flat solid blocks (matches the look
+     * of the production milestones page); turn on if you want the in-bar
+     * progress indicator back.
+     */
+    showProgress?: boolean;
+    /**
+     * Which weekdays render as tinted weekend bands (Day/Week/Hour zoom).
+     * 0 = Sunday … 6 = Saturday. Defaults to `[]` — no tinting. Pass
+     * `[0, 6]` for the Western Sat+Sun convention, `[5, 6]` for Fri+Sat.
+     */
+    weekendDays?: readonly number[];
 }
 
 interface BarDrag {
@@ -41,11 +69,203 @@ type DragInfo = BarDrag | LinkDrag | null;
 
 const HEADER_HEIGHT = 64;
 
+// ─── Dependency cascade (ported from src/components/gantt-chart/GanttChart.tsx) ─
+// Given the freshly-dragged task's new dates, walk the dependency graph DFS
+// from it and apply the four standard Gantt update rules to each downstream
+// task — preserving each downstream task's original duration. After the
+// initial cascade, parent/category bars are rolled up (start = min child
+// start, end = max child end); if a parent's dates change, its own outgoing
+// dependency links cascade too. The whole thing loops until no parent moves.
+// A `visited` Set per cascade pass short-circuits cycles and diamonds.
+function applyDragWithCascade(
+    tasks: GanttTask[],
+    links: GanttLink[],
+    draggedId: GanttTask['id'],
+    mode: DragMode,
+    deltaMs: number,
+    snapMs: number,
+): GanttTask[] {
+    const byId = new Map(tasks.map((t) => [t.id, t]));
+    const dragged = byId.get(draggedId);
+    if (!dragged) return tasks;
+
+    // 1. Apply the drag delta to the dragged task itself.
+    let nextDragged: GanttTask;
+    if (mode === 'move') {
+        nextDragged = {
+            ...dragged,
+            start: new Date(dragged.start.getTime() + deltaMs),
+            end: new Date(dragged.end.getTime() + deltaMs),
+        };
+    } else if (mode === 'resize-start') {
+        const ns = new Date(dragged.start.getTime() + deltaMs);
+        if (ns.getTime() >= dragged.end.getTime() - snapMs) return tasks;
+        nextDragged = { ...dragged, start: ns };
+    } else if (mode === 'resize-end') {
+        const ne = new Date(dragged.end.getTime() + deltaMs);
+        if (ne.getTime() <= dragged.start.getTime() + snapMs) return tasks;
+        nextDragged = { ...dragged, end: ne };
+    } else {
+        return tasks;
+    }
+    byId.set(nextDragged.id, nextDragged);
+
+    // 2. Pre-index children by parent so roll-up later is O(parents) per pass.
+    const childrenByParent = new Map<GanttTask['id'], GanttTask['id'][]>();
+    for (const t of tasks) {
+        if (t.parent === undefined || t.parent === null) continue;
+        const arr = childrenByParent.get(t.parent) ?? [];
+        arr.push(t.id);
+        childrenByParent.set(t.parent, arr);
+    }
+
+    // Structural move: when a parent shifts (by drag or cascade), every
+    // descendant shifts by the same delta. Without this, dragging anything
+    // upstream of e.g. Firmware Implementation moves t4 forward via the
+    // dependency graph but leaves its sub-tasks (t4-1…) behind — and the
+    // roll-up step then snaps t4 back to fit them.
+    const shiftDescendants = (taskId: GanttTask['id'], deltaMs: number) => {
+        if (deltaMs === 0) return;
+        const queue = [...(childrenByParent.get(taskId) ?? [])];
+        while (queue.length > 0) {
+            const cid = queue.shift()!;
+            const child = byId.get(cid);
+            if (child) {
+                byId.set(cid, {
+                    ...child,
+                    start: new Date(child.start.getTime() + deltaMs),
+                    end: new Date(child.end.getTime() + deltaMs),
+                });
+            }
+            const grand = childrenByParent.get(cid);
+            if (grand) queue.push(...grand);
+        }
+    };
+
+    // If the user dragged a parent (or any node with descendants) in move
+    // mode, the same delta applies to all descendants too.
+    if (mode === 'move') {
+        shiftDescendants(nextDragged.id, deltaMs);
+    }
+
+    // 3. DFS cascade routine — reused for the initial pass and for any
+    //    parent whose dates change during roll-up. Each call takes its own
+    //    `visited` Set so a parent's downstream chain can re-flow even when
+    //    those targets were already touched by an earlier pass.
+    const cascadeFrom = (seedId: GanttTask['id']) => {
+        const visited = new Set<GanttTask['id']>([seedId]);
+        const recurse = (sourceId: GanttTask['id']) => {
+            for (const link of links) {
+                if (link.source !== sourceId) continue;
+                if (visited.has(link.target)) continue;
+                const source = byId.get(sourceId);
+                const target = byId.get(link.target);
+                if (!source || !target) continue;
+
+                const durationMs = target.end.getTime() - target.start.getTime();
+                let nextStart: Date;
+                let nextEnd: Date;
+                switch (link.type) {
+                    case 'e2s':
+                        nextStart = new Date(source.end);
+                        nextEnd = new Date(nextStart.getTime() + durationMs);
+                        break;
+                    case 's2s':
+                        nextStart = new Date(source.start);
+                        nextEnd = new Date(nextStart.getTime() + durationMs);
+                        break;
+                    case 'e2e':
+                        nextEnd = new Date(source.end);
+                        nextStart = new Date(nextEnd.getTime() - durationMs);
+                        break;
+                    case 's2e':
+                        nextEnd = new Date(source.start);
+                        nextStart = new Date(nextEnd.getTime() - durationMs);
+                        break;
+                    default:
+                        continue;
+                }
+
+                // Mark visited even when unchanged, so a diamond doesn't re-enter.
+                visited.add(target.id);
+                if (
+                    nextStart.getTime() === target.start.getTime() &&
+                    nextEnd.getTime() === target.end.getTime()
+                ) {
+                    continue;
+                }
+                // All four link rules (e2s / s2s / e2e / s2e) preserve the
+                // target's duration, so delta_start === delta_end — a pure
+                // shift. Carry the target's descendants along by that delta
+                // so a parent target doesn't "leave its children behind".
+                const targetDelta = nextStart.getTime() - target.start.getTime();
+                byId.set(target.id, { ...target, start: nextStart, end: nextEnd });
+                shiftDescendants(target.id, targetDelta);
+                recurse(target.id);
+            }
+        };
+        recurse(seedId);
+    };
+
+    // 4. Initial cascade from the dragged task.
+    cascadeFrom(nextDragged.id);
+
+    // 5. Roll-up loop: parent.start = min(child.start), parent.end =
+    //    max(child.end). Any parent whose dates change cascades from its
+    //    own outgoing links too. Repeat until nothing changes. The
+    //    iteration cap is purely defensive against pathological graphs.
+    const MAX_ROLLUP_ITERATIONS = 16;
+    for (let iter = 0; iter < MAX_ROLLUP_ITERATIONS; iter++) {
+        const updatedParents: GanttTask['id'][] = [];
+        for (const [parentId, childIds] of childrenByParent) {
+            // The dragged task's position is user-intended. Skipping it from
+            // roll-up means dragging a parent bar doesn't immediately reset
+            // to fit its (unmoved) children.
+            if (parentId === draggedId) continue;
+            const parent = byId.get(parentId);
+            if (!parent) continue;
+
+            let minStart = Number.POSITIVE_INFINITY;
+            let maxEnd = Number.NEGATIVE_INFINITY;
+            for (const cid of childIds) {
+                const child = byId.get(cid);
+                if (!child) continue;
+                const cs = child.start.getTime();
+                const ce = child.end.getTime();
+                if (cs < minStart) minStart = cs;
+                if (ce > maxEnd) maxEnd = ce;
+            }
+            if (!Number.isFinite(minStart) || !Number.isFinite(maxEnd)) continue;
+
+            if (
+                parent.start.getTime() !== minStart ||
+                parent.end.getTime() !== maxEnd
+            ) {
+                byId.set(parentId, {
+                    ...parent,
+                    start: new Date(minStart),
+                    end: new Date(maxEnd),
+                });
+                updatedParents.push(parentId);
+            }
+        }
+        if (updatedParents.length === 0) break;
+        for (const pid of updatedParents) cascadeFrom(pid);
+    }
+
+    // 6. Rebuild the array preserving the original task order.
+    return tasks.map((t) => byId.get(t.id) ?? t);
+}
+
 export function GanttContainer({
     tasks: initialTasks,
     links: initialLinks,
     domain,
-    rowHeight = 34,
+    rowHeight = 40,
+    defaultCollapsed = false,
+    initialCollapsedIds,
+    showProgress = false,
+    weekendDays,
 }: GanttContainerProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const taskListInnerRef = useRef<HTMLDivElement>(null);
@@ -57,9 +277,33 @@ export function GanttContainer({
     const [links, setLinks] = useState<GanttLink[]>(initialLinks);
     const [selectedId, setSelectedId] = useState<GanttTask['id'] | undefined>();
     const [selectedLinkId, setSelectedLinkId] = useState<GanttLink['id'] | undefined>();
-    const [collapsedIds, setCollapsedIds] = useState<Set<GanttTask['id']>>(
-        () => new Set(),
-    );
+    // Seed once from props. `initialCollapsedIds` wins if both are passed.
+    const [collapsedIds, setCollapsedIds] = useState<Set<GanttTask['id']>>(() => {
+        if (initialCollapsedIds && initialCollapsedIds.length > 0) {
+            return new Set(initialCollapsedIds);
+        }
+        if (defaultCollapsed) {
+            // Collapse every parent EXCEPT root-level ones (parents that have
+            // no parent themselves). This keeps top-level grouping bars like
+            // "Product Realisation Lifecycle" expanded so the user always sees
+            // their immediate children — phases, in our case. Going deeper
+            // (Documents, Design Review) stays hidden until manually expanded.
+            const taskById = new Map(initialTasks.map((t) => [t.id, t]));
+            const collapsed = new Set<GanttTask['id']>();
+            for (const t of initialTasks) {
+                if (t.parent === undefined || t.parent === null) continue;
+                const parent = taskById.get(t.parent);
+                if (!parent) continue;
+                // Only collapse the parent if it ITSELF has a parent (i.e. it's
+                // not a root row).
+                if (parent.parent !== undefined && parent.parent !== null) {
+                    collapsed.add(parent.id);
+                }
+            }
+            return collapsed;
+        }
+        return new Set();
+    });
     const [drag, setDrag] = useState<DragInfo>(null);
 
     // Selecting a task bar dismisses the dependency-delete affordance so the
@@ -110,33 +354,15 @@ export function GanttContainer({
     const snapMs = ZOOM_LEVELS[level].snapMs;
 
     // Apply current drag to produce visible (in-flight) tasks. Bars and dependency
-    // lines render off this so the drag updates everything in lockstep.
+    // lines render off this so the drag updates everything in lockstep. The
+    // cascade fires here too, so dependents shift live with the dragged bar.
     const visibleTasks = useMemo<GanttTask[]>(() => {
         if (!drag || drag.kind !== 'bar') return tasks;
         const rawDeltaMs = scale.pxToMs(drag.deltaPx);
         const deltaMs = Math.round(rawDeltaMs / snapMs) * snapMs;
-        return tasks.map((t) => {
-            if (t.id !== drag.taskId) return t;
-            if (drag.mode === 'move') {
-                return {
-                    ...t,
-                    start: new Date(t.start.getTime() + deltaMs),
-                    end: new Date(t.end.getTime() + deltaMs),
-                };
-            }
-            if (drag.mode === 'resize-start') {
-                const newStart = new Date(t.start.getTime() + deltaMs);
-                if (newStart.getTime() >= t.end.getTime() - snapMs) return t;
-                return { ...t, start: newStart };
-            }
-            if (drag.mode === 'resize-end') {
-                const newEnd = new Date(t.end.getTime() + deltaMs);
-                if (newEnd.getTime() <= t.start.getTime() + snapMs) return t;
-                return { ...t, end: newEnd };
-            }
-            return t;
-        });
-    }, [tasks, drag, scale, snapMs]);
+        if (deltaMs === 0) return tasks;
+        return applyDragWithCascade(tasks, links, drag.taskId, drag.mode, deltaMs, snapMs);
+    }, [tasks, links, drag, scale, snapMs]);
 
     // hasChildren is derived from the full task set (not the filtered list)
     // so a parent keeps its chevron even when its children are filtered out.
@@ -335,27 +561,14 @@ export function GanttContainer({
                     const deltaMs = Math.round(rawDeltaMs / snapMs) * snapMs;
                     if (deltaMs !== 0) {
                         setTasks((ts) =>
-                            ts.map((t) => {
-                                if (t.id !== current.taskId) return t;
-                                if (current.mode === 'move') {
-                                    return {
-                                        ...t,
-                                        start: new Date(t.start.getTime() + deltaMs),
-                                        end: new Date(t.end.getTime() + deltaMs),
-                                    };
-                                }
-                                if (current.mode === 'resize-start') {
-                                    const newStart = new Date(t.start.getTime() + deltaMs);
-                                    if (newStart.getTime() >= t.end.getTime() - snapMs) return t;
-                                    return { ...t, start: newStart };
-                                }
-                                if (current.mode === 'resize-end') {
-                                    const newEnd = new Date(t.end.getTime() + deltaMs);
-                                    if (newEnd.getTime() <= t.start.getTime() + snapMs) return t;
-                                    return { ...t, end: newEnd };
-                                }
-                                return t;
-                            }),
+                            applyDragWithCascade(
+                                ts,
+                                links,
+                                current.taskId,
+                                current.mode,
+                                deltaMs,
+                                snapMs,
+                            ),
                         );
                     }
                 }
@@ -474,7 +687,12 @@ export function GanttContainer({
                             className="relative"
                             style={{ width: scale.rangeWidth, height: totalHeight }}
                         >
-                            <TimelineGrid scale={scale} level={level} height={totalHeight} />
+                            <TimelineGrid
+                                scale={scale}
+                                level={level}
+                                height={totalHeight}
+                                weekendDays={weekendDays}
+                            />
                             {/* Row separators with subtle alternation */}
                             {filteredTasks.map((t, i) => (
                                 <div
@@ -518,6 +736,7 @@ export function GanttContainer({
                                         onSelect={handleSelectTask}
                                         onBarDragStart={handleBarDragStart}
                                         onLinkDragStart={handleLinkDragStart}
+                                        showProgress={showProgress}
                                     />
                                 </div>
                             ))}

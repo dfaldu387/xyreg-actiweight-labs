@@ -1,6 +1,6 @@
 import React from 'react';
 import { GanttContainer } from '@/components/gantt/GanttContainer';
-import { SAMPLE_TASKS, SAMPLE_LINKS, SAMPLE_DOMAIN } from '@/components/gantt/sampleData';
+import { LIVE_TASKS, LIVE_LINKS, LIVE_DOMAIN } from '@/components/gantt/live.data';
 
 export default function CustomGanttDemoPage() {
     return (
@@ -9,7 +9,7 @@ export default function CustomGanttDemoPage() {
                 <div>
                     <h1 className="text-lg font-bold text-slate-900">Custom Gantt — Demo</h1>
                     <p className="text-xs text-slate-500">
-                        DST-safe, virtualized, dependency-aware timeline. Phase 2 visual layer.
+                        Live product phase data ({LIVE_TASKS.length} phases · {LIVE_LINKS.length} dependencies).
                     </p>
                 </div>
                 <a
@@ -21,9 +21,10 @@ export default function CustomGanttDemoPage() {
             </header>
             <div className="flex-1 min-h-0">
                 <GanttContainer
-                    tasks={SAMPLE_TASKS}
-                    links={SAMPLE_LINKS}
-                    domain={SAMPLE_DOMAIN}
+                    tasks={LIVE_TASKS}
+                    links={LIVE_LINKS}
+                    domain={LIVE_DOMAIN}
+                    defaultCollapsed={true}
                 />
             </div>
         </div>

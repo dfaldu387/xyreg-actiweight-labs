@@ -2562,6 +2562,7 @@ export type Database = {
           description: string
           exemption_description: string | null
           exemption_document_ids: Json
+          exemption_history: Json
           exemption_requested_at: string | null
           exemption_requested_by: string | null
           exemption_review_reason: string | null
@@ -2620,6 +2621,7 @@ export type Database = {
           description: string
           exemption_description?: string | null
           exemption_document_ids?: Json
+          exemption_history?: Json
           exemption_requested_at?: string | null
           exemption_requested_by?: string | null
           exemption_review_reason?: string | null
@@ -2678,6 +2680,7 @@ export type Database = {
           description?: string
           exemption_description?: string | null
           exemption_document_ids?: Json
+          exemption_history?: Json
           exemption_requested_at?: string | null
           exemption_requested_by?: string | null
           exemption_review_reason?: string | null

@@ -20,7 +20,7 @@ interface InteractionLayerProps {
     height: number;
 }
 
-const BAR_HEIGHT = 22;
+const BAR_HEIGHT = 28;
 
 export function InteractionLayer({
     draft,
@@ -60,8 +60,8 @@ export function InteractionLayer({
                 <marker
                     id="gantt-draft-arrow"
                     viewBox="0 0 10 10"
-                    markerWidth="9"
-                    markerHeight="9"
+                    markerWidth="6"
+                    markerHeight="6"
                     refX="9"
                     refY="5"
                     orient="auto"

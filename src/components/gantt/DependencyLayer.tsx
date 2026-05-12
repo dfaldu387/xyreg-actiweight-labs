@@ -2,7 +2,7 @@ import React from 'react';
 import type { GanttTask, GanttLink, BarBox } from '@/types/ganttChart';
 import type { TimeScale } from '@/lib/gantt/timeScale';
 
-const BAR_HEIGHT = 22;
+const BAR_HEIGHT = 28;
 const DOT_R = 4.5; // half of TaskBar's connector-dot diameter (9px)
 // Elbow must be ≥ marker base (8.1px = markerWidth×refX/viewBox) + DOT_R so
 // the final L-bend sits outside the arrowhead's footprint — otherwise the

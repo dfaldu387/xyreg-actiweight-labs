@@ -9,7 +9,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, FileText, Clock, CheckCircle, Users, Trash2, Send, XCircle, RotateCcw, Pencil, PlayCircle, ShieldCheck, ShieldAlert, Lock, Calendar as CalendarIcon, Check, X as XIcon } from 'lucide-react';
+import { ArrowLeft, FileText, Clock, CheckCircle, Users, Trash2, Send, XCircle, RotateCcw, Pencil, PlayCircle, ShieldCheck, ShieldAlert, Lock, Calendar as CalendarIcon, Check, X as XIcon, Mail, ChevronDown } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -68,7 +76,7 @@ import { postmarkService } from '@/services/resendMailService';
 import { ESignPopup } from '@/components/esign/ESignPopup';
 import { useAuth } from '@/context/AuthContext';
 import { hasAdminPrivileges } from '@/utils/roleUtils';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 // ---------------------------------------------------------------------------
 // Inline edit helpers (Draft-only)
@@ -337,6 +345,10 @@ export default function ChangeControlDetailPage() {
   // null | assignment-id (sign just my pending perspectives for that assignment)
   const [esignAssignmentId, setEsignAssignmentId] = useState<string | null>(null);
   const [visibleDocCount, setVisibleDocCount] = useState<number | null>(null);
+  // Resend review request state — must live above the !ccr early return
+  // to keep hook order stable.
+  const [resendingForId, setResendingForId] = useState<string | null>(null);
+  const [lastResendAt, setLastResendAt] = useState<number>(0);
   const dedupedDocsCount = useCCRLinkedDocsDedupedCount(
     ccr?.id ?? '',
     Array.isArray(ccr?.affected_documents) ? ccr.affected_documents : []
@@ -438,20 +450,17 @@ export default function ChangeControlDetailPage() {
     if (!ccr) return;
     autoOpenedReviewRef.current = true;
     if (!isCurrentUserAdmin) {
-      toast({
-        title: 'Admin only',
+      toast('Admin only', {
         description: 'Only company admins can review exemption requests.',
       });
     } else if (ccr.exemption_status === 'requested') {
       setExemptionReviewOpen(true);
     } else if (ccr.exemption_status === 'approved' || ccr.exemption_status === 'rejected') {
-      toast({
-        title: `Exemption already ${ccr.exemption_status}`,
+      toast(`Exemption already ${ccr.exemption_status}`, {
         description: 'This exemption was reviewed by another admin. See the Implementation Exemption card for details.',
       });
     } else {
-      toast({
-        title: 'No pending exemption',
+      toast('No pending exemption', {
         description: 'There is no exemption request to review on this CCR — it may have been cleared.',
       });
     }
@@ -472,13 +481,13 @@ export default function ChangeControlDetailPage() {
           subtitle={lang('changeControl.loadingDetails')}
         />
         <div className="flex-1 flex items-center justify-center">
-          <LoadingSpinner size="lg" />
-        </div>
-      </div>
-    );
-  }
+           <LoadingSpinner size="lg" />
+         </div>
+       </div>
+     );
+   }
 
-  if (!ccr) {
+   if (!ccr) {
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center">
         <h2 className="text-xl font-semibold mb-2">{lang('changeControl.ccrNotFound')}</h2>
@@ -716,29 +725,48 @@ export default function ChangeControlDetailPage() {
       userId: user.id,
       reason: namedReason,
     });
-    // 4. Notify assigned reviewers
+    // 4 + 5. Notify + email assigned reviewers (bell + email)
+    await notifyAndEmailReviewers(
+      payload.reviewers,
+      { reason: payload.reason, actorUserId: user.id },
+    );
+  };
+
+  // ---- Reusable notify+email pipeline ------------------------------------
+  // Used by both initial Submit-for-Review and the "Resend review request"
+  // action so reviewers always get the same in-app + email ping.
+  const notifyAndEmailReviewers = async (
+    reviewers: Array<{ user_id: string; perspectives: CCRPerspective[] }>,
+    opts: { reason: string; actorUserId: string; isResend?: boolean },
+  ): Promise<{ emailedCount: number; missingEmails: string[] }> => {
+    let emailedCount = 0;
+    const missingEmails: string[] = [];
+    const actorName =
+      companyUsers.find((u) => u.id === opts.actorUserId)?.name ?? 'A teammate';
+    // In-app notifications (bell + Mission Control)
     try {
-      const actorName =
-        companyUsers.find((u) => u.id === user.id)?.name ?? 'A teammate';
       const actionUrl = `/app/change-control/${ccr.id}`;
-      const notifications = payload.reviewers.map((r) => {
+      const notifications = reviewers.map((r) => {
         const persps = r.perspectives.map((p) => CCR_PERSPECTIVE_LABELS[p]).join(' & ');
+        const verb = opts.isResend ? 'is reminding you that you are assigned as' : 'assigned you as';
         return {
           user_id: r.user_id,
-          actor_id: user.id,
+          actor_id: opts.actorUserId,
           actor_name: actorName,
           company_id: ccr.company_id,
           product_id: ccr.product_id ?? undefined,
           category: 'review' as const,
           action: 'ccr_review_assigned' as const,
-          title: `Review requested: ${ccr.ccr_id}`,
-          message: `${actorName} assigned you as ${persps} reviewer on "${ccr.title}". Approve & e-sign in the CCR detail page.`,
+          title: opts.isResend
+            ? `Reminder — review requested: ${ccr.ccr_id}`
+            : `Review requested: ${ccr.ccr_id}`,
+          message: `${actorName} ${verb} ${persps} reviewer on "${ccr.title}". Approve & e-sign in the CCR detail page.`,
           priority: 'high' as const,
           entity_type: 'change_control_request',
           entity_id: ccr.id,
           entity_name: ccr.ccr_id,
           action_url: actionUrl,
-          metadata: { perspectives: r.perspectives, reason: payload.reason },
+          metadata: { perspectives: r.perspectives, reason: opts.reason, resend: !!opts.isResend },
         };
       });
       if (notifications.length > 0) {
@@ -747,10 +775,8 @@ export default function ChangeControlDetailPage() {
     } catch (e) {
       console.error('Failed to notify CCR reviewers', e);
     }
-    // 5. Email assigned reviewers
+    // Email
     try {
-      const actorName =
-        companyUsers.find((u) => u.id === user.id)?.name ?? 'A teammate';
       const { data: company } = await supabase
         .from('companies')
         .select('name, app_url')
@@ -759,10 +785,16 @@ export default function ChangeControlDetailPage() {
       const baseUrl = company?.app_url || window.location.origin || 'https://app.xyreg.com';
       const actionUrl = `${baseUrl}/app/change-control/${ccr.id}`;
       const companyName = company?.name || 'your company';
+      const reasonForEmail = opts.isResend
+        ? `${opts.reason}\n\n(This is a reminder — the original review request was not received or actioned.)`
+        : opts.reason;
       await Promise.all(
-        payload.reviewers.map(async (r) => {
+        reviewers.map(async (r) => {
           const reviewer = companyUsers.find((u) => u.id === r.user_id);
-          if (!reviewer?.email || reviewer.email === 'No email') return;
+          if (!reviewer?.email || reviewer.email === 'No email') {
+            missingEmails.push(reviewer?.name ?? 'reviewer');
+            return;
+          }
           const result = await postmarkService.sendCCRReviewEmail({
             recipientEmail: reviewer.email,
             recipientName: reviewer.name,
@@ -771,16 +803,87 @@ export default function ChangeControlDetailPage() {
             ccrId: ccr.ccr_id,
             ccrTitle: ccr.title,
             perspectives: r.perspectives.map((p) => CCR_PERSPECTIVE_LABELS[p]),
-            reason: payload.reason,
+            reason: reasonForEmail,
             actionUrl,
           });
           if (!result.success) {
             console.warn('CCR review email failed for', reviewer.email, result.error);
+          } else {
+            emailedCount += 1;
           }
         }),
       );
     } catch (e) {
       console.error('Failed to email CCR reviewers', e);
+    }
+    return { emailedCount, missingEmails };
+  };
+
+  // ---- Resend review request ---------------------------------------------
+  // Re-fires the notify+email pipeline for currently assigned reviewers.
+  // Does NOT change reviewer assignments or CCR status.
+  // (state hooks moved above the !ccr early return to keep hook order stable)
+  const resendThrottleMs = 60_000;
+
+  const handleResendReviewRequest = async (
+    targetUserId?: string, // omit = all assigned reviewers
+  ) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const reviewers = (targetUserId
+      ? assignments.filter((a) => a.user_id === targetUserId)
+      : assignments
+    ).map((a) => ({ user_id: a.user_id, perspectives: a.perspectives as CCRPerspective[] }));
+    if (reviewers.length === 0) {
+      toast.error('No reviewers assigned to resend to.');
+      return;
+    }
+    setResendingForId(targetUserId ?? '__all__');
+    try {
+      const { emailedCount, missingEmails } = await notifyAndEmailReviewers(
+        reviewers,
+        {
+          reason: 'Resending review request — please action when you can.',
+          actorUserId: user.id,
+          isResend: true,
+        },
+      );
+      // Lightweight audit-trail row (no status change) so the History tab
+      // shows the resend event. Inserted directly to avoid the hook's
+      // "Status Updated" side-effects.
+      try {
+        const names = reviewers
+          .map((r) => companyUsers.find((u) => u.id === r.user_id)?.name ?? r.user_id)
+          .join(', ');
+        const actorName =
+          companyUsers.find((u) => u.id === user.id)?.name ?? 'A teammate';
+        await resolveCurrentCCRProfileId();
+        await supabase.from('change_control_state_transitions').insert({
+          ccr_id: ccr.id,
+          from_status: ccr.status,
+          to_status: ccr.status,
+          transitioned_by: user.id,
+          transition_reason: `Review request resent to ${names} by ${actorName}.`,
+        });
+      } catch (e) {
+        console.warn('Resend audit log failed (non-blocking)', e);
+      }
+      setLastResendAt(Date.now());
+      const recipients = reviewers
+        .map((r) => companyUsers.find((u) => u.id === r.user_id)?.name ?? 'reviewer')
+        .join(', ');
+      if (missingEmails.length > 0) {
+        toast.warning(
+          `Notification sent to ${recipients}. No email on file for: ${missingEmails.join(', ')}.`,
+        );
+      } else {
+        toast.success(
+          `Review request resent to ${recipients} (email + in-app notification).`,
+          { description: emailedCount === 0 ? 'In-app only — no emails delivered.' : undefined },
+        );
+      }
+    } finally {
+      setResendingForId(null);
     }
   };
 
@@ -1490,10 +1593,52 @@ export default function ChangeControlDetailPage() {
               {(ccr.status === 'under_review' || ccr.status === 'approved' || ccr.status === 'implemented' || ccr.status === 'verified' || ccr.status === 'closed') && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <ShieldCheck className="h-5 w-5" />
-                      Reviewer Approvals
-                    </CardTitle>
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="flex items-center gap-2">
+                        <ShieldCheck className="h-5 w-5" />
+                        Reviewer Approvals
+                      </CardTitle>
+                      {ccr.status === 'under_review' && assignments.length > 0 && (() => {
+                        const throttled = Date.now() - lastResendAt < resendThrottleMs;
+                        const isResending = resendingForId !== null;
+                        const disabled = throttled || isResending;
+                        return (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={disabled}
+                                title={
+                                  throttled
+                                    ? 'Please wait a minute before resending again.'
+                                    : 'Resend the review request to assigned reviewers (email + bell + Mission Control).'
+                                }
+                              >
+                                <Mail className="h-3.5 w-3.5 mr-1.5" />
+                                {isResending ? 'Sending…' : 'Resend review request'}
+                                <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-60" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-64">
+                              <DropdownMenuLabel>Resend to</DropdownMenuLabel>
+                              <DropdownMenuItem onSelect={() => handleResendReviewRequest()}>
+                                All assigned reviewers ({assignments.length})
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              {assignments.map((a) => (
+                                <DropdownMenuItem
+                                  key={a.id}
+                                  onSelect={() => handleResendReviewRequest(a.user_id)}
+                                >
+                                  {reviewerName(a.user_id) ?? 'Reviewer'}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        );
+                      })()}
+                    </div>
                     <CardDescription>
                       Each assigned reviewer e-signs the perspectives they own (21 CFR Part 11).
                     </CardDescription>

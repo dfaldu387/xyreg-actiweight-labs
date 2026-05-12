@@ -170,6 +170,11 @@ export function DocumentDraftDrawer({
   // an effect re-run from a downstream dep change (e.g. resolvedCompanyId
   // resolving late) doesn't wipe user edits or mint a duplicate stub row.
   const initializedDocRef = useRef<string | null>(null);
+  // Mirror of `template` so async callbacks (e.g. the stub-creation IIFE) can
+  // read the latest template without re-binding to a stale closure. Used to
+  // flush content applied during the brief window between stub-creation
+  // kickoff and the resulting `existingDraftId` arriving.
+  const templateRef = useRef<DocumentTemplate | null>(null);
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false);
   const [editorMounted, setEditorMounted] = useState(false);
   // Header actions registered by LiveEditor — rendered inside the drawer's
@@ -976,6 +981,16 @@ export function DocumentDraftDrawer({
             });
             if (result.success && result.id) {
               setExistingDraftId(result.id);
+              // Race-flush: the user may have applied content (Copy from
+              // Document, AI Auto-Fill from .docx, side-panel edits) during
+              // the brief window before the stub id arrived. Those updates
+              // were skipped by `handleContentUpdate`'s `existingDraftId`
+              // guard and would otherwise be lost on reload. Save the
+              // current latest template now that we have an id to attach.
+              const latest = templateRef.current;
+              if (latest && resolvedCompanyId) {
+                debouncedDbSave(latest, result.id, resolvedCompanyId);
+              }
             } else {
               // Clear ref so a later trigger (e.g. user starts typing → effect
               // re-runs from a dep change) can retry the stub creation.
@@ -1107,6 +1122,42 @@ export function DocumentDraftDrawer({
 
           setExistingDraftId(null);
           setTemplate(newTemplate);
+
+          // Mint a DB stub row immediately so the very first edit
+          // (Copy-from-Document, AI Auto-Fill, side-panel field change) has an
+          // `existingDraftId` available and flows through `debouncedDbSave`.
+          // Without this, edits are localStorage-only and disappear on reload.
+          // Mirror the isUnsaved branch's stub-creation logic and race-flush.
+          (async () => {
+            try {
+              const result = await DocumentStudioPersistenceService.saveTemplate({
+                company_id: resolvedCompanyId,
+                template_id: normalizedDocId,
+                name: newTemplate.name,
+                type: newTemplate.type,
+                sections: newTemplate.sections as any[],
+                product_context: newTemplate.productContext,
+                document_control: newTemplate.documentControl,
+                metadata: newTemplate.metadata,
+                product_id: productId,
+              });
+              if (result.success && result.id) {
+                setExistingDraftId(result.id);
+                // Race-flush: content applied during the brief window before
+                // the stub id arrived (Copy from Document, AI Auto-Fill from
+                // .docx) would otherwise be lost on reload. Save the current
+                // latest template now that we have an id to attach.
+                const latest = templateRef.current;
+                if (latest && resolvedCompanyId) {
+                  debouncedDbSave(latest, result.id, resolvedCompanyId);
+                }
+              } else {
+                console.warn('Draft stub creation returned no id:', result.error);
+              }
+            } catch (e) {
+              console.error('Failed to create draft stub:', e);
+            }
+          })();
         }
       } catch (error) {
         console.error('Error loading existing draft:', error);
@@ -1151,6 +1202,12 @@ export function DocumentDraftDrawer({
   }, [open, normalizedDocId, documentName, documentType, productId, resolvedCompanyId, documentReference, normalDraft, initialSections]);
 
   // Debounced DB save for inline content edits
+  // Keep `templateRef` in sync with the latest template state so async
+  // callbacks can read it without stale-closure issues.
+  React.useEffect(() => {
+    templateRef.current = template;
+  }, [template]);
+
   const debouncedDbSave = React.useMemo(() => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     return (updatedTemplate: DocumentTemplate, draftId: string, cId: string) => {
