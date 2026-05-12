@@ -35,12 +35,15 @@ serve(async (req) => {
       throw new Error(`Unsupported kind: ${kind}`);
     }
 
-    const RESEND_API_KEY = 're_QWBM83YN_NxPhjZwYFzyzwQBPYHwEnK4L';
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    if (!RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY is not configured');
+    }
 
     const safeRecipientName = escapeHtml(recipientName || 'there');
     const safeActorName = escapeHtml(actorName || 'A teammate');
     const safeCompanyName = escapeHtml(companyName || 'the company');
-    const safeCcrId = escapeHtml(ccrId || 'CCR');
+    const safeCcrId = escapeHtml(ccrId || 'Change Control Request');
     const safeCcrTitle = escapeHtml(ccrTitle || 'Untitled change');
     const safeReason = escapeHtml(reason || '').replace(/\n/g, '<br />');
     const safeActionUrl = String(actionUrl || '#');
@@ -49,15 +52,19 @@ serve(async (req) => {
     const headerColor = isApproved ? '#10b981' : '#dc2626';
     const accentColor = isApproved ? '#10b981' : '#dc2626';
     const headerEmoji = isApproved ? '✓' : '✕';
-    const headerTitle = isApproved ? 'CCR Approved' : 'CCR Rejected';
+    const headerTitle = isApproved
+      ? 'Change Control Request Approved'
+      : 'Change Control Request Rejected';
     const subject = isApproved
       ? `Approved: ${safeCcrId} — ${safeCcrTitle}`
       : `Rejected: ${safeCcrId} — ${safeCcrTitle}`;
     const introLine = isApproved
-      ? `<strong>${safeActorName}</strong> approved this Change Control Request. All assigned reviewers have signed off and the CCR is locked for implementation.`
+      ? `<strong>${safeActorName}</strong> approved this Change Control Request. All assigned reviewers have signed off and the Change Control Request is locked for implementation.`
       : `<strong>${safeActorName}</strong> rejected this Change Control Request. Please review the rationale below, revise, and resubmit.`;
     const reasonLabel = isApproved ? 'Approval note' : 'Rejection reason';
-    const ctaLabel = isApproved ? 'Open CCR' : 'Open & Revise CCR';
+    const ctaLabel = isApproved
+      ? 'Open Change Control Request'
+      : 'Open & Revise Change Control Request';
 
     const payload = {
       from: 'noreply@xyreg.com',
@@ -100,14 +107,14 @@ serve(async (req) => {
                         ${introLine}
                       </p>
 
-                      <!-- CCR details card -->
+                      <!-- Change Control Request details card -->
                       <table role="presentation" style="width: 100%; background: #f7fafc; border-left: 4px solid ${accentColor}; margin: 24px 0;" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding: 18px 22px;">
                             <table role="presentation" style="width: 100%;">
                               <tr>
                                 <td style="padding: 6px 0;">
-                                  <strong style="color: #2d3748; font-size: 14px;">CCR ID:</strong>
+                                  <strong style="color: #2d3748; font-size: 14px;">Change Control Request ID:</strong>
                                   <span style="color: #4a5568; font-size: 14px; padding-left: 10px;">${safeCcrId}</span>
                                 </td>
                               </tr>

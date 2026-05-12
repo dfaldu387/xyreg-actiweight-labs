@@ -31,6 +31,24 @@ export type ChangeType =
 // Risk Impact Level
 export type RiskImpact = 'none' | 'low' | 'medium' | 'high';
 
+// Implementation Exemption Status
+// Authors can request to bypass the "linked documents must all be Approved"
+// gate that locks Mark Implemented; an admin reviews the request.
+export type CCRExemptionStatus = 'requested' | 'approved' | 'rejected';
+
+// One closed exemption cycle preserved in exemption_history when a new
+// request is raised. Index 0 in the array is the most recent prior cycle.
+export interface CCRExemptionHistoryEntry {
+  status: CCRExemptionStatus;
+  description: string | null;
+  document_ids: string[];
+  requested_by: string | null;
+  requested_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_reason: string | null;
+}
+
 // CCR Reviewer Perspectives
 export type CCRPerspective =
   | 'reviewer'
@@ -173,6 +191,19 @@ export interface ChangeControlRequest {
   closed_date: string | null;
   closed_by: string | null;
   
+  // Implementation Exemption (bypass linked-docs gate on Mark Implemented)
+  exemption_status: CCRExemptionStatus | null;
+  exemption_description: string | null;
+  exemption_document_ids: string[];
+  exemption_requested_by: string | null;
+  exemption_requested_at: string | null;
+  exemption_reviewed_by: string | null;
+  exemption_reviewed_at: string | null;
+  exemption_review_reason: string | null;
+  /** Closed exemption cycles (rejected/approved) preserved when a new
+   *  request is raised. Newest cycle first. */
+  exemption_history: CCRExemptionHistoryEntry[];
+
   // Metadata
   created_by: string;
   created_at: string;
@@ -246,6 +277,15 @@ export interface UpdateCCRInput {
   technical_reviewer_id?: string | null;
   quality_reviewer_id?: string | null;
   regulatory_reviewer_id?: string | null;
+  // Implementation exemption (set via dedicated request/review hooks)
+  exemption_status?: CCRExemptionStatus | null;
+  exemption_description?: string | null;
+  exemption_document_ids?: string[];
+  exemption_requested_by?: string | null;
+  exemption_requested_at?: string | null;
+  exemption_reviewed_by?: string | null;
+  exemption_reviewed_at?: string | null;
+  exemption_review_reason?: string | null;
 }
 
 // CCR with related data

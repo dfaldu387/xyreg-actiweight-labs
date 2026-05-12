@@ -137,9 +137,10 @@ export function AiAssistPopover({
         align="end"
         side="bottom"
         sideOffset={6}
-        className="w-[420px] z-[110] p-4"
+        collisionPadding={16}
+        className="w-[420px] z-[110] p-0 max-h-[min(80vh,var(--radix-popover-content-available-height))] flex flex-col overflow-hidden"
       >
-        <div className="space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-yellow-500 fill-yellow-400" />
             <h4 className="text-sm font-semibold">AI Draft — {FIELD_LABELS[field]}</h4>
@@ -191,9 +192,10 @@ export function AiAssistPopover({
               </div>
             </div>
           )}
+        </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2 pt-1">
+        {/* Actions — sticky footer so buttons stay visible */}
+        <div className="shrink-0 sticky bottom-0 border-t p-3 flex justify-end gap-2 bg-background">
             <Button
               variant="ghost"
               size="sm"
@@ -231,7 +233,6 @@ export function AiAssistPopover({
                 {loading ? 'Generating…' : 'Generate'}
               </Button>
             )}
-          </div>
         </div>
       </PopoverContent>
     </Popover>

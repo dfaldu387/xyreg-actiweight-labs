@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { useCompanyAccessValidator } from '@/hooks/useCompanyAccessValidator';
 import { useCompanyRole } from '@/context/CompanyRoleContext';
+import { useAuth } from '@/context/AuthContext';
 import { FullPageLoader } from '@/components/ui/loading-spinner';
 import { AlertTriangle } from 'lucide-react';
 
@@ -20,40 +21,50 @@ interface CompanyRouteGuardProps {
 export function CompanyRouteGuard({ children }: CompanyRouteGuardProps) {
   const { companyName } = useParams<{ companyName: string }>();
   const { companyRoles, isLoading: rolesLoading } = useCompanyRole();
+  const { tenantAllowedCompanyIds, tenantPrimaryCompanyId } = useAuth();
   const { hasAccess, isLoading, error, resolvedCompanyId } = useCompanyAccessValidator(companyName);
 
-  // CRITICAL FIX: Synchronous check - if URL company exists in user's roles, they have access
-  // This prevents the race condition where async validation returns false during loading
+  // Synchronous check: the URL company must appear in the user's role list,
+  // which is already intersected with the tenant allow list (see useCompanyRoles).
+  // Even when async validation is loading, this lets us short-circuit safely.
   const decodedCompanyName = companyName ? decodeURIComponent(companyName) : null;
-  const urlCompanyInRoles = decodedCompanyName && companyRoles.some(role =>
-    role.companyName.toLowerCase() === decodedCompanyName.toLowerCase()
-  );
+  const matchedRole = decodedCompanyName
+    ? companyRoles.find(role => role.companyName.toLowerCase() === decodedCompanyName.toLowerCase())
+    : null;
+  // Defence-in-depth: re-check the tenant allow list. If the role list ever
+  // drifts from the tenant filter, this still catches cross-tenant URLs.
+  const passesTenantGate =
+    !tenantAllowedCompanyIds || tenantAllowedCompanyIds.length === 0 ||
+    (matchedRole ? tenantAllowedCompanyIds.includes(matchedRole.companyId) : false);
+  const urlCompanyInRoles = !!matchedRole && passesTenantGate;
 
-  
-
-  // While loading, pass through to children - they handle their own loading state
-  // This prevents duplicate loaders (CompanyRouteGuard + CompanyDashboard)
+  // While loading, two cases:
+  //   - URL company already matches a role we know about → safe to pass through
+  //     to children (they'll show their own loader). No flash possible.
+  //   - We don't yet have a confirmed match → block rendering with a loader.
+  //     Otherwise the unauthorized company's shell flashes before the guard's
+  //     redirect runs (e.g., logging into `arnar` while the URL still points
+  //     at "test company 1" from a previous tenant).
   if (isLoading || rolesLoading) {
-    return <>{children}</>;
+    if (urlCompanyInRoles) return <>{children}</>;
+    return <FullPageLoader />;
   }
 
-  // CRITICAL FIX: If URL company is in user's roles, grant access immediately
-  // This bypasses the async validator when we already know the user has access
+  // If URL company is in user's roles AND passes the tenant gate, grant access.
   if (urlCompanyInRoles) {
-    
     return <>{children}</>;
   }
 
-  // Handle access denied - redirect to first available company or mission control
-  if (!hasAccess) {
-    // If user has companies, redirect to first one
+  // Handle access denied - redirect to tenant primary (if user has access),
+  // otherwise the first company they actually have access to, otherwise mission control.
+  if (!hasAccess || !urlCompanyInRoles) {
     if (companyRoles.length > 0) {
-      const fallbackCompany = companyRoles[0];
-      
+      const primaryRole = tenantPrimaryCompanyId
+        ? companyRoles.find(r => r.companyId === tenantPrimaryCompanyId)
+        : null;
+      const fallbackCompany = primaryRole ?? companyRoles[0];
       return <Navigate to={`/app/company/${encodeURIComponent(fallbackCompany.companyName)}`} replace />;
     }
-
-    // No companies available, redirect to mission control
     return <Navigate to="/app/mission-control" replace />;
   }
 

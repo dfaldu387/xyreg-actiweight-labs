@@ -157,6 +157,9 @@
         "typescript-eslint": "^8.0.1",
         "vite": "^5.4.1",
       },
+      "optionalDependencies": {
+        "@rollup/rollup-win32-x64-msvc": "^4.60.3",
+      },
     },
   },
   "overrides": {
@@ -610,6 +613,8 @@
     "@rollup/rollup-linux-x64-gnu": ["@rollup/rollup-linux-x64-gnu@4.50.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@rollup/rollup-linux-x64-gnu/-/rollup-linux-x64-gnu-4.50.1.tgz", { "os": "linux", "cpu": "x64" }, ""],
 
     "@rollup/rollup-linux-x64-musl": ["@rollup/rollup-linux-x64-musl@4.50.1", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@rollup/rollup-linux-x64-musl/-/rollup-linux-x64-musl-4.50.1.tgz", { "os": "linux", "cpu": "x64" }, ""],
+
+    "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.60.3", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@rollup/rollup-win32-x64-msvc/-/rollup-win32-x64-msvc-4.60.3.tgz", { "os": "win32", "cpu": "x64" }, "sha512-hPt/bgL5cE+Qp+/TPHBqptcAgPzgj46mPcg/16zNUmbQk0j+mOEQV/+Lqu8QRtDV3Ek95Q6FeFITpuhl6OTsAA=="],
 
     "@rooks/use-mutation-observer": ["@rooks/use-mutation-observer@4.11.2", "https://europe-west4-npm.pkg.dev/lovable-core-prod/sandbox-npm-cache/@rooks/use-mutation-observer/-/use-mutation-observer-4.11.2.tgz", { "peerDependencies": { "react": ">=16.8.0" } }, ""],
 

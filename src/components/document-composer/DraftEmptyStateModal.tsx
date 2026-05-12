@@ -1,6 +1,6 @@
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Pencil, Sparkles, FileText, Copy } from 'lucide-react';
+import { Pencil, Sparkles, FileText, Copy, Upload } from 'lucide-react';
 import { useCustomerFeatureFlag } from '@/hooks/useCustomerFeatureFlag';
 
 interface DraftEmptyStateModalProps {
@@ -9,6 +9,7 @@ interface DraftEmptyStateModalProps {
   onGenerateManually: () => void;
   onAutoFillByAI: () => void;
   onCopyFromSOP: () => void;
+  onUploadDocx?: () => void;
 }
 
 export function DraftEmptyStateModal({
@@ -17,6 +18,7 @@ export function DraftEmptyStateModal({
   onGenerateManually,
   onAutoFillByAI,
   onCopyFromSOP,
+  onUploadDocx,
 }: DraftEmptyStateModalProps) {
   const aiAutoFillEnabled = useCustomerFeatureFlag('ai-auto-fill');
   const options = [
@@ -36,11 +38,19 @@ export function DraftEmptyStateModal({
       onClick: onAutoFillByAI,
       iconClass: 'text-primary bg-primary/10',
     }] : []),
+    ...(onUploadDocx ? [{
+      key: 'upload',
+      icon: Upload,
+      title: 'Upload .docx',
+      description: 'Import an existing Word document and map its headings to the draft sections.',
+      onClick: onUploadDocx,
+      iconClass: 'text-primary bg-primary/10',
+    }] : []),
     {
       key: 'sop',
       icon: Copy,
-      title: 'Copy from SOP Document',
-      description: 'Pick an existing SOP from the Xyreg library and copy its content as a starting point.',
+      title: 'Copy from Document',
+      description: 'Pick an existing document from the Xyreg library and copy its content as a starting point.',
       onClick: onCopyFromSOP,
       iconClass: 'text-primary bg-primary/10',
     },

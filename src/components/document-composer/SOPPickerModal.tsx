@@ -53,10 +53,10 @@ export function SOPPickerModal({ open, onOpenChange, onSelect, onBack }: SOPPick
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             )}
-            <DialogTitle>Copy from SOP Document</DialogTitle>
+            <DialogTitle>Copy from Document</DialogTitle>
           </div>
           <DialogDescription>
-            Select an SOP to copy its content into this draft. You can edit everything after.
+            Select a document to copy its content into this draft. You can edit everything after.
           </DialogDescription>
         </DialogHeader>
 
@@ -64,7 +64,7 @@ export function SOPPickerModal({ open, onOpenChange, onSelect, onBack }: SOPPick
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             autoFocus
-            placeholder="Search by SOP number or title..."
+            placeholder="Search by document number or title..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
@@ -74,7 +74,7 @@ export function SOPPickerModal({ open, onOpenChange, onSelect, onBack }: SOPPick
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
           {filtered.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-10">
-              No SOPs match "{search}".
+              No documents match "{search}".
             </div>
           ) : (
             <div className="grid gap-2 py-2">

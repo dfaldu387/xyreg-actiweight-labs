@@ -1,62 +1,26 @@
-## Plan: Foundation SOP correction + CCR description sync
+# Add a persistent "Upload .docx" action in the draft editor
 
-Two independent fixes addressing what you saw on `/change-control/a1fa29dd-…`.
+## Problem
+Today, importing a `.docx` is only offered inside the **DraftEmptyStateModal** ("How do you want to start?") that appears when you first open an empty draft. Once that modal is dismissed, or once a template auto-loads its placeholder skeleton (Purpose / Scope / References / Issued By table — exactly what you see in your screenshot), there is **no button anywhere** in the LiveEditor to upload a Word file. The hidden `<input type="file">` and the `handleDocxFileSelected` handler exist, but nothing triggers them.
 
----
+## Goal
+Make "Upload .docx" reachable at any time while editing a draft, not just from the initial chooser.
 
-### Part 1 — Fix the Foundation SOP set
+## Plan
 
-**Problem.** SOPs that should be universal (Risk Management, UDI, Identification & Traceability) are classified as Tier B `'always'` triggers, so they're not auto-seeded at company onboarding. SOP-002 Document Control IS in Tier A but renders below the fold, which made it look missing.
+1. **Lift the hidden file input out of the empty-state guard** in `LiveEditor.tsx` so it is always mounted (currently it lives inside the `!disableEmptyStatePrompt` block).
 
-**Change.** In `src/constants/sopAutoSeedTiers.ts`, promote three SOPs from Tier B → Tier A:
+2. **Add an "Upload .docx" toolbar button** in the editor toolbar (the row with B / I / S / link / H1-H3 / lists / Image / Size / table). Place it next to the existing **Image** button, using the `Upload` icon from lucide-react and a tooltip "Import from Word (.docx)". Clicking it triggers the same `handleEmptyStateUploadDocx` flow that the modal uses.
 
-| SOP | Title | Current | New |
-|---|---|---|---|
-| SOP-015 | Risk Management (ISO 14971) | Tier B (`always`) | **Tier A** |
-| SOP-019 | Identification, Traceability & UDI | Tier B (`always`) | **Tier A** |
-| SOP-045 | UDI Management | Tier B (`always`) | **Tier A** |
+3. **Also expose it in the empty-state modal as today** — no change to that modal, just keep parity.
 
-Result: foundation grows from 28 → **31 SOPs**. All three are mandatory under ISO 13485 / EU MDR / 21 CFR 820 regardless of pathway, so the `'always'` trigger was a tell that they were misclassified.
+4. **Confirmation guard**: if the editor already has user content, show a small `confirm()` ("Replace current content with the uploaded document?") before importing, to avoid accidental overwrites of placeholder edits.
 
-**Files touched**
-- `src/constants/sopAutoSeedTiers.ts` — move three entries, add justification strings.
-- `mem://features/sop/tiered-auto-seed-classification` — update count from 28 to 31, list new entries.
+5. No backend or schema changes.
 
-**Backfill for existing companies.** New companies get them automatically. For existing companies (like David Health Solutions Oy), add a one-time idempotent backfill via the existing seed routine. Two options to pick at implement time, but default: surface a "Seed missing foundation SOPs (3)" banner in Document Control when any of the three are absent, so admins opt in rather than auto-mutating their QMS.
+## Files touched
+- `src/components/document-composer/LiveEditor.tsx` — move the hidden `<input>` outside the empty-state block, add the toolbar button + confirm guard.
 
----
-
-### Part 2 — CCR description ↔ Connected Documents reconciliation
-
-**Problem.** The CCR `description` / `scope` field is authored once (often AI-assisted) and then drifts as users add/remove documents on the Documents tab. The text can reference docs that are no longer linked, or omit ones that were added later.
-
-**Change.** Two-layer fix:
-
-**(a) Drift detection (read-only badge).**
-- Add a lightweight `useCCRDescriptionDrift(ccrId)` hook that:
-  - tokenises the `description` for SOP/document references (regex: `SOP-[A-Z]{0,3}-?\d{3}`, document_reference patterns)
-  - compares against the live `change_control_affected_documents` set
-  - returns `{ missing: string[], stale: string[] }`
-- In `ChangeControlDetailPage.tsx`, render an amber pill next to the description: **"Description out of sync — N referenced doc(s) no longer linked, M linked doc(s) not mentioned"** with a "Refresh from linked documents" action.
-
-**(b) Refresh action (Draft only).**
-- Button calls a new `regenerateCCRDescriptionFromLinkedDocs(ccrId)` service that:
-  - fetches all `change_control_affected_documents` rows joined to `documents`
-  - calls the existing Gemini AI assist (already wired via `AiAssistPopover`) with a deterministic prompt: *"Rewrite this CCR scope so every linked document is referenced and no unlinked doc is mentioned. Preserve the original change rationale."*
-  - opens the result in the existing inline EditableText with diff preview (no auto-write — user confirms)
-- Restricted to CCRs in `Draft` status (matches existing edit gating on line ~70).
-
-**Files touched**
-- New `src/hooks/useCCRDescriptionDrift.ts`
-- New service method in `src/services/ccrLinkedDocsService.ts`: `extractReferencedDocs(description)` + `regenerateCCRDescriptionFromLinkedDocs(ccrId)`
-- `src/pages/ChangeControlDetailPage.tsx` — render drift badge + action button next to description block.
-- Mission Control surface: per the core rule "any flag must also surface in Mission Control" — add CCRs with description drift to the existing CCR widget as a sub-status pill.
-
-**No DB schema changes.** Pure frontend + service layer.
-
----
-
-### Out of scope (call out, don't build)
-- Promoting Tier B `manufacturing`-triggered SOPs (017, 018, 043, 051) — these genuinely depend on whether the company manufactures.
-- Auto-rewriting the description without user confirmation — drift detection is advisory only.
-- Renumbering SOPs to remove the gap between 002 and the rest of the list (would break audit trails).
+## Out of scope
+- Changing the import/parse logic (`docxToSections.ts` stays as-is).
+- Changing the empty-state modal copy (already updated previously).

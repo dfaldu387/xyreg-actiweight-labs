@@ -1,4 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
+import { splitDocPrefix } from '@/utils/templateNameUtils';
+import { formatSopDisplayId } from '@/constants/sopAutoSeedTiers';
 
 export interface LinkedCCRDoc {
   id: string;
@@ -9,6 +11,25 @@ export interface LinkedCCRDoc {
   status: string | null;
   updated_at: string | null;
   document_scope: string | null;
+}
+
+/**
+ * Resolve a clean reference badge + title for a linked CCR document. Mirrors
+ * the logic used in CCRLinkedDocuments so other surfaces (the exemption
+ * dialogs, the exemption summary card) render the same identifiers users
+ * already see in the Connected Documents list. Avoids raw DS-<uuid>
+ * placeholders.
+ */
+export function decorateLinkedDoc(d: LinkedCCRDoc): { displayRef: string; displayTitle: string } {
+  const ref = d.document_reference || '';
+  const isPlaceholder = !!ref && /^DS-[0-9a-f-]{8,}/i.test(ref);
+  const rawRef = d.document_number || (isPlaceholder ? '' : ref) || '';
+  const displayRef = /^SOP-\d{3}$/i.test(rawRef)
+    ? formatSopDisplayId(rawRef.toUpperCase())
+    : rawRef;
+  const { title } = splitDocPrefix(d.name || '');
+  const displayTitle = title || d.name || 'Untitled';
+  return { displayRef, displayTitle };
 }
 
 /**

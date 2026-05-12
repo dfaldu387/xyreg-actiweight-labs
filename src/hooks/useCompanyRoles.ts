@@ -106,11 +106,12 @@ export function useCompanyRoles() {
       // Build the role-source list. Two paths:
       //
       //   1. Tenant-granted visibility (genish, arnar, davidhealth, etc.):
-      //      tenantAllowedCompanyIds is non-empty → source from `companies`
-      //      filtered by the allow list, then cross-reference user_company_access
-      //      for role/is_primary/is_internal. Companies the user has no access
-      //      row for default to viewer; their data won't load (RLS denies),
-      //      which is the intended UX.
+      //      tenantAllowedCompanyIds is non-empty → intersect the allow list
+      //      with the user's user_company_access rows. The tenant allow list
+      //      is a coarse gate; user_company_access is the authoritative grant.
+      //      Showing tenant-allowed companies the user has NO access row for
+      //      caused a cross-tenant data leak (CompanyRouteGuard trusted the
+      //      role list and rendered dashboards for unauthorized companies).
       //
       //   2. Allow-all tenant (mockup):
       //      tenantAllowedCompanyIds is [] → existing user_company_access join
@@ -173,17 +174,27 @@ export function useCompanyRoles() {
         const accessByCompany = new Map(
           (accessRes.data ?? []).map((a: any) => [a.company_id, a])
         );
+        const companyById = new Map(
+          (companiesRes.data ?? []).map((c: any) => [c.id, c])
+        );
 
-        accessData = (companiesRes.data ?? []).map((c: any) => {
-          const access = accessByCompany.get(c.id);
-          return {
-            company_id: c.id,
-            access_level: access?.access_level ?? 'viewer',
-            is_primary: access?.is_primary ?? false,
-            is_internal: access?.is_internal ?? false,
-            companies: { name: c.name, is_archived: c.is_archived },
-          };
-        });
+        // Intersect: only return companies that are BOTH in the tenant allow
+        // list AND in user_company_access. A row in only one is not access.
+        accessData = (accessRes.data ?? [])
+          .map((access: any) => {
+            const c = companyById.get(access.company_id);
+            if (!c) return null; // belt-and-suspenders: query was already .in() filtered
+            return {
+              company_id: c.id,
+              access_level: access.access_level,
+              is_primary: access.is_primary,
+              is_internal: access.is_internal,
+              companies: { name: c.name, is_archived: c.is_archived },
+            };
+          })
+          .filter((row: any): row is AccessRecord => row !== null);
+        // Suppress unused-var warning while we keep the map for future debug use.
+        void accessByCompany;
       } else {
         // Allow-all tenant — existing behavior.
         const { data, error: accessError } = await supabase
@@ -328,7 +339,7 @@ export function useCompanyRoles() {
         setCompanyRoles(updatedRoles);
       }
     } catch (error) {
-      console.error('[useCompanyRoles] Error in fetchCompanyRoles:', error);
+      console.error('[AuthContext] Error in fetchCompanyRoles:', error);
     } finally {
       setIsLoading(false);
       setHasInitialized(true);

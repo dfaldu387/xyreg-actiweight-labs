@@ -12,7 +12,7 @@ import { useCompanyRole } from '@/context/CompanyRoleContext';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentEditor } from "@onlyoffice/document-editor-react";
-import { FileEdit, ArrowLeft, Loader2, AlertCircle, Send, Check, CheckCircle, FilePen, Eye, ShieldCheck, CircleCheckBig, Hourglass, ExternalLink, Star, Users, UserCheck, Calendar, PenTool, ChevronDown, ChevronUp, Link2, MessageSquare } from 'lucide-react';
+import { FileEdit, ArrowLeft, Loader2, AlertCircle, Send, Check, CheckCircle, FilePen, Eye, ShieldCheck, CircleCheckBig, Hourglass, ExternalLink, Star, Users, UserCheck, Calendar, PenTool, ChevronDown, ChevronUp, Link2, MessageSquare, Upload } from 'lucide-react';
 import { useDocumentStar } from '@/hooks/useDocumentStar';
 import { DocumentEditorSidebar } from '@/components/document-composer/DocumentEditorSidebar';
 import { useCIDocumentMetadata } from '@/hooks/useCIDocumentMetadata';
@@ -42,6 +42,7 @@ import { useDocxComments } from '@/hooks/useDocxComments';
 import { jumpToQuotedText } from '@/utils/jumpToQuotedText';
 import { formatSopDisplayName } from '@/constants/sopAutoSeedTiers';
 import { splitDocPrefix } from '@/utils/templateNameUtils';
+import { convertDocxToHtml, mapDocxHtmlToSections } from '@/utils/docxToSections';
 import * as SidebarModule from '@/components/ui/sidebar';
 import { useRightRail } from '@/context/RightRailContext';
 
@@ -165,6 +166,10 @@ export function DocumentDraftDrawer({
   const [template, setTemplate] = useState<DocumentTemplate | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [existingDraftId, setExistingDraftId] = useState<string | null>(null);
+  // Tracks which docId we've already initialized (template + DB stub) so that
+  // an effect re-run from a downstream dep change (e.g. resolvedCompanyId
+  // resolving late) doesn't wipe user edits or mint a duplicate stub row.
+  const initializedDocRef = useRef<string | null>(null);
   const [showAdvancedEditor, setShowAdvancedEditor] = useState(false);
   const [editorMounted, setEditorMounted] = useState(false);
   // Header actions registered by LiveEditor — rendered inside the drawer's
@@ -187,7 +192,13 @@ export function DocumentDraftDrawer({
   const [existingReviewerGroupIds, setExistingReviewerGroupIds] = useState<string[]>([]);
   const [showSaveCIDialog, setShowSaveCIDialog] = useState(false);
   const [isUnsaved, setIsUnsaved] = useState(isNewUnsavedDocument || false);
+  // Autosave status — flipped by debouncedDbSave's lifecycle so the header
+  // can render a "Saving… / Saved" indicator next to the document title.
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [activeView, setActiveView] = useState<'draft' | 'review' | 'completed'>('draft');
+  const [isImportingDocx, setIsImportingDocx] = useState(false);
+  const docxImportInputRef = useRef<HTMLInputElement | null>(null);
 
   // When the drawer opens, collapse both the left app sidebar and the right rail
   // so the authoring surface gets the full screen. Restore prior state on close.
@@ -870,6 +881,9 @@ export function DocumentDraftDrawer({
     if (!open) {
       setTemplate(null);
       setExistingDraftId(null);
+      // Reset the init guard so reopening this drawer (same or different
+      // doc) goes through the load/mint path again.
+      initializedDocRef.current = null;
       return;
     }
 
@@ -912,10 +926,20 @@ export function DocumentDraftDrawer({
 
     if (!resolvedCompanyId || !normalizedDocId) return;
 
-    // For new unsaved documents, skip DB lookup — just create a blank template
+    // For new unsaved documents, build a blank template AND mint a DB stub
+    // row immediately so the very first edit (typing, Copy-from-Document,
+    // side-panel field change) has an `existingDraftId` available and flows
+    // through `debouncedDbSave`. Without this, edits are localStorage-only
+    // and disappear on browser reload.
     if (isUnsaved) {
+      // Guard against re-running: if this exact doc was already initialized
+      // in a prior effect pass, don't re-setTemplate (would clobber edits)
+      // and don't re-mint the stub (would create a duplicate row).
+      if (initializedDocRef.current === normalizedDocId) {
+        return;
+      }
       const sections = getDefaultSectionsForType(documentType, categoryPrefix, isRecord);
-      setTemplate({
+      const initialTemplate: DocumentTemplate = {
         id: normalizedDocId,
         name: documentName,
         type: documentType,
@@ -929,8 +953,41 @@ export function DocumentDraftDrawer({
           approvedBy: { name: '', title: '', date: null },
         },
         metadata: { version: '1.0', lastUpdated: new Date(), estimatedCompletionTime: '30 minutes' },
-      });
+      };
+      setTemplate(initialTemplate);
       setExistingDraftId(null);
+
+      // Need a company to mint the row. If not resolved yet, leave the ref
+      // unset so we retry on the next effect pass when it becomes available.
+      if (resolvedCompanyId) {
+        initializedDocRef.current = normalizedDocId;
+        (async () => {
+          try {
+            const result = await DocumentStudioPersistenceService.saveTemplate({
+              company_id: resolvedCompanyId,
+              template_id: normalizedDocId,
+              name: initialTemplate.name,
+              type: initialTemplate.type,
+              sections: initialTemplate.sections as any[],
+              product_context: initialTemplate.productContext,
+              document_control: initialTemplate.documentControl,
+              metadata: initialTemplate.metadata,
+              product_id: productId,
+            });
+            if (result.success && result.id) {
+              setExistingDraftId(result.id);
+            } else {
+              // Clear ref so a later trigger (e.g. user starts typing → effect
+              // re-runs from a dep change) can retry the stub creation.
+              initializedDocRef.current = null;
+              console.warn('Draft stub creation returned no id:', result.error);
+            }
+          } catch (e) {
+            initializedDocRef.current = null;
+            console.error('Failed to create draft stub:', e);
+          }
+        })();
+      }
       return;
     }
 
@@ -1099,6 +1156,7 @@ export function DocumentDraftDrawer({
     return (updatedTemplate: DocumentTemplate, draftId: string, cId: string) => {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = setTimeout(async () => {
+        setIsSaving(true);
         try {
           await DocumentStudioPersistenceService.saveTemplate({
             id: draftId,
@@ -1112,8 +1170,11 @@ export function DocumentDraftDrawer({
             metadata: updatedTemplate.metadata || { version: '1.0', lastUpdated: new Date() },
             product_id: productId,
           });
+          setLastSavedAt(Date.now());
         } catch (e) {
           console.error('Auto-save to DB failed:', e);
+        } finally {
+          setIsSaving(false);
         }
       }, 2000);
     };
@@ -1166,6 +1227,39 @@ export function DocumentDraftDrawer({
       return updated;
     });
   }, [existingDraftId, resolvedCompanyId, debouncedDbSave]);
+
+  const handleImportDocx = useCallback(async (file: File) => {
+    if (!template) {
+      toast.error('Draft is not ready yet — try again in a moment.');
+      return;
+    }
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext !== 'docx' && ext !== 'doc') {
+      toast.error('Only .doc / .docx files can be imported.');
+      return;
+    }
+    setIsImportingDocx(true);
+    try {
+      const html = await convertDocxToHtml(file);
+      if (!html.trim()) {
+        toast.error('Could not read any content from this file.');
+        return;
+      }
+      const newSections = mapDocxHtmlToSections(html, template.sections);
+      const updated: DocumentTemplate = { ...template, sections: newSections };
+      setTemplate(updated);
+      DocumentTemplatePersistenceService.saveTemplateToLocalStorage(updated.id, updated);
+      if (existingDraftId && resolvedCompanyId) {
+        debouncedDbSave(updated, existingDraftId, resolvedCompanyId);
+      }
+      toast.success(`Imported "${file.name}" into draft.`);
+    } catch (err: any) {
+      console.error('Import .docx failed:', err);
+      toast.error(err?.message || 'Could not import .docx — try saving it as a newer Word format.');
+    } finally {
+      setIsImportingDocx(false);
+    }
+  }, [template, existingDraftId, resolvedCompanyId, debouncedDbSave]);
 
   const handleDocumentControlChange = useCallback((field: string, value: string) => {
     let updated: DocumentTemplate | null = null;
@@ -1468,6 +1562,38 @@ export function DocumentDraftDrawer({
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {title}
                 </span>
+                {(isSaving || lastSavedAt) && (
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      marginLeft: 8,
+                      fontSize: '0.7em',
+                      fontWeight: 500,
+                      color: isSaving
+                        ? 'var(--mui-palette-text-secondary, rgba(0,0,0,0.6))'
+                        : 'var(--mui-palette-success-main, #2e7d32)',
+                    }}
+                    title={
+                      lastSavedAt && !isSaving
+                        ? `Last saved at ${new Date(lastSavedAt).toLocaleTimeString()}`
+                        : undefined
+                    }
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 size={12} className="animate-spin" />
+                        Saving…
+                      </>
+                    ) : (
+                      <>
+                        <Check size={12} />
+                        Saved
+                      </>
+                    )}
+                  </span>
+                )}
               </Typography>
             );
           })()}
@@ -1557,6 +1683,33 @@ export function DocumentDraftDrawer({
             <Box sx={{ mr: 0.5 }}>
               <LiveEditorHeaderActions {...liveEditorActions} />
             </Box>
+          )}
+          {!normalDraft && activeView === 'draft' && !showAdvancedEditor && canEdit && (
+            <>
+              <input
+                ref={docxImportInputRef}
+                type="file"
+                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleImportDocx(f);
+                  if (docxImportInputRef.current) docxImportInputRef.current.value = '';
+                }}
+              />
+              <Tooltip title="Import .docx into draft" arrow>
+                <span>
+                  <IconButton
+                    onClick={() => docxImportInputRef.current?.click()}
+                    size="small"
+                    disabled={isImportingDocx || !template}
+                    sx={{ color: '#0891b2', border: '1px solid #0891b2', borderRadius: '6px', '&:hover': { backgroundColor: 'rgba(8, 145, 178, 0.08)' } }}
+                  >
+                    {isImportingDocx ? <Loader2 className="animate-spin" style={{ width: 16, height: 16 }} /> : <Upload style={{ width: 16, height: 16 }} />}
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </>
           )}
           {!normalDraft && !showAdvancedEditor && (() => {
             const ext = (fileName || filePath || '').split('.').pop()?.toLowerCase();

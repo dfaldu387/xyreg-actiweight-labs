@@ -35,8 +35,6 @@ export function CCRImpactEditDialog({ open, onOpenChange, ccr }: CCRImpactEditDi
   const [regulatoryImpact, setRegulatoryImpact] = useState<boolean>(ccr.regulatory_impact);
   const [regulatoryDescription, setRegulatoryDescription] = useState<string>(ccr.regulatory_impact_description ?? '');
   const [costImpact, setCostImpact] = useState<string>(ccr.cost_impact != null ? String(ccr.cost_impact) : '');
-  const [implementationPlan, setImplementationPlan] = useState<string>(ccr.implementation_plan ?? '');
-  const [verificationPlan, setVerificationPlan] = useState<string>(ccr.verification_plan ?? '');
 
   useEffect(() => {
     if (open) {
@@ -44,8 +42,6 @@ export function CCRImpactEditDialog({ open, onOpenChange, ccr }: CCRImpactEditDi
       setRegulatoryImpact(ccr.regulatory_impact);
       setRegulatoryDescription(ccr.regulatory_impact_description ?? '');
       setCostImpact(ccr.cost_impact != null ? String(ccr.cost_impact) : '');
-      setImplementationPlan(ccr.implementation_plan ?? '');
-      setVerificationPlan(ccr.verification_plan ?? '');
     }
   }, [open, ccr]);
 
@@ -57,8 +53,6 @@ export function CCRImpactEditDialog({ open, onOpenChange, ccr }: CCRImpactEditDi
       regulatory_impact: regulatoryImpact,
       regulatory_impact_description: regulatoryDescription.trim() || null,
       cost_impact: Number.isFinite(parsedCost as number) ? (parsedCost as number) : null,
-      implementation_plan: implementationPlan.trim() || null,
-      verification_plan: verificationPlan.trim() || null,
     });
     onOpenChange(false);
   };
@@ -133,44 +127,6 @@ export function CCRImpactEditDialog({ open, onOpenChange, ccr }: CCRImpactEditDi
               value={costImpact}
               onChange={(e) => setCostImpact(e.target.value)}
               placeholder="0"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="impl-plan">Implementation Plan</Label>
-              <AiAssistPopover
-                ccrId={ccr.id}
-                field="implementation_plan"
-                currentValue={implementationPlan}
-                onInsert={setImplementationPlan}
-              />
-            </div>
-            <Textarea
-              id="impl-plan"
-              value={implementationPlan}
-              onChange={(e) => setImplementationPlan(e.target.value)}
-              rows={3}
-              placeholder="Steps required to execute the change"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="ver-plan">Verification Plan</Label>
-              <AiAssistPopover
-                ccrId={ccr.id}
-                field="verification_plan"
-                currentValue={verificationPlan}
-                onInsert={setVerificationPlan}
-              />
-            </div>
-            <Textarea
-              id="ver-plan"
-              value={verificationPlan}
-              onChange={(e) => setVerificationPlan(e.target.value)}
-              rows={3}
-              placeholder="How effectiveness will be verified post-implementation"
             />
           </div>
         </div>

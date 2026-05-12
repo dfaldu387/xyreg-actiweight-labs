@@ -17,7 +17,7 @@ import { useIsInvestor } from "@/hooks/useIsInvestor";
 export default function Index() {
   const navigate = useNavigate();
   const { isDevMode, primaryCompany } = useDevMode();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, tenantPrimaryCompanyId } = useAuth();
   const { companyRoles, isLoading: rolesLoading, activeCompanyRole } = useCompanyRole();
   const { isAdmin, isLoading: roleLoading } = useEffectiveUserRole();
   const { isExpired, isLoading: subscriptionLoading } = useFeatureAccess();
@@ -73,24 +73,15 @@ export default function Index() {
       console.log("lastSelectedCompany",lastSelectedCompany)
       // Non-admin users with company access should go to their company dashboard
       if (companyRoles.length > 0) {
-        // Temporarily disable auto-redirect to fix user switching issue
-        // if (lastSelectedCompany) {
-        //   const lastCompanyRole = companyRoles.find(role => 
-        //     role.companyName.toLowerCase() === lastSelectedCompany.toLowerCase()
-        //   );
-        //   if (lastCompanyRole) {
-        //     console.log("User has last selected company - redirecting to that company dashboard");
-        //     navigate(`/app/company/${encodeURIComponent(lastCompanyRole.companyName)}`);
-        //     return;
-        //   }
-        // }
-        
-        // Go to clients page to let user choose company
-        if (activeCompanyRole) {
-          console.log("Non-admin user with active company - redirecting to company dashboard");
+        const primaryRole = tenantPrimaryCompanyId
+          ? companyRoles.find(role => role.companyId === tenantPrimaryCompanyId)
+          : null;
+
+        if (primaryRole) {
+          navigate(`/app/company/${encodeURIComponent(primaryRole.companyName)}`);
+        } else if (activeCompanyRole) {
           navigate(`/app/company/${encodeURIComponent(activeCompanyRole.companyName)}`);
         } else {
-          console.log("Non-admin user with companies but no active - redirecting to first company");
           navigate(`/app/company/${encodeURIComponent(companyRoles[0].companyName)}`);
         }
         return;
@@ -115,7 +106,7 @@ export default function Index() {
     console.log("No user and not in DevMode - redirecting to landing");
     navigate('/landing');
     
-  }, [navigate, primaryCompany, isDevMode, user, authLoading, rolesLoading, roleLoading, companyRoles, activeCompanyRole, isAdmin, isExpired, subscriptionLoading, isInvestor, investorLoading]);
+  }, [navigate, primaryCompany, isDevMode, user, authLoading, rolesLoading, roleLoading, companyRoles, activeCompanyRole, isAdmin, isExpired, subscriptionLoading, isInvestor, investorLoading, tenantPrimaryCompanyId]);
 
   // Show loading state while auth is initializing
   if (authLoading || rolesLoading || roleLoading || subscriptionLoading || investorLoading) {

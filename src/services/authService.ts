@@ -26,6 +26,7 @@ export class AuthService {
     error: any;
     success: boolean;
     tenantAllowedCompanyIds?: string[];
+    tenantPrimaryCompanyId?: string | null;
   }> {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -48,17 +49,24 @@ export class AuthService {
 
       const isSuperAdmin = email.toLowerCase() === 'superadmin@gmail.com';
       let allowedCompanyIds: string[] = [];
+      let primaryCompanyId: string | null = null;
 
       if (!isSuperAdmin) {
-        // Run the tenant allow-list RPC and the user's company-access query in
-        // parallel — they're independent. Sequential cost ~2x; parallel ~1x.
-        const [allowedRes, accessRes] = await Promise.all([
+        // Run the tenant allow-list RPC, primary company lookup, and the user's
+        // company-access query in parallel — they're independent.
+        const [allowedRes, accessRes, tenantRes] = await Promise.all([
           (supabase as any).rpc('get_tenant_allow_company_ids', { tenant_key: activeTenant.key }),
           supabase
             .from('user_company_access')
             .select('company_id, companies!inner(id,name)')
             .eq('user_id', data.session?.user.id),
+          (supabase as any)
+            .from('tenant_configs')
+            .select('company_id')
+            .eq('key', activeTenant.key)
+            .maybeSingle(),
         ]);
+        primaryCompanyId = tenantRes?.data?.company_id ?? null;
 
         if (allowedRes.error) {
           console.error('Error fetching tenant allow list:', allowedRes.error);
@@ -109,7 +117,7 @@ export class AuthService {
 
       toast.success(`Signed in as ${email}`);
 
-      return { user, error: null, success: true, tenantAllowedCompanyIds: allowedCompanyIds };
+      return { user, error: null, success: true, tenantAllowedCompanyIds: allowedCompanyIds, tenantPrimaryCompanyId: primaryCompanyId };
     } catch (error: any) {
       console.error('Error signing in:', error);
       toast.error(error.message || 'Failed to sign in');

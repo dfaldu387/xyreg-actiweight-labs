@@ -129,12 +129,16 @@ export function LoginForm({ onClose, setShowRegister }: LoginFormProps) {
             sessionStorage.setItem('genesis_login', genesisRedirect);
           } else {
             sessionStorage.removeItem('genesis_login');
+            const tenantHasAllowList = (result.tenantAllowedCompanyIds?.length ?? 0) > 0;
             const lastSelectedCompany = (user?.user_metadata as any)?.lastSelectedCompany;
-            if (lastSelectedCompany) {
+            if (!tenantHasAllowList && lastSelectedCompany) {
               const companyPath = activeTenant.features.genesis
                 ? `/app/company/${encodeURIComponent(lastSelectedCompany)}/mission-control`
                 : `/app/company/${encodeURIComponent(lastSelectedCompany)}`;
               redirectUrl = companyPath;
+            } else {
+              // Tenant with allow list — let Index.tsx pick the primary company.
+              redirectUrl = '/';
             }
           }
         }

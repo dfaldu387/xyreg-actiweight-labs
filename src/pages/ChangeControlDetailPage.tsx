@@ -2,25 +2,37 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { fetchLinkedDocs } from '@/services/ccrLinkedDocsService';
+import { fetchLinkedDocs, decorateLinkedDoc } from '@/services/ccrLinkedDocsService';
 import { ConsistentPageHeader } from '@/components/layout/ConsistentPageHeader';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, FileText, Clock, CheckCircle, Users, Trash2, Send, XCircle, RotateCcw, Pencil, PlayCircle, ShieldCheck, Lock, Calendar as CalendarIcon, Check, X as XIcon } from 'lucide-react';
+import { ArrowLeft, FileText, Clock, CheckCircle, Users, Trash2, Send, XCircle, RotateCcw, Pencil, PlayCircle, ShieldCheck, ShieldAlert, Lock, Calendar as CalendarIcon, Check, X as XIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { CCRImpactAnalysis } from '@/components/change-control/CCRImpactAnalysis';
-import { useCCRById, useCCRTransitions, useDeleteCCR, useTransitionCCRState, useUpdateCCR, resolveCurrentCCRProfileId } from '@/hooks/useChangeControlData';
+import {
+  useCCRById,
+  useCCRTransitions,
+  useDeleteCCR,
+  useTransitionCCRState,
+  useUpdateCCR,
+  resolveCurrentCCRProfileId,
+  useRequestCCRExemption,
+  useReviewCCRExemption,
+} from '@/hooks/useChangeControlData';
 import { DeleteConfirmationDialog } from '@/components/ui/DeleteConfirmationDialog';
 import { CCRTransitionDialog } from '@/components/change-control/CCRTransitionDialog';
 import { CCRImpactEditDialog } from '@/components/change-control/CCRImpactEditDialog';
+import { CCRImplementationEditDialog } from '@/components/change-control/CCRImplementationEditDialog';
 import { CCRSubmitForReviewDialog, type CCRSubmitForReviewPayload } from '@/components/change-control/CCRSubmitForReviewDialog';
+import { CCRExemptionRequestDialog } from '@/components/change-control/CCRExemptionRequestDialog';
+import { CCRExemptionReviewDialog } from '@/components/change-control/CCRExemptionReviewDialog';
 import { useCompanyUsers } from '@/hooks/useCompanyUsers';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -55,6 +67,8 @@ import { AppNotificationService } from '@/services/appNotificationService';
 import { postmarkService } from '@/services/resendMailService';
 import { ESignPopup } from '@/components/esign/ESignPopup';
 import { useAuth } from '@/context/AuthContext';
+import { hasAdminPrivileges } from '@/utils/roleUtils';
+import { toast } from '@/hooks/use-toast';
 
 // ---------------------------------------------------------------------------
 // Inline edit helpers (Draft-only)
@@ -314,7 +328,12 @@ export default function ChangeControlDetailPage() {
   const updateCCR = useUpdateCCR();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [impactEditOpen, setImpactEditOpen] = useState(false);
+  const [implementationEditOpen, setImplementationEditOpen] = useState(false);
   const [submitForReviewOpen, setSubmitForReviewOpen] = useState(false);
+  const [exemptionRequestOpen, setExemptionRequestOpen] = useState(false);
+  const [exemptionReviewOpen, setExemptionReviewOpen] = useState(false);
+  const requestExemption = useRequestCCRExemption();
+  const reviewExemption = useReviewCCRExemption();
   // null | assignment-id (sign just my pending perspectives for that assignment)
   const [esignAssignmentId, setEsignAssignmentId] = useState<string | null>(null);
   const [visibleDocCount, setVisibleDocCount] = useState<number | null>(null);
@@ -339,6 +358,30 @@ export default function ChangeControlDetailPage() {
   const allLinkedDocsApproved =
     linkedDocIds.length === 0 ||
     (linkedDocsForGate.length > 0 && unapprovedLinkedDocs.length === 0);
+  // Implementation exemption — applies only to the document IDs the author
+  // selected at request time. An approved exemption excuses *only* those
+  // documents; any other unapproved linked doc still locks Mark Implemented.
+  const exemptionApproved = ccr?.exemption_status === 'approved';
+  const exemptionRequested = ccr?.exemption_status === 'requested';
+  const exemptionRejected = ccr?.exemption_status === 'rejected';
+  const exemptionDocIds: string[] = Array.isArray(ccr?.exemption_document_ids)
+    ? ccr!.exemption_document_ids
+    : [];
+  const exemptedDocSet = new Set(exemptionApproved ? exemptionDocIds : []);
+  const unapprovedAfterExemption = unapprovedLinkedDocs.filter(
+    (d) => !exemptedDocSet.has(d.id),
+  );
+  const canMarkImplemented =
+    allLinkedDocsApproved ||
+    (exemptionApproved && unapprovedAfterExemption.length === 0);
+  // Resolve the docs that the active request/decision covers, for display.
+  const exemptionDocList = (() => {
+    if (exemptionDocIds.length === 0) return [];
+    const byId = new Map(linkedDocsForGate.map((d) => [d.id, d]));
+    return exemptionDocIds
+      .map((id) => byId.get(id))
+      .filter((d): d is NonNullable<typeof d> => !!d);
+  })();
   const descriptionDrift = useCCRDescriptionDrift(ccr?.description, linkedDocsForGate);
   const [transitionDialog, setTransitionDialog] = useState<{
     open: boolean;
@@ -353,6 +396,22 @@ export default function ChangeControlDetailPage() {
   const { users: companyUsers } = useCompanyUsers(ccr?.company_id);
   const reviewerName = (id?: string | null) =>
     id ? companyUsers.find((u) => u.id === id)?.name ?? 'Assigned reviewer' : null;
+  // Eligibility to review an exemption. We accept any of:
+  //   1. Per-company admin row in user_company_access for THIS company.
+  //   2. Privileged platform role on the auth user (super_admin, admin,
+  //      business, consultant) via hasAdminPrivileges — covers super-admins
+  //      reaching the CCR through the global /app/change-control/<id> route.
+  // (We do NOT mount useCompanyRoles here — it owns a single realtime
+  // channel keyed on the user id and the layout already subscribes; adding
+  // another subscriber throws "cannot add postgres_changes after subscribe".)
+  const companyAdmins = companyUsers.filter((u) => u.access_level === 'admin');
+  const userMetaRole =
+    (currentUser?.user_metadata as Record<string, unknown> | undefined)?.role;
+  const isPrivilegedByRole =
+    typeof userMetaRole === 'string' && hasAdminPrivileges(userMetaRole);
+  const isCompanyAdminMember =
+    !!currentUser?.id && companyAdmins.some((u) => u.id === currentUser.id);
+  const isCurrentUserAdmin = isPrivilegedByRole || isCompanyAdminMember;
 
   const { data: assignments = [] } = useCCRReviewerAssignments(ccrId);
   const replaceReviewers = useReplaceCCRReviewers();
@@ -364,6 +423,42 @@ export default function ChangeControlDetailPage() {
     next.set('tab', tab);
     setSearchParams(next, { replace: true });
   };
+
+  // Auto-open the exemption review dialog when an admin lands on this page
+  // through the in-app/email notification (?review=exemption). If the
+  // exemption is no longer pending (already approved/rejected, or the row
+  // was never in 'requested'), surface a toast so the click doesn't appear
+  // to do nothing. Strip the query param afterwards so a refresh doesn't
+  // keep re-opening it.
+  const reviewParam = searchParams.get('review');
+  const autoOpenedReviewRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoOpenedReviewRef.current) return;
+    if (reviewParam !== 'exemption') return;
+    if (!ccr) return;
+    autoOpenedReviewRef.current = true;
+    if (!isCurrentUserAdmin) {
+      toast({
+        title: 'Admin only',
+        description: 'Only company admins can review exemption requests.',
+      });
+    } else if (ccr.exemption_status === 'requested') {
+      setExemptionReviewOpen(true);
+    } else if (ccr.exemption_status === 'approved' || ccr.exemption_status === 'rejected') {
+      toast({
+        title: `Exemption already ${ccr.exemption_status}`,
+        description: 'This exemption was reviewed by another admin. See the Implementation Exemption card for details.',
+      });
+    } else {
+      toast({
+        title: 'No pending exemption',
+        description: 'There is no exemption request to review on this CCR — it may have been cleared.',
+      });
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete('review');
+    setSearchParams(next, { replace: true });
+  }, [reviewParam, ccr, isCurrentUserAdmin, searchParams, setSearchParams]);
 
   if (ccrLoading) {
     return (
@@ -427,41 +522,53 @@ export default function ChangeControlDetailPage() {
     setTransitionDialog({ open: true, ...config });
   };
 
-  const sendCCRStatusEmails = async (
+  const notifyCCRStatusChange = async (
     kind: 'approved' | 'rejected',
     actorUserId: string,
     reason: string,
   ) => {
+    let company: { name: string | null; app_url: string | null } | null = null;
+    let recipientUserIds: string[] = [];
     try {
-      const { data: company } = await supabase
+      const { data } = await supabase
         .from('companies')
         .select('name, app_url')
         .eq('id', ccr.company_id)
         .single();
-      const baseUrl = company?.app_url || window.location.origin || 'https://app.xyreg.com';
-      const actionUrl = `${baseUrl}/app/change-control/${ccr.id}`;
-      const companyName = company?.name || 'your company';
-      const actorName =
-        companyUsers.find((u) => u.id === actorUserId)?.name ?? 'A teammate';
+      company = data as any;
 
       const ownerOrCreatorId = ccr.owner_id ?? ccr.created_by;
-      const recipientIds = new Set<string>();
-      if (ownerOrCreatorId) recipientIds.add(ownerOrCreatorId);
+      const recipientIdSet = new Set<string>();
+      if (ownerOrCreatorId) recipientIdSet.add(ownerOrCreatorId);
       if (kind === 'approved') {
-        for (const a of assignments) recipientIds.add(a.user_id);
+        for (const a of assignments) recipientIdSet.add(a.user_id);
       }
+      recipientUserIds = Array.from(recipientIdSet);
 
-      const recipients = Array.from(recipientIds)
-        .map((id) => companyUsers.find((u) => u.id === id))
-        .filter((u): u is NonNullable<typeof u> => !!u && !!u.email && u.email !== 'No email');
-
-      if (recipients.length === 0) {
-        console.warn('CCR status email: no resolvable recipients', { kind, ccrId: ccr.id });
+      if (recipientUserIds.length === 0) {
+        console.warn('CCR status notify: no resolvable recipients', { kind, ccrId: ccr.id });
         return;
       }
+    } catch (e) {
+      console.error('Failed to load company / recipients for CCR status notify', e);
+      return;
+    }
 
+    const baseUrl = company?.app_url || window.location.origin || 'https://app.xyreg.com';
+    const actionUrlAbsolute = `${baseUrl}/app/change-control/${ccr.id}`;
+    const actionUrlRelative = `/app/change-control/${ccr.id}`;
+    const companyName = company?.name || 'your company';
+    const actorName =
+      companyUsers.find((u) => u.id === actorUserId)?.name ?? 'A teammate';
+    const reasonExcerpt = reason.length > 200 ? `${reason.slice(0, 200)}…` : reason;
+
+    // 1. Email
+    try {
+      const emailRecipients = recipientUserIds
+        .map((id) => companyUsers.find((u) => u.id === id))
+        .filter((u): u is NonNullable<typeof u> => !!u && !!u.email && u.email !== 'No email');
       await Promise.all(
-        recipients.map(async (r) => {
+        emailRecipients.map(async (r) => {
           const result = await postmarkService.sendCCRStatusEmail({
             kind,
             recipientEmail: r.email,
@@ -471,7 +578,7 @@ export default function ChangeControlDetailPage() {
             ccrId: ccr.ccr_id,
             ccrTitle: ccr.title,
             reason,
-            actionUrl,
+            actionUrl: actionUrlAbsolute,
           });
           if (!result.success) {
             console.warn('CCR status email failed for', r.email, result.error);
@@ -480,6 +587,39 @@ export default function ChangeControlDetailPage() {
       );
     } catch (e) {
       console.error('Failed to email CCR status update', e);
+    }
+
+    // 2. In-app notification
+    try {
+      const isApproved = kind === 'approved';
+      const title = isApproved
+        ? `Approved: ${ccr.ccr_id}`
+        : `Rejected: ${ccr.ccr_id}`;
+      const message = isApproved
+        ? `${actorName} approved "${ccr.title}".`
+        : `${actorName} rejected "${ccr.title}".${reasonExcerpt ? ` Reason: ${reasonExcerpt}` : ''}`;
+      const notifications = recipientUserIds.map((uid) => ({
+        user_id: uid,
+        actor_id: actorUserId,
+        actor_name: actorName,
+        company_id: ccr.company_id,
+        product_id: ccr.product_id ?? undefined,
+        category: 'change_control' as const,
+        action: (isApproved ? 'ccr_approved' : 'ccr_rejected') as 'ccr_approved' | 'ccr_rejected',
+        title,
+        message,
+        priority: (isApproved ? 'normal' : 'high') as 'normal' | 'high',
+        entity_type: 'change_control_request',
+        entity_id: ccr.id,
+        entity_name: ccr.ccr_id,
+        action_url: actionUrlRelative,
+        metadata: { reason },
+      }));
+      if (notifications.length > 0) {
+        await new AppNotificationService().createBulkNotifications(notifications);
+      }
+    } catch (e) {
+      console.error('Failed to create CCR status app notifications', e);
     }
   };
 
@@ -496,7 +636,7 @@ export default function ChangeControlDetailPage() {
       reason,
     });
     if (target === 'approved' || target === 'rejected') {
-      await sendCCRStatusEmails(target, user.id, reason);
+      await notifyCCRStatusChange(target, user.id, reason);
     }
   };
 
@@ -534,7 +674,7 @@ export default function ChangeControlDetailPage() {
         userId: user.id,
         reason: autoReason,
       });
-      await sendCCRStatusEmails('approved', user.id, autoReason);
+      await notifyCCRStatusChange('approved', user.id, autoReason);
     }
     setEsignAssignmentId(null);
   };
@@ -644,9 +784,138 @@ export default function ChangeControlDetailPage() {
     }
   };
 
+  // ---- Implementation Exemption handlers ---------------------------------
+  // Author asks an admin to bypass the linked-docs gate; admins decide.
+
+  const handleRequestExemption = async (input: {
+    documentIds: string[];
+    notes: string;
+  }) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await requestExemption.mutateAsync({
+      ccrId: ccr.id,
+      description: input.notes,
+      documentIds: input.documentIds,
+      userId: user.id,
+    });
+    // Notify all company admins so any of them can act on the request.
+    try {
+      const actorName =
+        companyUsers.find((u) => u.id === user.id)?.name ?? 'A teammate';
+      // ?review=exemption tells the detail page to auto-open the review
+      // dialog so admins land directly on the Approve/Reject surface.
+      const actionUrl = `/app/change-control/${ccr.id}?review=exemption`;
+      const docCount = input.documentIds.length;
+      const adminRecipients = companyAdmins.filter((u) => u.id !== user.id);
+      if (adminRecipients.length > 0) {
+        const notifications = adminRecipients.map((adm) => ({
+          user_id: adm.id,
+          actor_id: user.id,
+          actor_name: actorName,
+          company_id: ccr.company_id,
+          product_id: ccr.product_id ?? undefined,
+          category: 'change_control' as const,
+          action: 'ccr_exemption_requested' as const,
+          title: `Exemption requested: ${ccr.ccr_id}`,
+          message: `${actorName} is requesting an implementation exemption on "${ccr.title}" covering ${docCount} document${docCount === 1 ? '' : 's'}.`,
+          priority: 'high' as const,
+          entity_type: 'change_control_request',
+          entity_id: ccr.id,
+          entity_name: ccr.ccr_id,
+          action_url: actionUrl,
+          metadata: {
+            notes: input.notes,
+            documentIds: input.documentIds,
+          },
+        }));
+        await new AppNotificationService().createBulkNotifications(notifications);
+      }
+    } catch (e) {
+      console.error('Failed to notify admins of exemption request', e);
+    }
+  };
+
+  const handleReviewExemption = async (
+    decision: 'approved' | 'rejected',
+    reason: string,
+  ) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await reviewExemption.mutateAsync({
+      ccrId: ccr.id,
+      decision,
+      reviewerId: user.id,
+      reason,
+    });
+    // Notify the author (who raised the exemption) of the decision.
+    try {
+      const actorName =
+        companyUsers.find((u) => u.id === user.id)?.name ?? 'An admin';
+      const actionUrl = `/app/change-control/${ccr.id}`;
+      const requesterId = ccr.exemption_requested_by ?? ccr.owner_id ?? ccr.created_by;
+      if (requesterId && requesterId !== user.id) {
+        const isApproved = decision === 'approved';
+        await new AppNotificationService().createNotification({
+          user_id: requesterId,
+          actor_id: user.id,
+          actor_name: actorName,
+          company_id: ccr.company_id,
+          product_id: ccr.product_id ?? undefined,
+          category: 'change_control',
+          action: isApproved ? 'ccr_exemption_approved' : 'ccr_exemption_rejected',
+          title: isApproved
+            ? `Exemption approved: ${ccr.ccr_id}`
+            : `Exemption rejected: ${ccr.ccr_id}`,
+          message: isApproved
+            ? `${actorName} approved your exemption for "${ccr.title}". You can now Mark Implemented.`
+            : `${actorName} rejected your exemption for "${ccr.title}". Reason: ${reason}`,
+          priority: 'high',
+          entity_type: 'change_control_request',
+          entity_id: ccr.id,
+          entity_name: ccr.ccr_id,
+          action_url: actionUrl,
+          metadata: { decision, reason },
+        });
+      }
+    } catch (e) {
+      console.error('Failed to notify author of exemption decision', e);
+    }
+  };
+
   const renderWorkflowActions = () => {
     if (isTerminal) return null;
     const actions: React.ReactNode[] = [];
+
+    // Pending exemption is reviewable regardless of CCR status — if the CCR
+    // bounced back from Approved to Under Review, admins still need a way
+    // to clear the orphan request. We prepend it so it stays prominent.
+    if (exemptionRequested) {
+      if (isCurrentUserAdmin) {
+        actions.push(
+          <Button
+            key="exemption-review-top"
+            size="sm"
+            variant="outline"
+            onClick={() => setExemptionReviewOpen(true)}
+          >
+            <ShieldAlert className="h-4 w-4 mr-2" />
+            Review Exemption
+          </Button>
+        );
+      } else {
+        actions.push(
+          <Badge
+            key="exemption-pending-top"
+            variant="outline"
+            className="border-amber-300 bg-amber-50 text-amber-800 gap-1"
+          >
+            <Clock className="h-3.5 w-3.5" />
+            Exemption pending admin
+          </Badge>
+        );
+      }
+    }
 
     if (ccr.status === 'draft' || ccr.status === 'rejected') {
       actions.push(
@@ -693,17 +962,19 @@ export default function ChangeControlDetailPage() {
         <Button
           key="implement"
           size="sm"
-          disabled={!allLinkedDocsApproved}
+          disabled={!canMarkImplemented}
           onClick={() =>
             openTransition({
               target: 'implemented',
               title: 'Mark as Implemented',
-              description: 'Confirm that the change has been executed per the implementation plan.',
+              description: exemptionApproved && !allLinkedDocsApproved
+                ? 'An admin-approved exemption is on file. Confirm the change has been executed per the implementation plan.'
+                : 'Confirm that the change has been executed per the implementation plan.',
               confirmLabel: 'Mark Implemented',
             })
           }
         >
-          {allLinkedDocsApproved ? (
+          {canMarkImplemented ? (
             <PlayCircle className="h-4 w-4 mr-2" />
           ) : (
             <Lock className="h-4 w-4 mr-2" />
@@ -712,7 +983,7 @@ export default function ChangeControlDetailPage() {
         </Button>
       );
 
-      if (!allLinkedDocsApproved) {
+      if (!canMarkImplemented) {
         const total = linkedDocIds.length;
         const pending = total > 0 ? unapprovedLinkedDocs.length : 0;
         actions.push(
@@ -730,12 +1001,34 @@ export default function ChangeControlDetailPage() {
                   {linkedDocsForGate.length === 0
                     ? `Loading the ${total} connected document${total === 1 ? '' : 's'}…`
                     : `${pending} of ${linkedDocsForGate.length} connected document${linkedDocsForGate.length === 1 ? ' is' : 's are'} not yet approved.`}
-                  {' '}Open the <span className="font-medium">Documents</span> tab and move every linked document to <span className="font-medium">Approved</span> to enable Mark Implemented.
+                  {' '}Open the <span className="font-medium">Documents</span> tab and move every linked document to <span className="font-medium">Approved</span> — or request an admin exemption.
                 </p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         );
+
+        // Exemption flow: locked → offer Request / show Pending / re-request
+        // after rejection. Admins also see a Review button when a request is
+        // pending.
+        // Pending exemption is rendered globally above — only the
+        // "Request" / "Re-request" button belongs to the approved-state
+        // path here, since requesting only makes sense once the CCR is
+        // Approved and the linked-docs gate is locked.
+        if (!exemptionRequested) {
+          actions.push(
+            <Button
+              key="exemption-request"
+              size="sm"
+              variant="outline"
+              disabled={requestExemption.isPending}
+              onClick={() => setExemptionRequestOpen(true)}
+            >
+              <ShieldAlert className="h-4 w-4 mr-2" />
+              {exemptionRejected ? 'Re-request Exemption' : 'Request Exemption'}
+            </Button>
+          );
+        }
       } else {
         actions.push(implementBtn);
       }
@@ -839,6 +1132,7 @@ export default function ChangeControlDetailPage() {
             <TabsList>
               <TabsTrigger value="details">{lang('changeControl.detailsTab')}</TabsTrigger>
               <TabsTrigger value="impact">{lang('changeControl.impactAssessmentTab')}</TabsTrigger>
+              <TabsTrigger value="implementation">{lang('changeControl.implementationTab')}</TabsTrigger>
               <TabsTrigger value="documents">
                 Documents
                 {(() => {
@@ -850,7 +1144,6 @@ export default function ChangeControlDetailPage() {
                   ) : null;
                 })()}
               </TabsTrigger>
-              <TabsTrigger value="implementation">{lang('changeControl.implementationTab')}</TabsTrigger>
               <TabsTrigger value="history">{lang('changeControl.historyTab')}</TabsTrigger>
             </TabsList>
 
@@ -983,6 +1276,215 @@ export default function ChangeControlDetailPage() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Implementation Exemption summary — visible whenever a request
+                  has been raised, regardless of decision, so the rationale
+                  remains discoverable in the audit trail. */}
+              {ccr.exemption_status && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <ShieldAlert className="h-5 w-5" />
+                      Implementation Exemption
+                      {exemptionRequested && (
+                        <Badge variant="outline" className="ml-1 border-amber-300 bg-amber-50 text-amber-800">
+                          Pending admin
+                        </Badge>
+                      )}
+                      {exemptionApproved && (
+                        <Badge variant="outline" className="ml-1 border-emerald-300 bg-emerald-50 text-emerald-800">
+                          Approved
+                        </Badge>
+                      )}
+                      {exemptionRejected && (
+                        <Badge variant="outline" className="ml-1 border-red-300 bg-red-50 text-red-700">
+                          Rejected
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      {exemptionApproved
+                        ? 'An admin granted an exemption from the linked-document approval gate. Mark Implemented is unlocked.'
+                        : exemptionRejected
+                        ? 'The admin rejected this exemption. Resolve the linked documents or re-request with new context.'
+                        : 'Awaiting admin decision. Mark Implemented stays locked until approved or all linked documents are approved.'}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Documents covered ({exemptionDocList.length})
+                      </p>
+                      {exemptionDocList.length === 0 ? (
+                        <p className="mt-1 text-muted-foreground italic">
+                          No documents recorded on this request.
+                        </p>
+                      ) : (
+                        <ul className="mt-1 space-y-1">
+                          {exemptionDocList.map((d) => {
+                            const { displayRef, displayTitle } = decorateLinkedDoc(d);
+                            return (
+                              <li
+                                key={d.id}
+                                className="flex items-center gap-2 rounded border bg-background px-2 py-1.5"
+                              >
+                                {displayRef && (
+                                  <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted border shrink-0">
+                                    {displayRef}
+                                  </span>
+                                )}
+                                <span
+                                  className="text-sm font-medium truncate flex-1 min-w-0"
+                                  title={displayTitle}
+                                >
+                                  {displayTitle}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Notes</p>
+                      <p className="mt-1 whitespace-pre-wrap">
+                        {ccr.exemption_description?.trim() || (
+                          <span className="text-muted-foreground italic">No notes provided.</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+                      {ccr.exemption_requested_by && (
+                        <span>
+                          Requested by{' '}
+                          <span className="font-medium text-foreground">
+                            {reviewerName(ccr.exemption_requested_by) ?? 'Author'}
+                          </span>
+                          {ccr.exemption_requested_at && (
+                            <> · {format(new Date(ccr.exemption_requested_at), 'MMM d, HH:mm')}</>
+                          )}
+                        </span>
+                      )}
+                      {ccr.exemption_reviewed_by && (
+                        <span>
+                          {exemptionApproved ? 'Approved by' : 'Rejected by'}{' '}
+                          <span className="font-medium text-foreground">
+                            {reviewerName(ccr.exemption_reviewed_by) ?? 'Admin'}
+                          </span>
+                          {ccr.exemption_reviewed_at && (
+                            <> · {format(new Date(ccr.exemption_reviewed_at), 'MMM d, HH:mm')}</>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                    {ccr.exemption_review_reason && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground">Decision reason</p>
+                        <p className="mt-1 whitespace-pre-wrap">{ccr.exemption_review_reason}</p>
+                      </div>
+                    )}
+                    {exemptionRequested && isCurrentUserAdmin && ccr.status === 'approved' && (
+                      <div className="pt-1">
+                        <Button size="sm" onClick={() => setExemptionReviewOpen(true)}>
+                          <ShieldAlert className="h-4 w-4 mr-2" />
+                          Review Exemption
+                        </Button>
+                      </div>
+                    )}
+
+                    {Array.isArray(ccr.exemption_history) && ccr.exemption_history.length > 0 && (
+                      <div className="pt-3 border-t">
+                        <p className="text-xs font-medium text-muted-foreground mb-2">
+                          Previous attempts ({ccr.exemption_history.length})
+                        </p>
+                        <ul className="space-y-2">
+                          {ccr.exemption_history.map((h, idx) => {
+                            const docNames = (h.document_ids ?? [])
+                              .map((id) => {
+                                const d = linkedDocsForGate.find((x) => x.id === id);
+                                if (!d) return null;
+                                const { displayRef, displayTitle } = decorateLinkedDoc(d);
+                                return displayRef ? `${displayRef} — ${displayTitle}` : displayTitle;
+                              })
+                              .filter((n): n is string => !!n);
+                            const decisionLabel = h.status === 'approved'
+                              ? 'Approved'
+                              : h.status === 'rejected'
+                              ? 'Rejected'
+                              : 'Pending';
+                            const badgeCls = h.status === 'approved'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                              : h.status === 'rejected'
+                              ? 'border-red-300 bg-red-50 text-red-700'
+                              : 'border-amber-300 bg-amber-50 text-amber-800';
+                            return (
+                              <li key={idx} className="rounded-md border bg-muted/30 p-3 space-y-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <Badge variant="outline" className={badgeCls}>
+                                    {decisionLabel}
+                                  </Badge>
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {h.requested_at
+                                      ? format(new Date(h.requested_at), 'MMM d, yyyy HH:mm')
+                                      : '—'}
+                                  </span>
+                                </div>
+                                {docNames.length > 0 && (
+                                  <div>
+                                    <p className="text-[11px] font-medium text-muted-foreground">
+                                      Documents covered
+                                    </p>
+                                    <p className="mt-0.5 text-xs">{docNames.join(' · ')}</p>
+                                  </div>
+                                )}
+                                {h.description && h.description.trim().length > 0 && (
+                                  <div>
+                                    <p className="text-[11px] font-medium text-muted-foreground">Notes</p>
+                                    <p className="mt-0.5 whitespace-pre-wrap text-xs">
+                                      {h.description}
+                                    </p>
+                                  </div>
+                                )}
+                                <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted-foreground">
+                                  {h.requested_by && (
+                                    <span>
+                                      Requested by{' '}
+                                      <span className="font-medium text-foreground">
+                                        {reviewerName(h.requested_by) ?? 'Author'}
+                                      </span>
+                                    </span>
+                                  )}
+                                  {h.reviewed_by && (
+                                    <span>
+                                      {h.status === 'approved' ? 'Approved by' : 'Rejected by'}{' '}
+                                      <span className="font-medium text-foreground">
+                                        {reviewerName(h.reviewed_by) ?? 'Admin'}
+                                      </span>
+                                      {h.reviewed_at && (
+                                        <> · {format(new Date(h.reviewed_at), 'MMM d, HH:mm')}</>
+                                      )}
+                                    </span>
+                                  )}
+                                </div>
+                                {h.review_reason && h.review_reason.trim().length > 0 && (
+                                  <div>
+                                    <p className="text-[11px] font-medium text-muted-foreground">
+                                      Decision reason
+                                    </p>
+                                    <p className="mt-0.5 whitespace-pre-wrap text-xs">
+                                      {h.review_reason}
+                                    </p>
+                                  </div>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Reviewer Approvals — narrowed to fit alongside the right column */}
               {(ccr.status === 'under_review' || ccr.status === 'approved' || ccr.status === 'implemented' || ccr.status === 'verified' || ccr.status === 'closed') && (
@@ -1260,6 +1762,18 @@ export default function ChangeControlDetailPage() {
           </TabsContent>
 
           <TabsContent value="implementation" className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isLockedFromEdit}
+                onClick={() => setImplementationEditOpen(true)}
+                title={isLockedFromEdit ? 'Implementation details are locked once the CCR is approved.' : ''}
+              >
+                <Pencil className="h-4 w-4 mr-2" />
+                Edit Implementation
+              </Button>
+            </div>
             <Card>
               <CardHeader>
                 <CardTitle>{lang('changeControl.implementationDetails')}</CardTitle>
@@ -1416,6 +1930,12 @@ export default function ChangeControlDetailPage() {
         ccr={ccr}
       />
 
+      <CCRImplementationEditDialog
+        open={implementationEditOpen}
+        onOpenChange={setImplementationEditOpen}
+        ccr={ccr}
+      />
+
       {esignAssignmentId && currentUser?.id && (() => {
         const a = assignments.find((x) => x.id === esignAssignmentId);
         const persps = (a?.perspectives ?? [])
@@ -1451,6 +1971,26 @@ export default function ChangeControlDetailPage() {
           regulatory_impact: ccr.regulatory_impact,
         })}
         onConfirm={handleSubmitForReview}
+      />
+
+      <CCRExemptionRequestDialog
+        open={exemptionRequestOpen}
+        onOpenChange={setExemptionRequestOpen}
+        unapprovedDocs={unapprovedLinkedDocs}
+        totalDocCount={linkedDocsForGate.length || linkedDocIds.length}
+        onConfirm={handleRequestExemption}
+      />
+
+      <CCRExemptionReviewDialog
+        open={exemptionReviewOpen}
+        onOpenChange={setExemptionReviewOpen}
+        notes={ccr.exemption_description}
+        exemptedDocs={exemptionDocList}
+        requestedByName={reviewerName(ccr.exemption_requested_by)}
+        requestedAtISO={ccr.exemption_requested_at}
+        pendingDocCount={unapprovedLinkedDocs.length}
+        totalDocCount={linkedDocsForGate.length || linkedDocIds.length}
+        onConfirm={handleReviewExemption}
       />
     </div>
   );

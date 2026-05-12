@@ -11,6 +11,7 @@ import { queryClient } from '@/lib/query-client';
 import { activeTenant } from '@/config/tenants';
 
 const TENANT_ALLOWED_STORAGE_KEY = 'xyreg_tenant_allowed_companies';
+const TENANT_PRIMARY_STORAGE_KEY = 'xyreg_tenant_primary_company';
 
 type PersistedTenantAllowed = { tenantKey: string; ids: string[] };
 
@@ -45,7 +46,7 @@ const writePersistedTenantAllowed = (ids: string[]) => {
 export interface AuthContextType {
   user: AuthUser | null;
   session: Session | null;
-  signIn: (email: string, password: string) => Promise<{ error: any, success: boolean, user?: any, isReviewer?: boolean, isInvestor?: boolean }>;
+  signIn: (email: string, password: string) => Promise<{ error: any, success: boolean, user?: any, isReviewer?: boolean, isInvestor?: boolean, tenantAllowedCompanyIds?: string[], tenantPrimaryCompanyId?: string | null }>;
   signOut: () => Promise<void>;
   signUp: (email: string, password: string, role: string) => Promise<void>;
   isLoading: boolean;
@@ -59,6 +60,12 @@ export interface AuthContextType {
    * - non-empty — filter the company switcher to these IDs only (genish, arnar, etc.).
    */
   tenantAllowedCompanyIds: string[] | null;
+  /**
+   * Tenant-configured "primary company" UUID — the dashboard a user should
+   * land on by default when logging in via the tenant URL. `null` when the
+   * tenant has no primary configured (e.g., mockup) or while still loading.
+   */
+  tenantPrimaryCompanyId: string | null;
   refreshSession: () => Promise<void>;
   setDevUserRole?: (role: UserRole) => void;
   clearDevMode: () => void;
@@ -81,6 +88,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isReviewer, setIsReviewer] = useState(false);
   const [isInvestor, setIsInvestor] = useState(false);
   const [tenantAllowedCompanyIds, setTenantAllowedCompanyIds] = useState<string[] | null>(readPersistedTenantAllowed);
+  const [tenantPrimaryCompanyId, setTenantPrimaryCompanyIdState] = useState<string | null>(() => {
+    try {
+      const raw = sessionStorage.getItem(TENANT_PRIMARY_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { tenantKey: string; id: string | null };
+      if (parsed?.tenantKey === activeTenant.key) return parsed.id ?? null;
+    } catch {}
+    return null;
+  });
   const { isDevMode, selectedRole, resetDevMode } = useDevMode();
 
   // Update both state and sessionStorage in lockstep so a page reload keeps the
@@ -88,6 +104,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateTenantAllowedCompanyIds = useCallback((ids: string[]) => {
     setTenantAllowedCompanyIds(ids);
     writePersistedTenantAllowed(ids);
+  }, []);
+
+  const updateTenantPrimaryCompanyId = useCallback((id: string | null) => {
+    setTenantPrimaryCompanyIdState(id);
+    try {
+      sessionStorage.setItem(
+        TENANT_PRIMARY_STORAGE_KEY,
+        JSON.stringify({ tenantKey: activeTenant.key, id })
+      );
+    } catch {}
   }, []);
 
   // Page-reload recovery: if a session is restored but we have no cached
@@ -119,6 +145,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [user?.id, tenantAllowedCompanyIds, isDevMode, updateTenantAllowedCompanyIds]);
+
+  // Page-reload recovery for tenantPrimaryCompanyId — fetched once when missing.
+  useEffect(() => {
+    if (isDevMode) return;
+    if (!user?.id) return;
+    // Already loaded for this tenant key (sessionStorage init or signIn).
+    const cached = sessionStorage.getItem(TENANT_PRIMARY_STORAGE_KEY);
+    if (cached) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await (supabase as any)
+          .from('tenant_configs')
+          .select('company_id')
+          .eq('key', activeTenant.key)
+          .maybeSingle();
+        if (cancelled) return;
+        if (error) {
+          console.error('Error refetching tenant primary company:', error);
+          return;
+        }
+        updateTenantPrimaryCompanyId(data?.company_id ?? null);
+      } catch (err) {
+        if (!cancelled) console.error('Tenant primary company refetch failed:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, isDevMode, updateTenantPrimaryCompanyId]);
 
   // Memoize user object to prevent unnecessary re-renders
   const stableUser = useMemo(() => user, [user?.id, user?.email, user?.user_metadata?.role]);
@@ -305,13 +363,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchUserStatus();
   }, [user?.id]);
 
-  const signIn = async (email: string, password: string): Promise<{ error: any, success: boolean, user?: any, isReviewer?: boolean, isInvestor?: boolean }> => {
+  const signIn = async (email: string, password: string): Promise<{ error: any, success: boolean, user?: any, isReviewer?: boolean, isInvestor?: boolean, tenantAllowedCompanyIds?: string[], tenantPrimaryCompanyId?: string | null }> => {
     if (isDevMode) {
       throw new Error("Cannot sign in while DevMode is active. Please disable DevMode first.");
     }
 
     try {
-      const { user: authUser, error, success, tenantAllowedCompanyIds: allowedIds } = await authService.signIn(email, password);
+      const { user: authUser, error, success, tenantAllowedCompanyIds: allowedIds, tenantPrimaryCompanyId: primaryId } = await authService.signIn(email, password);
       if (error) throw error;
       if (!success) {
         setUser(null);
@@ -321,6 +379,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // authService already fetched the tenant allow list as part of the login
       // gate — reuse it instead of refetching to keep total login under 2s.
       updateTenantAllowedCompanyIds(allowedIds ?? []);
+      updateTenantPrimaryCompanyId(primaryId ?? null);
 
       // Fetch reviewer and investor status immediately during sign-in
       // This ensures the status is available before navigation
@@ -353,7 +412,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      return { error: null, success: true, user: authUser, isReviewer: reviewerStatus, isInvestor: investorStatus };
+      return { error: null, success: true, user: authUser, isReviewer: reviewerStatus, isInvestor: investorStatus, tenantAllowedCompanyIds: allowedIds ?? [], tenantPrimaryCompanyId: primaryId ?? null };
 
     } catch (error: any) {
       throw error;
@@ -389,7 +448,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear company context on sign out to prevent context bleeding between users
       sessionStorage.removeItem('xyreg_company_context');
       sessionStorage.removeItem(TENANT_ALLOWED_STORAGE_KEY);
+      sessionStorage.removeItem(TENANT_PRIMARY_STORAGE_KEY);
       setTenantAllowedCompanyIds(null);
+      setTenantPrimaryCompanyIdState(null);
 
       // Clear React Query cache to prevent data bleeding between users
       queryClient.clear();
@@ -511,10 +572,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isReviewer,
     isInvestor,
     tenantAllowedCompanyIds,
+    tenantPrimaryCompanyId,
     refreshSession,
     setDevUserRole,
     clearDevMode,
-  }), [stableUser, session, isLoading, userRole, isReviewer, isInvestor, tenantAllowedCompanyIds, clearDevMode]);
+  }), [stableUser, session, isLoading, userRole, isReviewer, isInvestor, tenantAllowedCompanyIds, tenantPrimaryCompanyId, clearDevMode]);
 
   return (
     <AuthContext.Provider value={contextValue}>

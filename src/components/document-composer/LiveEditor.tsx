@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Download, Share, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine, Eye, EyeOff, Pencil, ShieldCheck, Bold, Italic, Strikethrough, Link2, List, ListOrdered, Type, ImagePlus, Undo, Redo, Heading1, Heading2, Heading3, Quote, AlignJustify, MessageSquare, ZoomIn, ZoomOut, PanelRight, Loader2, CheckCircle2, AlertCircle, Minus, Table as TableIcon } from 'lucide-react';
+import { FileText, Download, Share, History, Sparkles, StickyNote, Wand2, GitBranch, MoreHorizontal, ArrowUpFromLine, Eye, EyeOff, Pencil, ShieldCheck, Bold, Italic, Strikethrough, Link2, List, ListOrdered, Type, ImagePlus, Upload, Undo, Redo, Heading1, Heading2, Heading3, Quote, AlignJustify, MessageSquare, ZoomIn, ZoomOut, PanelRight, Loader2, CheckCircle2, AlertCircle, Minus, Table as TableIcon } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -2411,6 +2411,51 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
     setShowSopPickerModal(true);
   }, []);
 
+  const docxImportInputRef = useRef<HTMLInputElement | null>(null);
+  const handleEmptyStateUploadDocx = useCallback(() => {
+    setShowEmptyStateModal(false);
+    // Defer so the dialog has finished closing before opening the OS picker.
+    setTimeout(() => docxImportInputRef.current?.click(), 50);
+  }, []);
+
+  // Toolbar entry — always available. Warns before overwriting existing content.
+  const handleToolbarUploadDocx = useCallback(() => {
+    const editor = editorInstanceRef.current;
+    const hasContent = !!editor && !editor.isEmpty;
+    if (hasContent) {
+      const ok = window.confirm('Replace current content with the uploaded Word document? This cannot be undone.');
+      if (!ok) return;
+    }
+    docxImportInputRef.current?.click();
+  }, []);
+
+  const handleDocxFileSelected = useCallback(async (file: File) => {
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (ext !== 'docx' && ext !== 'doc') {
+        toast.error('Only .doc / .docx files can be imported.');
+        return;
+      }
+      const { convertDocxToHtml, mapDocxHtmlToSections } = await import('@/utils/docxToSections');
+      const html = await convertDocxToHtml(file);
+      if (!html.trim()) {
+        toast.error('Could not read any content from this file.');
+        return;
+      }
+      const baseSections = template?.sections || [];
+      if (!baseSections.length) {
+        toast.error('Draft has no sections yet — try again once it loads.');
+        return;
+      }
+      const newSections = mapDocxHtmlToSections(html, baseSections);
+      onContentUpdate?.('full-document-content', JSON.stringify(newSections));
+      toast.success(`Imported "${file.name}" into draft.`);
+    } catch (err: any) {
+      console.error('Import .docx failed:', err);
+      toast.error(err?.message || 'Could not import .docx — try saving it as a newer Word format.');
+    }
+  }, [template?.sections, onContentUpdate]);
+
   // Keep the ProseMirror highlight decoration in sync with the popover state.
   useEffect(() => {
     const editor = editorInstanceRef.current;
@@ -3034,6 +3079,17 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
               }
             }}
           />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleToolbarUploadDocx}
+            className="h-7 px-2 gap-1"
+            title="Import from Word (.docx)"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="text-xs">Upload .docx</span>
+          </Button>
 
           <Button
             variant="ghost"
@@ -3682,13 +3738,27 @@ export function LiveEditor({ template, className = '', onContentUpdate, companyI
       {/* Empty-state chooser shown when opening a draft with no content */}
       {!disableEmptyStatePrompt && (
         <DraftEmptyStateModal
-          open={showEmptyStateModal}
-          onOpenChange={setShowEmptyStateModal}
-          onGenerateManually={() => setShowEmptyStateModal(false)}
-          onAutoFillByAI={handleEmptyStateAutoFill}
-          onCopyFromSOP={handleEmptyStateCopyFromSOP}
-        />
+            open={showEmptyStateModal}
+            onOpenChange={setShowEmptyStateModal}
+            onGenerateManually={() => setShowEmptyStateModal(false)}
+            onAutoFillByAI={handleEmptyStateAutoFill}
+            onCopyFromSOP={handleEmptyStateCopyFromSOP}
+            onUploadDocx={handleEmptyStateUploadDocx}
+          />
       )}
+
+      {/* Hidden .docx file input — always mounted so the toolbar Upload button works too */}
+      <input
+        ref={docxImportInputRef}
+        type="file"
+        accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleDocxFileSelected(f);
+          if (docxImportInputRef.current) docxImportInputRef.current.value = '';
+        }}
+      />
 
       {/* SOP picker for Copy-from-SOP flow */}
       <SOPPickerModal

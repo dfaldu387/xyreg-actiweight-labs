@@ -31,12 +31,15 @@ serve(async (req) => {
       actionUrl,
     } = await req.json();
 
-    const RESEND_API_KEY = 're_QWBM83YN_NxPhjZwYFzyzwQBPYHwEnK4L';
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    if (!RESEND_API_KEY) {
+      throw new Error('RESEND_API_KEY is not configured');
+    }
 
     const safeRecipientName = escapeHtml(recipientName || 'there');
     const safeInviterName = escapeHtml(inviterName || 'A teammate');
     const safeCompanyName = escapeHtml(companyName || 'the company');
-    const safeCcrId = escapeHtml(ccrId || 'CCR');
+    const safeCcrId = escapeHtml(ccrId || 'Change Control Request');
     const safeCcrTitle = escapeHtml(ccrTitle || 'Untitled change');
     const safePerspectives = Array.isArray(perspectives)
       ? perspectives.map((p: string) => escapeHtml(p)).join(', ')
@@ -84,14 +87,14 @@ serve(async (req) => {
                         <strong>${safeInviterName}</strong> has assigned you as a reviewer on a Change Control Request and is asking you to sign off as <strong>${safePerspectives}</strong>.
                       </p>
 
-                      <!-- CCR details card -->
+                      <!-- Change Control Request details card -->
                       <table role="presentation" style="width: 100%; background: #f7fafc; border-left: 4px solid #0f172a; margin: 24px 0;" cellpadding="0" cellspacing="0">
                         <tr>
                           <td style="padding: 20px 25px;">
                             <table role="presentation" style="width: 100%;">
                               <tr>
                                 <td style="padding: 6px 0;">
-                                  <strong style="color: #2d3748; font-size: 14px;">CCR ID:</strong>
+                                  <strong style="color: #2d3748; font-size: 14px;">Change Control Request ID:</strong>
                                   <span style="color: #4a5568; font-size: 14px; padding-left: 10px;">${safeCcrId}</span>
                                 </td>
                               </tr>
@@ -142,7 +145,7 @@ serve(async (req) => {
                                   font-weight: 600;
                                   font-size: 16px;
                                   display: inline-block;">
-                          Open CCR &amp; Sign Off
+                          Open Change Control Request &amp; Sign Off
                         </a>
                       </div>
 

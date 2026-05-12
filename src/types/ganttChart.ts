@@ -1,3 +1,5 @@
+import type React from 'react';
+
 // Gantt task interface
 export interface GanttTask {
     id: string | number;
@@ -69,4 +71,64 @@ export interface ProductPhase {
   duration_days?: number;
   position?: number;
   phase_id?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Custom Gantt presentation types (Phase 1).
+// Server contracts above (GanttTask, GanttLink) are unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ZoomGranularity = 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year';
+
+export interface ZoomLevel {
+    id: ZoomGranularity;
+    pxPerDay: number;
+    minorUnit: 'day' | 'week' | 'month';
+    majorUnit: 'week' | 'month' | 'quarter' | 'year';
+    snapMs: number;
+    formatMinor: (d: Date) => string;
+    formatMajor: (d: Date) => string;
+}
+
+export type ProgressStatus = NonNullable<GanttTask['progressStatus']>;
+
+export interface GanttFilters {
+    search: string;
+    statuses: ProgressStatus[];
+    assigneeIds: string[];
+    dateRange?: { from: Date; to: Date };
+}
+
+export interface GanttSelection {
+    taskIds: Set<string | number>;
+    linkId?: string | number;
+    activeId?: string | number;
+}
+
+export type DragKind = 'idle' | 'move' | 'resize-start' | 'resize-end' | 'link-from';
+
+export interface DragState {
+    kind: DragKind;
+    taskId?: string | number;
+    originStart?: Date;
+    originEnd?: Date;
+    deltaMs: number;
+    pointerX: number;
+    pointerY: number;
+}
+
+export interface BarBox {
+    taskId: string | number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rowIndex: number;
+}
+
+export interface GanttPlugin {
+    id: string;
+    renderBarOverlay?: (task: GanttTask, box: BarBox) => React.ReactNode;
+    renderHeaderTier?: (range: { from: Date; to: Date }) => React.ReactNode;
+    onTaskUpdate?: (next: GanttTask, prev: GanttTask) => void | Promise<void>;
 }

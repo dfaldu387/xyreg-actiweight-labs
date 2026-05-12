@@ -49,6 +49,7 @@ const ProductAuditsPage = lazy(() => import("@/pages/ProductAuditsPage"));
 const ProductClinicalTrialsPage = lazy(() => import("@/pages/ProductClinicalTrialsPage"));
 const ProductMilestonesPage = lazy(() => import("@/pages/ProductMilestonesPage"));
 const ProductGanttV23Page = lazy(() => import("@/pages/ProductGanttV23Page"));
+const CustomGanttDemoPage = lazy(() => import("@/pages/CustomGanttDemoPage"));
 const ProductFamilyDashboard = lazy(() => import("@/pages/ProductFamilyDashboard"));
 const ProductDeviceInformationPage = lazy(() => import("@/pages/ProductDeviceInformationPage"));
 const ProductDesignRiskControlsPage = lazy(() => import("@/pages/ProductDesignRiskControlsPage"));
@@ -210,6 +211,13 @@ function App() {
         <Routes>
           {/* Public routes - accessible to all */}
           <Route path="/" element={<Landing />} />
+          <Route path="/gantt-demo" element={
+            <Suspense fallback={<PageLoader />}>
+              <ErrorBoundary level="component">
+                <CustomGanttDemoPage />
+              </ErrorBoundary>
+            </Suspense>
+          } />
           <Route path="/register" element={
             <Suspense fallback={<PageLoader />}>
               <ErrorBoundary level="component">

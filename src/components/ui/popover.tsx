@@ -15,7 +15,7 @@ PopoverTrigger.displayName = "PopoverTrigger"
 
 const PopoverContent = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { align?: "start" | "center" | "end"; sideOffset?: number; side?: "top" | "right" | "bottom" | "left"; onPointerDownOutside?: (e: any) => void; onInteractOutside?: (e: any) => void; forceMount?: boolean; avoidCollisions?: boolean }
+  React.HTMLAttributes<HTMLDivElement> & { align?: "start" | "center" | "end"; sideOffset?: number; side?: "top" | "right" | "bottom" | "left"; onPointerDownOutside?: (e: any) => void; onInteractOutside?: (e: any) => void; forceMount?: boolean; avoidCollisions?: boolean; collisionPadding?: number | { top?: number; right?: number; bottom?: number; left?: number } }
 >(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
   <PopoverPrimitive.Portal>
     <PopoverPrimitive.Content

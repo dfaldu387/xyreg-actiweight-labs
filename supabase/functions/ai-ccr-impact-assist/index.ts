@@ -116,13 +116,65 @@ serve(async (req) => {
       // ignore
     }
 
+    // Resolve affected_documents UUIDs into readable blurbs so the model
+    // grounds its draft in the ACTUAL linked documents — not its internal
+    // generic ISO 13485 SOP list (which still contains legacy items like
+    // "SOP-003 Record Control" that this project no longer uses).
+    const truncate = (s: string | null | undefined, n: number) => {
+      const t = (s ?? "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/[#*_`>]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+    };
+
+    const MAX_DOCS = 60;
+    let docBlurbs: string[] = [];
+    let extraDocCount = 0;
+    const affectedIds: string[] = Array.isArray(ccr.affected_documents)
+      ? (ccr.affected_documents as any[]).filter((v) => typeof v === "string")
+      : [];
+    if (affectedIds.length) {
+      try {
+        const ids = affectedIds.slice(0, MAX_DOCS);
+        extraDocCount = Math.max(0, affectedIds.length - ids.length);
+        const { data: rows } = await supabase
+          .from("phase_assigned_document_template")
+          .select(
+            "id, name, document_number, document_reference, document_type, document_scope, description, brief_summary",
+          )
+          .in("id", ids);
+        const byId = new Map(((rows as any[]) ?? []).map((r) => [r.id, r]));
+        docBlurbs = ids.map((id) => {
+          const r: any = byId.get(id);
+          if (!r) return `- (document ${id} — not found)`;
+          const ref = r.document_number || r.document_reference || "";
+          const refPart = ref && !/^DS-[0-9a-f-]{8,}/i.test(ref) ? `${ref} — ` : "";
+          const typeBits = [r.document_type, r.document_scope].filter(Boolean).join(", ");
+          const typeStr = typeBits ? ` (${typeBits})` : "";
+          const purpose = truncate(r.description || r.brief_summary, 140);
+          const purposeStr = purpose ? ` — ${purpose}` : "";
+          return `- ${refPart}${r.name ?? "Untitled"}${typeStr}${purposeStr}`;
+        });
+      } catch (e) {
+        console.error("affected docs fetch failed", e);
+      }
+    }
+
+    const affectedDocsBlock = docBlurbs.length
+      ? `Affected Documents (${affectedIds.length}):\n${docBlurbs.join("\n")}${
+          extraDocCount > 0 ? `\n- (+${extraDocCount} more not shown)` : ""
+        }`
+      : `Affected Documents: (none linked)`;
+
     const ccrSummary = `CCR: ${ccr.ccr_id} — ${ccr.title}
 Description: ${ccr.description}
 Change Type: ${ccr.change_type}
 Risk Impact: ${ccr.risk_impact}
 Regulatory Impact: ${ccr.regulatory_impact ? "Yes" : "No"}
 Cost Impact (USD): ${ccr.cost_impact ?? "N/A"}
-Affected Documents: ${JSON.stringify(ccr.affected_documents ?? [])}
+${affectedDocsBlock}
 Affected Requirements: ${JSON.stringify(ccr.affected_requirements ?? [])}
 Affected Specifications: ${JSON.stringify(ccr.affected_specifications ?? [])}
 ${productContext ? `Company products:\n${productContext}` : ""}`;
@@ -130,7 +182,8 @@ ${productContext ? `Company products:\n${productContext}` : ""}`;
     const systemPrompt = `You are a senior medical device QA/RA expert specialised in ISO 13485 §7.3.9 change control and 21 CFR 820.30(i).
 Write practical, regulator-ready content tailored to the specific change request below.
 Plain text only — no markdown headers, no code fences, no preamble like "Here is...". Numbered lists are fine when requested.
-Be concrete: refer to the actual change, not generic boilerplate.`;
+Be concrete: refer to the actual change, not generic boilerplate.
+CRITICAL: Use ONLY the documents listed in "Affected Documents" below. The list is the COMPLETE set of affected documents — do not assume any other SOPs exist. Do NOT invent or reference SOP numbers, titles, or documents that are not in that list (for example, do not assume a generic "SOP-003 Record Control" exists). If a topic is not represented by a linked document, do not mention it.`;
 
     const trimmedInstructions = (userInstructions ?? "").trim();
     const userPrompt = `${ccrSummary}

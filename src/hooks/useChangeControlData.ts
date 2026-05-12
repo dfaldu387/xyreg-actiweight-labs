@@ -22,11 +22,24 @@ function jsonToStringArray(json: Json | null): string[] {
 
 // Helper to map database row to CCR type
 function mapRowToCCR(row: any): ChangeControlRequest {
+  const rawHistory = Array.isArray(row.exemption_history) ? row.exemption_history : [];
+  const exemption_history = rawHistory.map((h: any) => ({
+    status: h?.status ?? null,
+    description: h?.description ?? null,
+    document_ids: jsonToStringArray(h?.document_ids),
+    requested_by: h?.requested_by ?? null,
+    requested_at: h?.requested_at ?? null,
+    reviewed_by: h?.reviewed_by ?? null,
+    reviewed_at: h?.reviewed_at ?? null,
+    review_reason: h?.review_reason ?? null,
+  }));
   return {
     ...row,
     affected_documents: jsonToStringArray(row.affected_documents),
     affected_requirements: jsonToStringArray(row.affected_requirements),
     affected_specifications: jsonToStringArray(row.affected_specifications),
+    exemption_document_ids: jsonToStringArray(row.exemption_document_ids),
+    exemption_history,
   };
 }
 
@@ -457,6 +470,160 @@ export function useCCRTransitions(ccrId: string | undefined) {
       })) as (CCRStateTransition & { transitioner: { id: string; full_name: string } | null })[];
     },
     enabled: !!ccrId,
+  });
+}
+
+// Request implementation exemption (author asks an admin to bypass the
+// "all linked documents Approved" gate on Mark Implemented).
+export function useRequestCCRExemption() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      ccrId,
+      description,
+      documentIds,
+      userId,
+    }: {
+      ccrId: string;
+      description: string;
+      documentIds: string[];
+      userId: string;
+    }) => {
+      const trimmed = description.trim();
+      const docs = (documentIds || []).filter(Boolean);
+      if (docs.length === 0) {
+        throw new Error('Pick at least one document this exemption should cover.');
+      }
+
+      // Snapshot the prior cycle (if any) into exemption_history before we
+      // overwrite the live columns with the new request. Read-then-write —
+      // race window is negligible for human-driven re-requests.
+      const { data: current, error: readError } = await supabase
+        .from('change_control_requests')
+        .select(
+          'exemption_status, exemption_description, exemption_document_ids, exemption_requested_by, exemption_requested_at, exemption_reviewed_by, exemption_reviewed_at, exemption_review_reason, exemption_history'
+        )
+        .eq('id', ccrId)
+        .maybeSingle();
+      if (readError) throw readError;
+
+      const priorHistory = Array.isArray((current as any)?.exemption_history)
+        ? ((current as any).exemption_history as any[])
+        : [];
+      const nextHistory = [...priorHistory];
+      if ((current as any)?.exemption_status) {
+        nextHistory.unshift({
+          status: (current as any).exemption_status,
+          description: (current as any).exemption_description ?? null,
+          document_ids: jsonToStringArray((current as any).exemption_document_ids),
+          requested_by: (current as any).exemption_requested_by ?? null,
+          requested_at: (current as any).exemption_requested_at ?? null,
+          reviewed_by: (current as any).exemption_reviewed_by ?? null,
+          reviewed_at: (current as any).exemption_reviewed_at ?? null,
+          review_reason: (current as any).exemption_review_reason ?? null,
+        });
+      }
+
+      const { data, error } = await supabase
+        .from('change_control_requests')
+        .update({
+          exemption_status: 'requested',
+          exemption_description: trimmed.length > 0 ? trimmed : null,
+          exemption_document_ids: docs,
+          exemption_requested_by: userId,
+          exemption_requested_at: new Date().toISOString(),
+          // Clear any prior review so the request reads cleanly
+          exemption_reviewed_by: null,
+          exemption_reviewed_at: null,
+          exemption_review_reason: null,
+          exemption_history: nextHistory,
+        } as any)
+        .eq('id', ccrId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return mapRowToCCR(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ccr'] });
+      queryClient.invalidateQueries({ queryKey: ['ccrs'] });
+      queryClient.invalidateQueries({ queryKey: ['ccr-audit-log'] });
+      toast({
+        title: 'Exemption requested',
+        description: 'Company admins have been notified.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Could not request exemption',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+}
+
+// Admin review (approve/reject) of an exemption request.
+export function useReviewCCRExemption() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      ccrId,
+      decision,
+      reviewerId,
+      reason,
+    }: {
+      ccrId: string;
+      decision: 'approved' | 'rejected';
+      reviewerId: string;
+      reason: string;
+    }) => {
+      const trimmed = reason.trim();
+      if (!trimmed) {
+        throw new Error('A reason is required to record this decision.');
+      }
+
+      const { data, error } = await supabase
+        .from('change_control_requests')
+        .update({
+          exemption_status: decision,
+          exemption_reviewed_by: reviewerId,
+          exemption_reviewed_at: new Date().toISOString(),
+          exemption_review_reason: trimmed,
+        } as any)
+        .eq('id', ccrId)
+        // Guard: only an active 'requested' exemption can be reviewed.
+        .eq('exemption_status', 'requested')
+        .select();
+
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Exemption is no longer pending — refresh and try again.');
+      }
+      return mapRowToCCR(data[0]);
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['ccr'] });
+      queryClient.invalidateQueries({ queryKey: ['ccrs'] });
+      queryClient.invalidateQueries({ queryKey: ['ccr-audit-log'] });
+      toast({
+        title: vars.decision === 'approved' ? 'Exemption approved' : 'Exemption rejected',
+        description:
+          vars.decision === 'approved'
+            ? 'Mark Implemented is now unlocked.'
+            : 'The author has been notified.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Could not record decision',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
   });
 }
 

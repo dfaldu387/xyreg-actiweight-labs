@@ -2560,6 +2560,14 @@ export type Database = {
           created_at: string | null
           created_by: string
           description: string
+          exemption_description: string | null
+          exemption_document_ids: Json
+          exemption_requested_at: string | null
+          exemption_requested_by: string | null
+          exemption_review_reason: string | null
+          exemption_reviewed_at: string | null
+          exemption_reviewed_by: string | null
+          exemption_status: string | null
           id: string
           implementation_notes: string | null
           implementation_plan: string | null
@@ -2610,6 +2618,14 @@ export type Database = {
           created_at?: string | null
           created_by: string
           description: string
+          exemption_description?: string | null
+          exemption_document_ids?: Json
+          exemption_requested_at?: string | null
+          exemption_requested_by?: string | null
+          exemption_review_reason?: string | null
+          exemption_reviewed_at?: string | null
+          exemption_reviewed_by?: string | null
+          exemption_status?: string | null
           id?: string
           implementation_notes?: string | null
           implementation_plan?: string | null
@@ -2660,6 +2676,14 @@ export type Database = {
           created_at?: string | null
           created_by?: string
           description?: string
+          exemption_description?: string | null
+          exemption_document_ids?: Json
+          exemption_requested_at?: string | null
+          exemption_requested_by?: string | null
+          exemption_review_reason?: string | null
+          exemption_reviewed_at?: string | null
+          exemption_reviewed_by?: string | null
+          exemption_status?: string | null
           id?: string
           implementation_notes?: string | null
           implementation_plan?: string | null
