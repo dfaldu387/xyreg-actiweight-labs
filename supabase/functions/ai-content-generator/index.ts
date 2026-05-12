@@ -4,7 +4,7 @@
  * Uses Google Vertex AI (Gemini) for auto-fill section content generation.
  * Supports generate, edit, and review modes.
  *
- * Request body: { prompt, sectionTitle, currentContent, companyId, referenceContext, outputLanguage, mode }
+ * Request body: { prompt, sectionTitle, currentContent, companyId, referenceContext, referencePdfBase64, outputLanguage, mode }
  * Response:     { success: boolean, content?: string, error?: string }
  */
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -125,8 +125,17 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, sectionTitle, currentContent, companyId, referenceContext, outputLanguage, mode } = await req.json();
-    console.log('[ai-content-generator] Request received:', { sectionTitle, hasPrompt: !!prompt, companyId, hasReferenceContext: !!referenceContext, outputLanguage, mode });
+    const { prompt, sectionTitle, currentContent, companyId, referenceContext, referencePdfBase64, outputLanguage, mode } = await req.json();
+    console.log('[ai-content-generator] Request received:', {
+      sectionTitle,
+      hasPrompt: !!prompt,
+      companyId,
+      hasReferenceContext: !!referenceContext,
+      hasReferencePdf: !!referencePdfBase64,
+      referencePdfBytes: referencePdfBase64 ? Math.round((referencePdfBase64.length * 3) / 4) : 0,
+      outputLanguage,
+      mode,
+    });
 
     if (!prompt) {
       throw new Error('Prompt is required');
@@ -300,9 +309,24 @@ ${outputLanguage && outputLanguage !== 'en' ? `CRITICAL LANGUAGE INSTRUCTION: Ge
       ? `Current content of the "${sectionTitle}" section:\n${currentContent}\n\nInstruction: ${prompt}`
       : prompt;
 
-    // Convert to Gemini format
+    // Convert to Gemini format. When a reference PDF is supplied, include it
+    // as an inline_data part so Gemini can natively read the rendered document
+    // (preserves tables, layout, images, headings). The text prompt comes
+    // after the PDF so the model treats the PDF as the source and the text
+    // as the instruction over it.
+    const userParts: Array<Record<string, unknown>> = [];
+    if (referencePdfBase64 && typeof referencePdfBase64 === 'string') {
+      userParts.push({
+        inlineData: {
+          mimeType: 'application/pdf',
+          data: referencePdfBase64,
+        },
+      });
+    }
+    userParts.push({ text: userPrompt });
+
     const contents = [
-      { role: 'user', parts: [{ text: userPrompt }] }
+      { role: 'user', parts: userParts }
     ];
 
     const payload: Record<string, unknown> = {

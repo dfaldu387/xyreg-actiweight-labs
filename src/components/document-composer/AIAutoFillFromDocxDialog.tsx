@@ -9,8 +9,8 @@ import { Sparkles, Wand2, CheckCircle2, XCircle, Loader2, AlertTriangle } from '
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { DocumentTemplate } from '@/types/documentComposer';
-import { extractTextFromBlob } from '@/utils/gapChecklistTextExtractor';
 import { useApiKeyStatus } from '@/hooks/useCompanyApiKeys';
+import { DocToPdfConverterService } from '@/services/docToPdfConverterService';
 
 interface AIAutoFillFromDocxDialogProps {
   open: boolean;
@@ -36,7 +36,10 @@ interface SectionState {
   approved: boolean;
 }
 
-const PER_DOC_CHAR_CAP = 60000;
+// Hard ceiling on the docx the user can upload. ConvertAPI handles larger
+// files, but the resulting PDF still has to fit inside a single Gemini
+// inline_data part on every per-section call (~20MB per request body).
+const MAX_DOCX_BYTES = 15 * 1024 * 1024; // 15MB
 
 export function AIAutoFillFromDocxDialog({
   open,
@@ -59,7 +62,12 @@ export function AIAutoFillFromDocxDialog({
 
   // Uploaded-docx state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [docxText, setDocxText] = useState<string>('');
+  // PDF base64 (no data: prefix) of the user's uploaded .docx after server
+  // conversion via the convert-doc-to-pdf edge function. Sent as an
+  // inline_data part to Gemini on each per-section extract call so the
+  // model can read the rendered document with layout, tables, and images
+  // intact — not just plain text.
+  const [pdfBase64, setPdfBase64] = useState<string>('');
   const [extractionState, setExtractionState] = useState<'idle' | 'extracting' | 'ready' | 'error'>('idle');
   const [extractionInfo, setExtractionInfo] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -97,7 +105,7 @@ export function AIAutoFillFromDocxDialog({
       setCurrentGeneratingTitle('');
       setAdditionalInstructions('');
       setUploadedFile(null);
-      setDocxText('');
+      setPdfBase64('');
       setExtractionState('idle');
       setExtractionInfo('');
       abortControllerRef.current = null;
@@ -153,36 +161,64 @@ export function AIAutoFillFromDocxDialog({
     (s) => s.selected && s.status === 'pending',
   ).length;
 
+  // Convert the file's bytes to a base64 string without the data: prefix.
+  // FileReader yields a "data:<mime>;base64,<...>" URL; we strip the prefix
+  // because the convert-doc-to-pdf edge function and Gemini's inlineData
+  // both expect raw base64.
+  const fileToBase64 = (file: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = typeof reader.result === 'string' ? reader.result : '';
+        const commaIdx = result.indexOf(',');
+        resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+      };
+      reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+      reader.readAsDataURL(file);
+    });
+
   const handleFileChosen = async (file: File) => {
     const ext = file.name.split('.').pop()?.toLowerCase() || '';
     if (ext !== 'docx' && ext !== 'doc') {
       toast.error('Only .doc / .docx files can be uploaded.');
       return;
     }
+    if (file.size > MAX_DOCX_BYTES) {
+      toast.error(
+        `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). The max supported size is ${(MAX_DOCX_BYTES / 1024 / 1024).toFixed(0)} MB.`,
+      );
+      return;
+    }
     setUploadedFile(file);
     setExtractionState('extracting');
     setExtractionInfo('');
     try {
-      const fullText = await extractTextFromBlob(file, file.name);
+      // Client-side .docx → PDF conversion using mammoth + pdfmake. Same
+      // service every other module in the app uses (CompanyDocumentEditDialog,
+      // ProductDocumentCreationDialog, etc.). No external API, no API key.
+      const pdfBlob = await DocToPdfConverterService.convertDocxToPdf(file, {
+        fileName: file.name,
+      });
       if (!isMountedRef.current) return;
-      const truncated = (fullText || '').slice(0, PER_DOC_CHAR_CAP);
-      if (truncated.trim().length === 0) {
-        setDocxText('');
+      if (!pdfBlob || pdfBlob.size === 0) {
+        setPdfBase64('');
         setExtractionState('error');
-        setExtractionInfo('No text could be extracted from this file.');
-        toast.error('No text could be extracted from the uploaded file.');
+        setExtractionInfo('');
+        toast.error('Could not convert the uploaded file to PDF.');
         return;
       }
-      setDocxText(truncated);
-      setExtractionState('ready');
-      setExtractionInfo(`${truncated.length.toLocaleString()} chars`);
-    } catch (err: any) {
-      console.error('Failed to extract text from uploaded .docx:', err);
+      const pdf = await fileToBase64(pdfBlob);
       if (!isMountedRef.current) return;
-      setDocxText('');
+      setPdfBase64(pdf);
+      setExtractionState('ready');
+      setExtractionInfo('Done');
+    } catch (err: any) {
+      console.error('Failed to convert uploaded .docx to PDF:', err);
+      if (!isMountedRef.current) return;
+      setPdfBase64('');
       setExtractionState('error');
       setExtractionInfo('');
-      toast.error('Could not read the uploaded file.');
+      toast.error('Could not convert the uploaded file to PDF.');
     }
   };
 
@@ -191,13 +227,11 @@ export function AIAutoFillFromDocxDialog({
     fileInputRef.current?.click();
   };
 
-  const buildReferenceContext = (): string => {
-    if (!uploadedFile || !docxText) return '';
-    return `[${uploadedFile.name} — extracted text]\n${docxText}`;
-  };
-
-  // Extract a single section's content from the uploaded document.
-  const generateSection = async (section: SectionState, referenceContext: string): Promise<'done' | 'error' | 'aborted' | 'no_credits' | 'not_found'> => {
+  // Extract a single section's content from the uploaded PDF (converted from
+  // the user's .docx). The PDF is sent to Gemini as an inline_data part so
+  // the model reads the rendered document directly — tables, layout, images
+  // and headings are all preserved without client-side text extraction.
+  const generateSection = async (section: SectionState, referencePdf: string): Promise<'done' | 'error' | 'aborted' | 'no_credits' | 'not_found'> => {
     if (isAborted()) return 'aborted';
 
     safelyUpdateSections((prev) =>
@@ -206,27 +240,24 @@ export function AIAutoFillFromDocxDialog({
     safelySetCurrentGeneratingTitle(section.title);
 
     try {
-      // Extraction-mode prompt: locate the section in the uploaded document and
+      // Extraction-mode prompt: locate the section in the uploaded PDF and
       // return its exact content, or the not-found marker if absent.
-      let prompt = `You are extracting an existing section from an uploaded Word document. Do NOT generate, rewrite, summarize, or invent content.
+      let prompt = `You are extracting an existing section from the attached PDF (converted from the user's uploaded Word document). Do NOT generate, rewrite, summarize, or invent content.
 
-TASK: Locate the section titled "${section.title}" (or its closest equivalent heading — match on meaning, not exact wording) inside the uploaded reference document below, and return ONLY the content that belongs to that section.
+TASK: Locate the section titled "${section.title}" (or its closest equivalent heading — match on meaning, not exact wording) inside the attached PDF, and return ONLY the content that belongs to that section.
 
 RULES:
-- Preserve the original wording, terminology, lists, tables, and ordering from the document. Do not paraphrase.
+- Preserve the original wording, terminology, lists, tables, and ordering from the PDF. Do not paraphrase.
 - Return the content as clean HTML (use <p>, <ul>, <ol>, <li>, <strong>, <em>, <table>, <tr>, <td>, <th> as appropriate). Do NOT include the section heading itself.
 - Include only the content that is unambiguously part of the requested section. Do not pull in content from neighboring sections.
-- If the requested section is NOT present in the uploaded document (no matching heading and no clearly equivalent content), return EXACTLY the literal string ${NOT_FOUND_MARKER} on its own, with no HTML tags, no explanation, and no other text.
-- If the section heading exists in the document but its body is empty, still return ${NOT_FOUND_MARKER}.
+- If the requested section is NOT present in the PDF (no matching heading and no clearly equivalent content), return EXACTLY the literal string ${NOT_FOUND_MARKER} on its own, with no HTML tags, no explanation, and no other text.
+- If the section heading exists in the PDF but its body is empty, still return ${NOT_FOUND_MARKER}.
 
 Target section title: "${section.title}"
 Document type: ${template.type || 'QMS'} — "${template.name}"`;
 
       if (additionalInstructions.trim()) {
         prompt += `\n\nAdditional user instructions (apply only while extracting, never to invent content): ${additionalInstructions.trim()}`;
-      }
-      if (referenceContext) {
-        prompt += `\n\n=== UPLOADED REFERENCE DOCUMENT ===\n${referenceContext}\n=== END DOCUMENT ===`;
       }
 
       const signal = abortControllerRef.current?.signal;
@@ -246,7 +277,7 @@ Document type: ${template.type || 'QMS'} — "${template.name}"`;
             sectionTitle: section.title,
             currentContent: '',
             companyId: companyId || undefined,
-            referenceContext: referenceContext || undefined,
+            referencePdfBase64: referencePdf || undefined,
           },
         }).then((res) => {
           signal?.removeEventListener('abort', onAbort);
@@ -318,10 +349,10 @@ Document type: ${template.type || 'QMS'} — "${template.name}"`;
     safelySetGeneratingState(true);
     safelySetDoneState(false);
 
-    // Extraction mode: the uploaded document IS the sole source of truth.
+    // Extraction mode: the uploaded PDF IS the sole source of truth.
     // Do NOT mix in device/company context — that would invite hallucination
     // beyond what's actually written in the file.
-    const fullReferenceContext = buildReferenceContext();
+    const referencePdf = pdfBase64;
 
     if (controller.signal.aborted || !isMountedRef.current) {
       abortControllerRef.current = null;
@@ -336,7 +367,7 @@ Document type: ${template.type || 'QMS'} — "${template.name}"`;
     let noCredits = false;
 
     for (const section of sectionsToRun) {
-      const result = await generateSection(section, fullReferenceContext);
+      const result = await generateSection(section, referencePdf);
       if (result === 'no_credits') { noCredits = true; break; }
       if (result === 'aborted') break;
       if (result === 'done') successCount++;
@@ -595,7 +626,7 @@ Document type: ${template.type || 'QMS'} — "${template.name}"`;
               {!uploadedFile ? (
                 <div className="border border-dashed rounded-lg p-4 flex items-center justify-between gap-3 bg-muted/30">
                   <p className="text-sm text-muted-foreground">
-                    Upload a .docx file to ground AI output in its content.
+                    Upload a .docx file. It will be converted to PDF and used as the source for AI extraction.
                   </p>
                   <Button
                     variant="outline"
@@ -634,22 +665,24 @@ Document type: ${template.type || 'QMS'} — "${template.name}"`;
                   <div className="flex items-center gap-2 px-2 py-1.5 rounded text-sm">
                     <FileText className="w-4 h-4 text-blue-600 shrink-0" />
                     <span className="truncate flex-1">{uploadedFile.name}</span>
-                    <span
-                      className={
-                        extractionState === 'ready'
-                          ? 'text-[10px] text-green-600 dark:text-green-400 shrink-0'
-                          : 'text-[10px] text-muted-foreground shrink-0 animate-pulse'
-                      }
-                    >
-                      {extractionState === 'extracting' && 'Extracting…'}
-                      {extractionState === 'ready' && (extractionInfo || 'Ready')}
-                    </span>
+                    {extractionState === 'extracting' && (
+                      <span className="inline-flex items-center gap-1.5 shrink-0 rounded-full bg-blue-100 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Uploading…
+                      </span>
+                    )}
+                    {extractionState === 'ready' && (
+                      <span className="inline-flex items-center gap-1 shrink-0 rounded-full bg-green-100 dark:bg-green-950/40 border border-green-200 dark:border-green-800 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:text-green-300">
+                        <CheckCircle2 className="w-3 h-3" />
+                        {extractionInfo || 'Ready'}
+                      </span>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-xs h-6 px-2"
                       onClick={handleReplaceFile}
-                      disabled={isGenerating}
+                      disabled={isGenerating || extractionState === 'extracting'}
                     >
                       Replace
                     </Button>
